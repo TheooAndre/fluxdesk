@@ -164,3 +164,26 @@ test('all-timeframe entry scanner supports both sides and selective timeframe in
   await page.getByLabel('Signal detail timeframe').selectOption('1m');
   await expect(page.getByLabel('Analysis timeframe')).toHaveValue('1m');
 });
+
+test('benchmark search exposes distinct exchange markets and supports pointer selection', async ({ page }) => {
+  await page.goto('/');
+  const search = page.getByRole('combobox', { name: 'Search comparison benchmark' });
+  await search.click();
+  await search.fill('ETH');
+  const options = page.getByRole('listbox', { name: 'Available comparison benchmarks' });
+  await expect(options).toBeVisible();
+  await expect(options.getByRole('option', { name: 'ETH · binance' })).toBeVisible();
+  await options.getByRole('option', { name: 'ETH · binance' }).click();
+  await expect(search).toHaveValue('ETH · binance');
+
+  await search.click();
+  await search.fill('HYPE');
+  await expect(options.getByRole('option', { name: 'HYPE · hyperliquid' })).toBeVisible();
+  await options.getByRole('option', { name: 'HYPE · hyperliquid' }).click();
+  await expect(search).toHaveValue('HYPE · hyperliquid');
+
+  await search.click();
+  await search.fill('USD');
+  await options.getByRole('option', { name: 'USD / USDT · cash baseline' }).click();
+  await expect(search).toHaveValue('USD / USDT · cash baseline');
+});
