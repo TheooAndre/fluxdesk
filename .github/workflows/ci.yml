@@ -1,0 +1,42 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require committed dependency lockfile
+        run: test -f pnpm-lock.yaml || (echo "Missing pnpm-lock.yaml: run pnpm install on your Mac and commit it" && exit 1)
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:smoke
+      - run: pnpm test:integration
+      - run: pnpm build
+      - name: Conservative JS budget (all built chunks ≤200KB gzipped)
+        run: |
+          node - <<'JS'
+          const fs=require('fs'),path=require('path'),zlib=require('zlib');
+          const files=fs.readdirSync('dist/assets').filter(x=>x.endsWith('.js'));
+          const bytes=files.reduce((total,file)=>total+zlib.gzipSync(fs.readFileSync(path.join('dist/assets',file))).length,0);
+          console.log(`All JS chunks: ${bytes} gzipped bytes (budget 200000)`);
+          if(bytes>200000)process.exitCode=1;
+          JS
+      # Deployment requires an authenticated HTTPS production domain and user secrets.
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: E2E browser and mobile flows (mocked market APIs)
+        run: pnpm e2e
+      - name: Lighthouse mobile PWA shell gates (mock data not validated here)
+        run: pnpm lighthouse
+      - name: Audit runtime dependencies
+        run: pnpm audit --prod --audit-level high
