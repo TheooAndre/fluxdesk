@@ -104,7 +104,7 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route('**/api/alerts', (route) => route.fulfill({ json: { alerts: [], events: [] } }));
 });
-test('market table sorts and asset selection are usable', async ({ page, isMobile }) => {
+test('market table sorts and asset selection are usable', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Market overview')).toBeVisible();
   await expect(page.getByRole('table')).toBeVisible();
