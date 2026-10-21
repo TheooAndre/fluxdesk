@@ -14,7 +14,7 @@ export type MarketSnapshot = {
   asOf: number | null;
   checkedAt: number;
 };
-export type Major = 'BTC' | 'ETH' | 'SOL' | 'HYPE' | 'XAU';
+export type BenchmarkId = 'USD' | string;
 export type { CandleInterval as Interval } from './engine/intervals.ts';
 export type Market = {
   id: string;
