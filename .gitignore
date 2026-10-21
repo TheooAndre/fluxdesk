@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+data/*.json
+coverage/
+playwright-report/
+test-results/
+.pnpm-store/
+
+.lighthouseci/
+lighthouse-report/

@@ -1,0 +1,190 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { RequestCache } from '../server/cache.ts';
+import { validateCandles, assetIdentity } from '../server/market.ts';
+import { nextCandleStart } from '../src/engine/intervals.ts';
+import { liqSummary } from '../server/liquidations.ts';
+import type { Candle } from '../src/types.ts';
+
+const now = Date.UTC(2026, 9, 19, 12, 30);
+const closed = (n = 80): Candle[] =>
+  Array.from({ length: n }, (_, i) => {
+    const time = Date.UTC(2026, 9, 19, 12) - (n - i) * 3600_000;
+    return {
+      time,
+      closeTime: time + 3600_000 - 1,
+      open: 100,
+      high: 102,
+      low: 99,
+      close: 101,
+      volumeBase: 5,
+      volumeUsd: 505,
+    };
+  });
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('completed candle integrity', () => {
+  it('drops the active candle and sorts valid history', () => {
+    const bars = closed();
+    const current = {
+      ...bars.at(-1)!,
+      time: Date.UTC(2026, 9, 19, 12),
+      closeTime: Date.UTC(2026, 9, 19, 13) - 1,
+    };
+    expect(validateCandles([current, ...bars.reverse()], '1h', now)).toHaveLength(80);
+  });
+  it.each(['gap', 'duplicate', 'invalid', 'negative volume', 'stale', 'wrong close time'])(
+    'rejects %s history',
+    (defect) => {
+      const bars = closed();
+      if (defect === 'gap') bars.splice(25, 1);
+      if (defect === 'duplicate') bars.push({ ...bars[5]! });
+      if (defect === 'invalid') bars[3]!.close = NaN;
+      if (defect === 'negative volume') bars[3]!.volumeBase = -1;
+      if (defect === 'stale') bars.splice(-2);
+      if (defect === 'wrong close time') bars[3]!.closeTime! -= 500;
+      expect(() => validateCandles(bars, '1h', now)).toThrow();
+    },
+  );
+  it('handles calendar month boundaries including leap years', () => {
+    expect(nextCandleStart(Date.UTC(2024, 1, 1), '1M')).toBe(Date.UTC(2024, 2, 1));
+    expect(nextCandleStart(Date.UTC(2025, 11, 1), '1M')).toBe(Date.UTC(2026, 0, 1));
+  });
+  it('uses upstream Hyperliquid monthly boundaries instead of forcing calendar months', () => {
+    const start = Date.UTC(2026, 8, 4);
+    const monthly = Array.from({ length: 2 }, (_, i) => ({
+      ...closed(1)[0]!,
+      time: start + i * 30 * 86400_000,
+      closeTime: start + (i + 1) * 30 * 86400_000 - 1,
+    }));
+    expect(validateCandles(monthly, '1M', start + 65 * 86400_000, 'hyperliquid')).toHaveLength(2);
+    expect(() => validateCandles(monthly, '1M', start + 65 * 86400_000, 'binance')).toThrow();
+  });
+  it('does not silently accept extra asset delimiters', () => {
+    expect(() => assetIdentity('binance:BTCUSDT:ignored')).toThrow();
+  });
+  it('reports missing liquidation coverage as unknown, not zero', () => {
+    expect(liqSummary('hyperliquid:BTC').observedUsd).toBeNull();
+    expect(liqSummary('hyperliquid:BTC').coverage).toBe('unavailable');
+    expect(liqSummary('binance:BTCUSDT').observedUsd).toBeNull();
+  });
+});
+
+describe('bounded request cache', () => {
+  it('coalesces concurrent work and never returns expired data on an upstream failure', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const cache = new RequestCache(2),
+      work = vi.fn(async () => 4);
+    expect(await Promise.all([cache.get('x', 100, work), cache.get('x', 100, work)])).toEqual([4, 4]);
+    expect(work).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(now + 101);
+    await expect(
+      cache.get('x', 100, async () => {
+        throw Error('offline');
+      }),
+    ).rejects.toThrow('offline');
+    expect(await cache.get('x', 100, async () => 9)).toBe(9);
+  });
+  it('evicts old keys instead of growing forever', async () => {
+    const cache = new RequestCache(2),
+      work = vi.fn(async () => 1);
+    await cache.get('a', 10000, work);
+    await cache.get('b', 10000, work);
+    await cache.get('c', 10000, work);
+    await cache.get('a', 10000, work);
+    expect(work).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('venue snapshots', () => {
+  async function fixture() {
+    vi.resetModules();
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    let failBinance = false;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('binance') && failBinance) return Response.json({ msg: 'blocked' }, { status: 451 });
+      if (url.endsWith('exchangeInfo'))
+        return Response.json({
+          symbols: [
+            {
+              symbol: 'BTCUSDT',
+              baseAsset: 'BTC',
+              quoteAsset: 'USDT',
+              contractType: 'PERPETUAL',
+              status: 'TRADING',
+            },
+          ],
+        });
+      if (url.endsWith('ticker/24hr'))
+        return Response.json([
+          {
+            symbol: 'BTCUSDT',
+            lastPrice: '101',
+            openPrice: '100',
+            priceChangePercent: '1',
+            quoteVolume: '10000000',
+            closeTime: Date.now(),
+          },
+        ]);
+      return Response.json([
+        { universe: [{ name: 'BTC' }] },
+        [{ markPx: '102', prevDayPx: '100', dayNtlVlm: '10000000', openInterest: '400' }],
+      ]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return {
+      market: await import('../server/market.ts'),
+      fetchMock,
+      fail: () => {
+        failBinance = true;
+      },
+    };
+  }
+  it('preserves old timestamps on partial failure, retries with backoff, and eventually removes obsolete rows', async () => {
+    const { market, fetchMock, fail } = await fixture();
+    const first = await market.marketSnapshot();
+    expect(first.feeds.map((x) => x.status)).toEqual(['live', 'live']);
+    expect(first.assets.find((x) => x.venue === 'hyperliquid')!.oiUsd).toBe(40800);
+    fail();
+    vi.setSystemTime(now + 46_000);
+    const stale = await market.marketSnapshot();
+    expect(stale.feeds[0]).toMatchObject({ status: 'stale', lastSuccessAt: now, ageMs: 46_000 });
+    expect(stale.feeds[0]!.message).toContain('HTTP 451');
+    expect(stale.feeds[1]!.status).toBe('live');
+    const calls = fetchMock.mock.calls.length;
+    await market.marketSnapshot();
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+    expect((await market.freshMarkets()).map((x) => x.venue)).toEqual(['hyperliquid']);
+    vi.setSystemTime(now + 16 * 60_000);
+    const expired = await market.marketSnapshot();
+    expect(expired.feeds[0]!.status).toBe('unavailable');
+    expect(expired.assets.some((x) => x.venue === 'binance')).toBe(false);
+  });
+  it('keeps a fresh 451 failure visible even when the other venue works', async () => {
+    const { market, fail } = await fixture();
+    fail();
+    const result = await market.marketSnapshot();
+    expect(result.assets).toHaveLength(1);
+    expect(result.feeds[0]!.status).toBe('unavailable');
+    expect(result.feeds[0]!.lastSuccessAt).toBeNull();
+  });
+  it('does not convert missing Hyperliquid OI into zero', async () => {
+    vi.resetModules();
+    vi.stubGlobal('fetch', async (input: string) =>
+      input.includes('binance')
+        ? Response.json({}, { status: 451 })
+        : Response.json([
+            { universe: [{ name: 'BTC' }] },
+            [{ markPx: '100', prevDayPx: '100', dayNtlVlm: '500', openInterest: null }],
+          ]),
+    );
+    const { marketSnapshot } = await import('../server/market.ts');
+    expect((await marketSnapshot()).assets[0]!.oiUsd).toBeNull();
+  });
+});
