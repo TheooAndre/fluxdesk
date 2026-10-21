@@ -61,9 +61,6 @@ function checkOrigin(req: IncomingMessage) {
     if (parsed.host !== expectedHost) throw Error('Cross-origin mutation blocked');
   }
 }
-function majorOf(list: Market[], base: string) {
-  return list.filter((x) => x.base === base).sort((a, b) => (a.venue === 'binance' ? -1 : 1))[0] ?? null;
-}
 export async function handler(req: IncomingMessage, res: ServerResponse) {
   writeSecurityHeaders(res);
   let path = '';
@@ -90,10 +87,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === '/api/markets') {
       const snapshot = await marketSnapshot();
       const list = snapshot.assets;
-      const majorNames = ['BTC', 'ETH', 'SOL', 'HYPE', 'XAU'];
-      const benchmarks: Record<string, Market | null> = Object.fromEntries(
-        majorNames.map((m) => [m, majorOf(list, m)]),
-      );
+      const benchmarks: Record<string, Market> = Object.fromEntries(list.map((market) => [market.id, market]));
       return json(res, { ...snapshot, benchmarks });
     }
     if (path === '/api/candles') {
@@ -108,11 +102,12 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === '/api/asset') {
       const id = validatedId(url.searchParams.get('asset') ?? ''),
         tf = url.searchParams.get('tf') ?? '1h';
-      const major = url.searchParams.get('major') ?? 'BTC';
-      if (!['BTC', 'ETH', 'SOL', 'HYPE', 'XAU'].includes(major)) throw Error('Invalid benchmark');
+      const major = url.searchParams.get('major') ?? 'binance:BTCUSDT';
+      if (major !== 'USD') validatedId(major);
       const { venue } = assetIdentity(id);
       const assets = (await marketSnapshot()).assets;
-      const majorAsset = assets.find((x) => x.base === major && x.venue === venue) ?? majorOf(assets, major);
+      const majorAsset = major === 'USD' ? null : assets.find((x) => x.id === major);
+      if (major !== 'USD' && !majorAsset) throw Error('Benchmark not available in current market universe');
       const [bars, oi, referenceOI] = await Promise.all([
         candles(id, tf, 150),
         enrichedOpenInterest(id),
