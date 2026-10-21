@@ -110,7 +110,8 @@ test('market table sorts and asset selection are usable', async ({ page }) => {
   await expect(page.getByText('Market overview')).toBeVisible();
   await expect(page.getByRole('table')).toBeVisible();
   await page.getByLabel('Sort by').selectOption('relative');
-  await expect(page.getByRole('row', { name: /ETH/ })).toBeVisible();
+  await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Inspect ETH on binance' }) })).toBeVisible();
+  await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Inspect ETH on hyperliquid' }) })).toBeVisible();
   await page.getByLabel('Selected asset').selectOption(eth.id);
   await expect(page.getByText('ETH', { exact: true }).first()).toBeVisible();
 });
