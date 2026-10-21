@@ -126,7 +126,7 @@ test('four entry model descriptions and macro empty state', async ({ page }) => 
     'Trend Continuation',
     'Consolidation / Chop',
   ])
-    await expect(page.getByText(x, { exact: true })).toBeVisible();
+    await expect(page.locator('b').getByText(x, { exact: true })).toBeVisible();
   await (
     mobile ? nav.getByRole('button', { name: 'Macro' }) : page.getByRole('button', { name: 'Macro calendar' })
   ).click();
@@ -159,7 +159,7 @@ test('all-timeframe entry scanner supports both sides and selective timeframe in
       ? page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('button', { name: 'Signals' })
       : page.getByRole('button', { name: 'Entry models' })
   ).click();
-  await expect(page.getByText('LONG + SHORT')).toBeVisible();
+  await expect(page.locator('.pill').getByText('LONG + SHORT', { exact: true })).toBeVisible();
   await expect(page.getByText(/15\/15 intervals checked/)).toBeVisible();
   await page.getByLabel('Signal detail timeframe').selectOption('1m');
   await expect(page.getByLabel('Analysis timeframe')).toHaveValue('1m');
