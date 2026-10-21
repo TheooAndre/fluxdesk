@@ -29,6 +29,7 @@ import type { AlertKind, EntrySignal, Market, SignalModel } from './types.ts';
 import LineChart from './components/LineChart.tsx';
 import { intervalsFor } from './engine/intervals.ts';
 import FeedHealth from './components/FeedHealth.tsx';
+import BenchmarkSelector from './components/BenchmarkSelector.tsx';
 const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'overview', label: 'Markets', icon: BarChart3 },
   { id: 'signals', label: 'Entry models', icon: Zap },
@@ -317,9 +318,9 @@ function Snapshot({ assets, benchmark }: { assets: Market[]; benchmark: Market |
       </div>
       <div className="metric">
         <span>Benchmark · 24h</span>
-        <strong>{benchmark?.base ?? '—'}</strong>
+        <strong>{ui.benchmark === 'USD' ? 'USD / USDT' : benchmark?.base ?? '—'}</strong>
         <small className={(benchmark?.return24h ?? 0) >= 0 ? 'positive' : 'negative'}>
-          {benchmark ? pct(benchmark.return24h) : 'Unavailable'}
+          {ui.benchmark === 'USD' ? '0.00%' : benchmark ? pct(benchmark.return24h) : 'Unavailable'}
         </small>
       </div>
     </div>
@@ -408,7 +409,7 @@ function Insights({
               : (detail.benchmarkOI.ratio * 100).toFixed(2) + '%'}
           </strong>
           <small className="muted">
-            {detail?.benchmarkOI?.venueMatched ? 'Same exchange' : 'Cross-exchange / approximate'}
+            {ui.benchmark === 'USD' ? 'Cash baseline: no open interest' : detail?.benchmarkOI ? (detail.benchmarkOI.venueMatched ? 'Same exchange' : 'Cross-exchange / approximate') : 'Unavailable'}
           </small>
         </div>
         <div>
@@ -1175,7 +1176,7 @@ function App() {
     mk.data.feeds.some(
       (f) => f.status !== 'live' || f.lastSuccessAt === null || now - f.lastSuccessAt > 60_000,
     );
-  const benchmark = mk.data?.benchmarks?.[ui.benchmark] ?? null;
+  const benchmark = ui.benchmark === 'USD' ? null : mk.data?.benchmarks?.[ui.benchmark] ?? null;
   const [menu, setMenu] = useState(false);
   const [offline, setOffline] = useState(!navigator.onLine);
   useEffect(() => {
@@ -1263,17 +1264,7 @@ function App() {
             </div>
             <div className="selected-input">
               <span className="tiny-label">COMPARE AGAINST</span>
-              <select
-                aria-label="Benchmark"
-                value={ui.benchmark}
-                onChange={(e) => ui.setBenchmark(e.target.value as typeof ui.benchmark)}
-              >
-                {(['BTC', 'ETH', 'SOL', 'HYPE', 'XAU'] as const).map((x) => (
-                  <option value={x} key={x}>
-                    {x === 'XAU' ? 'GOLD (XAU)' : x}
-                  </option>
-                ))}
-              </select>
+              <BenchmarkSelector value={ui.benchmark} assets={mk.data?.assets ?? []} onChange={ui.setBenchmark} />
             </div>
             <div className="selected-input">
               <span className="tiny-label">TIMEFRAME</span>
@@ -1318,7 +1309,7 @@ function App() {
               {asset.error && <ErrorText error={asset.error} />}
               <MarketTable
                 assets={mk.data?.assets ?? []}
-                benchmarkReturn={benchmark?.return24h ?? null}
+                benchmarkReturn={ui.benchmark === 'USD' ? 0 : benchmark?.return24h ?? null}
                 selectedId={ui.assetId}
               />
             </div>
