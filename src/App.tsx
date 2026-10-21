@@ -296,7 +296,7 @@ function MarketTable({
     </Card>
   );
 }
-function Snapshot({ assets, benchmark }: { assets: Market[]; benchmark: Market | null }) {
+function Snapshot({ assets, benchmark, isUsd }: { assets: Market[]; benchmark: Market | null; isUsd: boolean }) {
   const movers = [...assets].sort((a, b) => b.return24h - a.return24h);
   const total = assets.reduce((s, a) => s + a.volumeUsd24h, 0);
   return (
@@ -318,7 +318,7 @@ function Snapshot({ assets, benchmark }: { assets: Market[]; benchmark: Market |
       </div>
       <div className="metric">
         <span>Benchmark · 24h</span>
-        <strong>{ui.benchmark === 'USD' ? 'USD / USDT' : benchmark?.base ?? '—'}</strong>
+        <strong>{ui.benchmark === 'USD' ? 'USD / USDT' : isUsd ? 'USD / USDT' : benchmark?.base ?? '—'}</strong>
         <small className={(benchmark?.return24h ?? 0) >= 0 ? 'positive' : 'negative'}>
           {ui.benchmark === 'USD' ? '0.00%' : benchmark ? pct(benchmark.return24h) : 'Unavailable'}
         </small>
@@ -1301,7 +1301,7 @@ function App() {
           ) : null}
           {ui.tab === 'overview' && (
             <div className="content-stack">
-              <Snapshot assets={mk.data?.assets ?? []} benchmark={benchmark} />
+              <Snapshot assets={mk.data?.assets ?? []} benchmark={benchmark} isUsd={ui.benchmark === 'USD'} />
               <div className="overview-grid">
                 <AssetChart item={selected} candles={asset.isError ? undefined : asset.data?.candles} />
                 <Insights item={selected} detail={asset.isError ? undefined : asset.data} />
