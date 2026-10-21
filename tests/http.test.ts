@@ -49,7 +49,7 @@ it('serves a complete unavailable-feed response instead of a misleading healthy 
   const body = await response.json();
   expect(response.status).toBe(200);
   expect(body.feeds.map((f: { status: string }) => f.status)).toEqual(['unavailable', 'unavailable']);
-  expect(body.benchmarks.BTC).toBeNull();
+  expect(body.benchmarks).toEqual({});
   expect(response.headers.get('cache-control')).toBe('no-store');
 });
 it.each([
