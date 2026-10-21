@@ -13,6 +13,7 @@ const market = (id: string, base: string, venue: 'binance' | 'hyperliquid', r: n
 });
 const btc = market('binance:BTCUSDT', 'BTC', 'binance', 3, 600_000_000);
 const eth = market('binance:ETHUSDT', 'ETH', 'binance', 5, 300_000_000);
+const ethHyper = market('hyperliquid:ETH', 'ETH', 'hyperliquid', 4, 250_000_000);
 const hype = market('hyperliquid:HYPE', 'HYPE', 'hyperliquid', 2, 90_000_000);
 const candles = Array.from({ length: 150 }, (_, i) => ({
   time: Date.now() - (150 - i) * 3600_000,
@@ -27,7 +28,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/markets', (route) =>
     route.fulfill({
       json: {
-        assets: [btc, eth, hype],
+        assets: [btc, eth, ethHyper, hype],
         benchmarks: { BTC: btc, ETH: eth, SOL: null, HYPE: hype, XAU: null },
         asOf: Date.now(),
         checkedAt: Date.now(),
@@ -46,7 +47,7 @@ test.beforeEach(async ({ page }) => {
             lastSuccessAt: Date.now(),
             lastAttemptAt: Date.now(),
             ageMs: 0,
-            markets: 1,
+            markets: 2,
           },
         ],
       },
@@ -173,8 +174,13 @@ test('benchmark search exposes distinct exchange markets and supports pointer se
   const options = page.getByRole('listbox', { name: 'Available comparison benchmarks' });
   await expect(options).toBeVisible();
   await expect(options.getByRole('option', { name: 'ETH · binance' })).toBeVisible();
+  await expect(options.getByRole('option', { name: 'ETH · hyperliquid' })).toBeVisible();
   await options.getByRole('option', { name: 'ETH · binance' }).click();
   await expect(search).toHaveValue('ETH · binance');
+  await search.click();
+  await search.fill('ETH');
+  await options.getByRole('option', { name: 'ETH · hyperliquid' }).click();
+  await expect(search).toHaveValue('ETH · hyperliquid');
 
   await search.click();
   await search.fill('HYPE');
