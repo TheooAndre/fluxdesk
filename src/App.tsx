@@ -318,9 +318,9 @@ function Snapshot({ assets, benchmark, isUsd }: { assets: Market[]; benchmark: M
       </div>
       <div className="metric">
         <span>Benchmark · 24h</span>
-        <strong>{ui.benchmark === 'USD' ? 'USD / USDT' : isUsd ? 'USD / USDT' : benchmark?.base ?? '—'}</strong>
+        <strong>{isUsd ? 'USD / USDT' : benchmark?.base ?? '—'}</strong>
         <small className={(benchmark?.return24h ?? 0) >= 0 ? 'positive' : 'negative'}>
-          {ui.benchmark === 'USD' ? '0.00%' : benchmark ? pct(benchmark.return24h) : 'Unavailable'}
+          {isUsd ? '0.00%' : benchmark ? pct(benchmark.return24h) : 'Unavailable'}
         </small>
       </div>
     </div>
