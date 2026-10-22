@@ -269,6 +269,8 @@ test('Strategy Lab uses a saved dataset and renders a clearly labelled research-
   await expect(page.getByText('No datasets stored. Fetch historical candles to begin.')).toBeVisible();
   await page.getByRole('button', { name: /Fetch & archive history/ }).click();
   await expect(page.getByRole('combobox', { name: 'Historical dataset', exact: true })).toHaveValue(dataset.id);
+  const configForm = page.getByRole('region', { name: 'Backtest settings' }).locator('form');
+  expect(await configForm.evaluate((element) => (element as HTMLFormElement).checkValidity())).toBe(true);
   await page.getByRole('button', { name: /Run research backtest/ }).click();
   await expect.poll(async () => {
     const alerts = await page.locator('.lab-error').allTextContents();
