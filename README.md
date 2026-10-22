@@ -1,8 +1,37 @@
-# FluxDesk v0.2: Binance + Hyperliquid Market Intelligence
+# FluxDesk v0.3: Market Intelligence + Strategy Lab
 
 A **read-only**, self-hosted trading research dashboard. Native iOS app packaging is not required: it is an installable React/Vite progressive web app, with an optional server-side Web Push service. **No exchange API keys or trade execution are used.**
 
 > Scope: personal single-user research dashboard, not a validated alpha engine. The four trading models are deterministic **candidates** and must be properly backtested before relying on them. It is deliberately not a financial-advice product.
+
+## v0.3 release — 22 October 2026
+
+FluxDesk v0.3 introduces an explicitly **research-only Strategy Lab** without any
+exchange order placement or prediction claims. It supports:
+
+- Fetching and validating completed Binance/Hyperliquid futures candles, with
+  strict gap/duplicate/overlap rejection and checksummed local archives.
+- Replaying four rule-based signal candidates with next-bar entries,
+  conservative intrabar stop/target ordering and configurable fee/slippage
+  assumptions.
+- Chronological development/holdout summaries, closed-trade equity curves,
+  individual trade logs and prominent disclosures.
+- An iPhone-friendly, lazy-loaded Strategy Lab module that remains available
+  within the installed PWA's precached shell.
+- Bounded HTTP research operations and CLI archive/replay workflows.
+- A Host-preserving local HTTPS proxy that allows same-origin mutations
+  from iPhone without weakening server-side origin checks.
+
+**Release acceptance:** GitHub CI #188 passed all stages. On 22 October 2026,
+the application owner confirmed all seven local iPhone acceptance checks,
+including historical BTC download, saved datasets, backtesting, reports, PWA
+offline launch and reconnection recovery. See
+[the v0.3 release record](docs/release-v0.3.md) for precise scope, test evidence
+and remaining research/deployment limitations.
+
+**Do not expose the local API to the public internet.** Personal LAN preview
+is not authenticated cloud hosting. Production remote access still requires
+HTTPS, a verified OIDC reverse proxy and durable persistence planning.
 
 ## v0.2 continuation — 19 October 2026
 
