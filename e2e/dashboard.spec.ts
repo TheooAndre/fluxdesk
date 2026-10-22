@@ -141,6 +141,14 @@ test('mobile dashboard reacts to loss of network and preserves navigation', asyn
 }) => {
   test.skip(!isMobile, 'Mobile-only offline UX');
   await page.goto('/');
+  // E2E uses the Vite dev server without a registered production service
+  // worker. Warm the lazy tab module before blocking network; cold offline
+  // installation is separately validated on the installed iPhone PWA.
+  const mobileNav = page.getByRole('navigation', { name: 'Mobile navigation' });
+  await mobileNav.getByRole('button', { name: 'Signals' }).click();
+  await expect(page.getByText('Four-model entry scanner')).toBeVisible();
+  await mobileNav.getByRole('button', { name: 'Markets' }).click();
+  await expect(page.getByText('Market overview')).toBeVisible();
   await context.setOffline(true);
   // WebKit's context-level network emulation can leave navigator.onLine unchanged.
   // Model the browser's observable offline signal while the network is blocked.
@@ -203,4 +211,82 @@ test('benchmark search exposes distinct exchange markets and supports pointer se
   await search.fill('USD');
   await options.getByRole('option', { name: 'USD / USDT · cash baseline' }).click();
   await expect(search).toHaveValue('USD / USDT · cash baseline');
+});
+
+test('Strategy Lab uses a saved dataset and renders a clearly labelled research-only report', async ({ page }) => {
+  const dataset = {
+    id: 'a'.repeat(64),
+    assetId: 'binance:BTCUSDT',
+    venue: 'binance',
+    interval: '1h',
+    capturedAt: Date.now(),
+    firstOpenTime: Date.now() - 1000 * 3600_000,
+    lastCloseTime: Date.now() - 1,
+    bars: 1000,
+  };
+  let stored: typeof dataset[] = [];
+  await page.route('**/api/research/datasets', (route) => {
+    if (route.request().method() === 'POST') {
+      stored = [dataset];
+      return route.fulfill({ status: 201, json: { dataset } });
+    }
+    return route.fulfill({ json: { datasets: stored, rejected: 0 } });
+  });
+  await page.route('**/api/research/backtests', (route) => {
+    const body = route.request().postDataJSON() as {
+      datasetId: string;
+      config: { model: string; initialEquity: number };
+    };
+    expect(body.datasetId).toBe(dataset.id);
+    expect(body.config.model).toBe('sfp');
+    return route.fulfill({
+      json: {
+        schemaVersion: 1,
+        engineVersion: 'single-position-next-bar-v1',
+        dataset,
+        result: {
+          hypothesis: 'Fixed historical research hypothesis. No confirmed edge.',
+          config: body.config,
+          bars: 1000,
+          splitIndex: 750,
+          trades: [
+            {
+              signalTime: 1000, entryTime: 2000, exitTime: 3000,
+              direction: 'long', entry: 100, exit: 105, stop: 95, target: 110,
+              size: 1, grossPnl: 5, fees: 1, netPnl: 4, rMultiple: 0.04,
+              exitReason: 'end_of_data', sample: 'development',
+            },
+          ],
+          summary: { count: 1, netPnl: 4, expectancyR: 0.04, maxDrawdownPct: 0, winRate: 1 },
+          development: { count: 1, netPnl: 4, expectancyR: 0.04 },
+          holdout: { count: 0, netPnl: 0, expectancyR: null },
+          warnings: ['Holdout contains fewer than 30 closed trades; evidence is insufficient.'],
+        },
+      },
+    });
+  });
+  await page.goto('/');
+  const mobileNavigation = page.getByRole('navigation', { name: 'Mobile navigation' });
+  const mobile = await mobileNavigation.isVisible();
+  await (
+    mobile
+      ? mobileNavigation.getByRole('button', { name: 'Lab' })
+      : page.getByRole('button', { name: 'Strategy Lab' })
+  ).click();
+  await expect(page.getByRole('heading', { name: 'Strategy Lab · v0.3' })).toBeVisible();
+  await expect(page.getByText('No datasets stored. Fetch historical candles to begin.')).toBeVisible();
+  await page.getByRole('button', { name: /Fetch & archive history/ }).click();
+  await expect(page.getByRole('combobox', { name: 'Historical dataset', exact: true })).toHaveValue(dataset.id);
+  const configForm = page.getByRole('region', { name: 'Backtest settings' }).locator('form');
+  expect(await configForm.evaluate((element) => (element as HTMLFormElement).checkValidity())).toBe(true);
+  await page.getByRole('button', { name: /Run research backtest/ }).click();
+  await expect.poll(async () => {
+    const alerts = await page.locator('.lab-error').allTextContents();
+    if (alerts.length) return 'API/render error: ' + alerts.join(' | ');
+    return await page.getByRole('heading', { name: 'Backtest results' }).count() ? 'report' : 'pending';
+  }, { timeout: 12_000 }).toBe('report');
+  await expect(page.getByRole('heading', { name: 'Backtest results' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Backtest trade log' })).toBeVisible();
+  await expect(page.getByText(/Holdout contains fewer than 30/)).toBeVisible();
+  await expect(page.getByText(/RESEARCH REPORT/)).toBeVisible();
 });

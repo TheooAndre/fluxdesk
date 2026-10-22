@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 data/*.json
+data/research/
 coverage/
 playwright-report/
 test-results/

@@ -1,6 +1,6 @@
 {
   "name": "fluxdesk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -23,7 +23,8 @@
     "test:smoke": "node --experimental-strip-types --test tests/smoke.node.mjs",
     "lighthouse": "lhci autorun",
     "dev:api": "node --env-file-if-exists=.env --import tsx --watch server/index.ts",
-    "verify:feeds": "node --env-file-if-exists=.env --import tsx scripts/verify-feeds.ts"
+    "verify:feeds": "node --env-file-if-exists=.env --import tsx scripts/verify-feeds.ts",
+    "research": "node --env-file-if-exists=.env --import tsx scripts/research-cli.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.90.2",
