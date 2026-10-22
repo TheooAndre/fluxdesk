@@ -17,9 +17,19 @@
   21 October 2026 security disclosure reported possible unauthorized access
   to encrypted/decrypted environment variables; **do not store gateway
   secrets there until the incident is closed and account security is reviewed**.
+- The owner selected **Oracle Cloud Always Free** instead of paying for the Northflank
+  6 GB NVMe volume. No OCI account/VM has been accessed or provisioned from this chat.
+  The recommended A1 staging configuration is 1 Arm OCPU, 6 GB RAM,
+  50 GB boot plus a separately attached 50 GB block volume, within Oracle's
+  current Always Free 2 OCPU/12 GB and 200 GB shared storage limits.
 - The portable VPS configuration at `deploy/vps/` supports Oracle Always
   Free, Google Compute Engine and conventional VPS hosts (single Node API,
   Docker volume, Caddy-managed TLS, local encrypted/offsite backup process).
+  **The OCI overlay** `deploy/oci/compose.oci.yaml` binds the archive volume
+  to a separate `/srv/fluxdesk` disk. `deploy/oci/verify-host.sh` fails
+  closed on missing mount, incorrect ownership, unsafe secrets or mismatched
+  Docker volume. Exact account, VM, firewall, disk and setup instructions:
+  [OCI staging runbook](oci-always-free-v0.4.md).
 - See [22 October hosting comparison](backend-hosting-options-2026-10.md)
   for a verified 2026 free-tier matrix and recommended providers. No cloud
   VM or persistent disk has been deployed yet.
