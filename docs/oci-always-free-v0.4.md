@@ -78,9 +78,15 @@ inbound TCP *stateful* rules:
 | 443 | `0.0.0.0/0` | HTTPS Vercel → Caddy |
 
 Do **not** allow ingress on **8787**, database ports or Docker management
-ports. Keep normal outbound HTTPS/DNS permitted for Binance/Hyperliquid
-and updates. If SSH stops working after your IP changes, update only the
-source IP range for 22. Verify OS firewall and VCN security rules agree.
+ports. **OCI security lists and NSGs are additive:** if the VCN's default
+security list already permits TCP 22 from `0.0.0.0/0`, adding an
+`YOUR_IP/32` NSG rule does **not** close that broad rule. After confirming
+your own SSH rule works, remove or replace the pre-existing public SSH rule
+so only your own IP can administer the VM. Check all effective ingress
+lists/NSGs. Keep normal outbound HTTPS/DNS permitted for
+Binance/Hyperliquid and updates. If SSH stops working after your IP
+changes, update only the source IP range for 22. Verify OS firewall
+and VCN security rules agree.
 
 Connect from your Mac with the private key you generated or downloaded:
 
