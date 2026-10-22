@@ -43,7 +43,7 @@ export function authenticateGateway(
 
 export function assertRemoteBindingAllowed(
   host: string,
-  env: Pick<NodeJS.ProcessEnv, 'REVERSE_PROXY_OIDC' | 'FLUXDESK_GATEWAY_TOKEN'>,
+  env: Partial<Record<'REVERSE_PROXY_OIDC' | 'FLUXDESK_GATEWAY_TOKEN', string>>,
 ): void {
   assertGatewaySecret(env.FLUXDESK_GATEWAY_TOKEN);
   if (['127.0.0.1', '::1', 'localhost'].includes(host)) return;
