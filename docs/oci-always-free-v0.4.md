@@ -129,6 +129,11 @@ findmnt --mountpoint /srv/fluxdesk
 id -u ubuntu
 # Docker's non-root Node process is UID:GID 1000:1000.
 sudo install -d -m 0700 -o 1000 -g 1000 /srv/fluxdesk/data
+# Initialize a UNIQUE disk identifier ONCE on the attached data disk.
+# Do not overwrite this file during restarts or later redeployments.
+sudo sh -c 'cat /proc/sys/kernel/random/uuid > /srv/fluxdesk/data/.fluxdesk-volume-id'
+sudo chown 1000:1000 /srv/fluxdesk/data/.fluxdesk-volume-id
+sudo chmod 600 /srv/fluxdesk/data/.fluxdesk-volume-id
 ```
 
 Check `findmnt --fstab --mountpoint /srv/fluxdesk` after editing so
@@ -190,6 +195,21 @@ server-side Preview environment** under the same
 `FLUXDESK_GATEWAY_TOKEN` name. NEVER prefix it `VITE_`; never paste
 it into chat or commit it. Also set `FLUXDESK_BACKEND_DOMAIN` to the
 real DNS hostname you own/control, without `https://`.
+
+**OCI disk identity:** read the volume marker **without regenerating it**:
+
+```sh
+sudo cat /srv/fluxdesk/data/.fluxdesk-volume-id
+```
+
+In the local `deploy/vps/.env`, replace the existing
+`FLUXDESK_DATA_VOLUME_ID=SET_ME` placeholder with that exact UUID.
+Do not append a second definition. It isn't a password, but the gateway
+token and environment file remain private. The OCI Docker Compose overlay
+passes this expected ID to the API. At *every container startup* the API
+reads `/data/.fluxdesk-volume-id`; if the disk is missing, incorrectly
+mounted or replaced with a boot-volume directory, startup fails rather
+than silently writing historical data to an ephemeral location.
 
 The hostname needs an A record pointing to this VM's public IPv4;
 Caddy obtains and renews the TLS certificate after DNS propagates and
