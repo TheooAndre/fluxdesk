@@ -16,8 +16,11 @@ export async function runStoredBacktest(
   datasetId: string,
   config: ResearchConfig,
   directory?: string,
+  maxBars = 50_000,
 ): Promise<StoredResearchReport> {
   const dataset = await loadHistoricalDataset(datasetId, directory);
+  if (dataset.candles.length > maxBars)
+    throw Error('Research dataset exceeds bounded backtest candle limit');
   return {
     schemaVersion: 1,
     engineVersion: 'single-position-next-bar-v1',
