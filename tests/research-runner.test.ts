@@ -44,3 +44,16 @@ it('links deterministic backtest output to the exact validated dataset', async (
   expect(a.result.summary.count).toBe(0);
   expect(a.result.summary.expectancyR).toBeNull();
 });
+
+it('refuses oversized HTTP-style runs before expensive signal evaluation', async () => {
+  directory = await mkdtemp(join(tmpdir(), 'fluxdesk-bounded-run-'));
+  const bars = Array.from({ length: 3001 }, (_, i) => ({
+    time: start + i * hour, closeTime: start + (i + 1) * hour - 1,
+    open: 100, high: 101, low: 99, close: 100, volumeBase: 1, volumeUsd: 100,
+  }));
+  const receipt = await saveHistoricalDataset({
+    ...data, capturedAt: start + 3002 * hour, candles: bars,
+  }, directory);
+  await expect(runStoredBacktest(receipt.id, config, directory, 3000))
+    .rejects.toThrow('exceeds bounded backtest candle limit');
+});
