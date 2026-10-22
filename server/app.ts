@@ -1,5 +1,6 @@
 import { type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { authenticateGateway, GatewayAuthError } from './gateway.ts';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { marketSnapshot, candles, assetIdentity, enrichedOpenInterest } from './market.ts';
@@ -53,19 +54,23 @@ function writeSecurityHeaders(res: ServerResponse) {
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   );
 }
-function checkOrigin(req: IncomingMessage) {
-  if (!['POST', 'DELETE', 'PUT'].includes(req.method ?? '')) return;
+function checkOrigin(req: IncomingMessage, expectedHost: string, gatewayProtected: boolean) {
+  if (!['POST', 'DELETE', 'PUT', 'PATCH'].includes(req.method ?? '')) return;
   const o = req.headers.origin;
+  // For gateway-protected remote APIs, browser mutations MUST come from the
+  // Vercel HTTPS origin. Local CLI / LAN clients retain the v0.3 behavior.
+  if (gatewayProtected && !o) throw Error('Cross-origin mutation blocked');
   if (o) {
     const parsed = new URL(o);
-    const expectedHost = req.headers.host ?? '';
-    if (parsed.host !== expectedHost) throw Error('Cross-origin mutation blocked');
+    if (parsed.host !== expectedHost || (gatewayProtected && parsed.protocol !== 'https:'))
+      throw Error('Cross-origin mutation blocked');
   }
 }
 export async function handler(req: IncomingMessage, res: ServerResponse) {
   writeSecurityHeaders(res);
   let path = '';
   try {
+    const access = authenticateGateway(req);
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     path = url.pathname;
     if (path.startsWith('/api/')) {
@@ -86,7 +91,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         return json(res, { error: 'Method not allowed' }, 405);
       }
     }
-    checkOrigin(req);
+    checkOrigin(req, access.originHost, access.gatewayProtected);
     if (path === '/api/research/datasets' && req.method === 'GET')
       return json(res, await listResearchDatasets());
     if (path === '/api/research/datasets' && req.method === 'POST')
@@ -266,7 +271,9 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     return json(
       res,
       { error: message },
-      error instanceof ResearchRequestError
+      error instanceof GatewayAuthError
+        ? error.status
+        : error instanceof ResearchRequestError
         ? error.status
         : /Invalid|Unsupported|Choose|threshold|Too |limit|blocked|Cross-origin|requires|not available|large/i.test(
         message,
