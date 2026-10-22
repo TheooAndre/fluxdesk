@@ -12,6 +12,9 @@ import type {
   PairStats,
   PriceLevel,
 } from '../types.ts';
+import type { ResearchConfig } from '../engine/backtest.ts';
+import type { DatasetReceipt } from '../../server/research/datasets.ts';
+import type { StoredResearchReport } from '../../server/research/runner.ts';
 async function get<T>(url: string, signal?: AbortSignal, timeoutMs = 20_000): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -30,7 +33,33 @@ async function get<T>(url: string, signal?: AbortSignal, timeoutMs = 20_000): Pr
     signal?.removeEventListener('abort', abort);
   }
 }
+async function postResearch<T>(url: string, payload: unknown, timeoutMs = 90_000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({ error: 'Research request failed' }))) as { error?: string };
+      throw Error(data.error ?? 'Research request failed');
+    }
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 export const api = {
+  researchDatasets: (signal?: AbortSignal) =>
+    get<{ datasets: DatasetReceipt[]; rejected: number }>('/api/research/datasets', signal, 30_000),
+  researchFetch: (payload: { assetId: string; interval: '15m' | '1h' | '4h' | '1d'; count: number }) =>
+    postResearch<{ dataset: DatasetReceipt }>('/api/research/datasets', payload),
+  researchBacktest: (datasetId: string, config: ResearchConfig) =>
+    postResearch<StoredResearchReport>('/api/research/backtests', { datasetId, config }),
   markets: (signal?: AbortSignal) =>
     get<MarketSnapshot & { benchmarks: Record<string, Market | null> }>('/api/markets', signal),
   asset: (id: string, tf: string, major: string, signal?: AbortSignal) =>
