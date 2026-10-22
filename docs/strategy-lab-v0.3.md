@@ -1,7 +1,41 @@
 # Strategy Lab v0.3: research engine (draft)
 
 This module is **research-only**. It does not connect an account, place orders, or claim
-a profitable edge. It is not yet connected to the browser dashboard.
+a profitable edge. It is connected to a browser preview but has no exchange execution integration.
+
+## Browser Strategy Lab (research preview)
+
+Open **Strategy Lab** from the FluxDesk desktop sidebar or iPhone bottom navigation.
+The panel is lazily loaded so the market overview does not need to download
+research UI code on initial launch.
+
+The browser can retrieve verified historical candle data from the backend,
+select an archived dataset, choose one of the four existing rule-based entry
+detectors, and run a read-only backtest. It displays the dataset fingerprint,
+development/holdout sample summaries, closed-trade equity curve, trade log,
+and explicit warnings. No simulated trade is sent to an exchange.
+
+The three API endpoints are:
+
+- `GET /api/research/datasets`: list validated local dataset receipts and count
+  discarded/corrupt snapshots, without exposing raw candles.
+- `POST /api/research/datasets`: accept `{ "assetId": "binance:BTCUSDT",
+  "interval": "1h", "count": 1000 }`. Validated fixed intervals, maximum
+  1,000 bars per UI request. The backend fetches directly from the venue,
+  fails closed on missing candle pages and stores the resulting fingerprint.
+- `POST /api/research/backtests`: accept `{ "datasetId": "<sha256>",
+  "config": { ... } }`. Return a versioned, provenance-linked simulation
+  report. Risk and transaction cost assumptions have strict finite bounds.
+
+The backend allows only **one active research operation per process**; other
+requests receive HTTP 409 rather than starting unbounded concurrent work.
+Authentication remains the same single-user HTTPS/OIDC deployment boundary as
+the rest of FluxDesk, and mutation requests enforce the application's existing
+same-origin checks. Endpoints do not import arbitrary user-selected file paths.
+
+Research results are currently held in browser memory, not saved as a server
+journal. After a reload, reselect the archived dataset and run the analysis
+again. Dataset archives remain on the local server and are excluded from Git.
 
 ## Workflow
 
@@ -106,6 +140,6 @@ realistic execution conditions. Results change when assumptions change.
   alternative cost assumptions and genuinely untouched data.
 - All orders remain disabled.
 
-Next milestones: deeper resumable historical archives, a bounded server research job
-API, then a Strategy Lab UI with explicit data provenance and warnings alongside
-every reported result.
+Next milestones: deeper resumable historical archives, background worker isolation,
+walk-forward testing, persisted versioned research reports, order-cost sensitivity,
+and comprehensive UI and PWA regression validation.
