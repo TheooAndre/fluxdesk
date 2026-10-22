@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { CircleHelp } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { short } from '../lib/format.ts';
 import { Pill, ErrorText, Loading, Card } from './UiPrimitives.tsx';
 
 function CalendarTab() {
