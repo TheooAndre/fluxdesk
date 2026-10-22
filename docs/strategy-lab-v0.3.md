@@ -92,8 +92,11 @@ realistic execution conditions. Results change when assumptions change.
 
 ## Limitations / further gates
 
-- Historical backfill, pagination and data-source verification are **not yet implemented**.
-  Current live-data endpoints are not a substitute for a deep history archive.
+- Bounded Binance/Hyperliquid HTTP historical backfill is implemented for fixed
+  intervals; deeper multi-year archives, independent provider reconciliation,
+  resumed ingestion and automated funding history remain **not implemented**.
+  Hyperliquid `volumeUsd` is estimated from base volume and OHLC midpoint,
+  not an exchange-reported historical quote notional.
 - No independent walk-forward folds or parameter-search embargo yet.
 - No funding, financing, leverage limits, partial fills, latency, exchange
   minimum quantities, market impact, or liquidation simulation.
@@ -103,6 +106,6 @@ realistic execution conditions. Results change when assumptions change.
   alternative cost assumptions and genuinely untouched data.
 - All orders remain disabled.
 
-Next milestones: historical exchange backfill with continuity checks, a bounded
-server research job API, then a Strategy Lab UI with explicit data provenance and
-warnings alongside every reported result.
+Next milestones: deeper resumable historical archives, a bounded server research job
+API, then a Strategy Lab UI with explicit data provenance and warnings alongside
+every reported result.
