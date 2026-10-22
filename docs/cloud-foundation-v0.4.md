@@ -6,14 +6,23 @@ A Vercel project named `fluxdesk` has been created under the connected Vercel
 account. Vercel confirmed **Vercel Authentication enabled for all deployments**.
 The project has **no live deployment**, no backend URL, and no gateway secrets.
 
-The first attempt to link `TheooAndre/fluxdesk` directly returned:
-`You need to add a Login Connection to your GitHub account first.`
-The owner must connect their GitHub account in Vercel's account settings,
-then authorize/import the existing repository into this project. The GitHub
-repository must not be duplicated. Verify the Git integration deploys PR
-branches as previews and `main` to production, while enforcing deployment
-protection. Do not publish a production dashboard before the private backend
-and persistent volume are configured.
+On 22 October, the owner confirmed the GitHub Login Connection; Vercel
+now lists `TheooAndre` as a connected namespace and accepted Git source
+metadata for this repository. **The existing project still needs its own Git
+repository linkage** via Project Settings → Git → Connect. The account login
+link and a project's build-trigger connection are separate things.
+
+One attempted **preview** Git-source API deployment was unexpectedly classified
+by Vercel as `production`. It was **canceled immediately** and Vercel now
+reports `live: false`. Do not create or promote another deployment until the
+existing project's production Git branch is explicitly set to `main`.
+The project remains protected with Vercel Authentication on all deployments.
+
+For a plain Vite project, Next.js `api/[...path].ts` filesystem catch-all
+routes are unsupported. Our supported `api/gateway.ts` Vercel Function is
+reached via an explicit `/api/:path*` rewrite before the SPA fallback.
+Verify the deployed routes return JSON (`503` before backend secrets are set),
+not HTML from the SPA.
 
 ## Scope and release gates
 
