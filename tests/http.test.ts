@@ -57,6 +57,7 @@ it.each([
   '/api/correlations?asset=binance:BTCUSDT&minimum=NaN',
   '/api/pair?a=binance:BTCUSDT&b=hyperliquid:BTC',
   '/api/asset?asset=binance:BTCUSDT:ignored',
+  '/api/asset?asset=binance:BTCUSDT&major=binance:BTCUSDT:ignored',
 ])('rejects invalid research request %s', async (path) => {
   const response = await fetch(origin + path);
   expect(response.status).toBe(400);
