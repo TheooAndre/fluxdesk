@@ -270,6 +270,11 @@ test('Strategy Lab uses a saved dataset and renders a clearly labelled research-
   await page.getByRole('button', { name: /Fetch & archive history/ }).click();
   await expect(page.getByRole('combobox', { name: 'Historical dataset', exact: true })).toHaveValue(dataset.id);
   await page.getByRole('button', { name: /Run research backtest/ }).click();
+  await expect.poll(async () => {
+    const alerts = await page.locator('.lab-error').allTextContents();
+    if (alerts.length) return 'API/render error: ' + alerts.join(' | ');
+    return await page.getByRole('heading', { name: 'Backtest results' }).count() ? 'report' : 'pending';
+  }, { timeout: 12_000 }).toBe('report');
   await expect(page.getByRole('heading', { name: 'Backtest results' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Backtest trade log' })).toBeVisible();
   await expect(page.getByText(/Holdout contains fewer than 30/)).toBeVisible();
