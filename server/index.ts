@@ -6,7 +6,10 @@ import { runAlertScanner } from './alerts.ts';
 import { assertRemoteBindingAllowed } from './gateway.ts';
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 8787);
-assertRemoteBindingAllowed(host, process.env);
+assertRemoteBindingAllowed(host, {
+  REVERSE_PROXY_OIDC: process.env.REVERSE_PROXY_OIDC,
+  FLUXDESK_GATEWAY_TOKEN: process.env.FLUXDESK_GATEWAY_TOKEN,
+});
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw Error('Invalid PORT');
 await load();
 startLiquidations();
