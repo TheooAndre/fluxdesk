@@ -20,7 +20,13 @@ fi
 docker run --rm \
   --mount type=volume,src=fluxdesk_backend_data,dst=/source,readonly \
   --mount "type=bind,src=$DEST,dst=/backups" \
-  alpine:3.21 sh -ec "umask 077; tar -czf '/backups/$FILE' -C /source ."
+  -e BACKUP_FILE="$FILE" \
+  -e BACKUP_UID="$(id -u)" -e BACKUP_GID="$(id -g)" \
+  alpine:3.21 sh -ec '
+    umask 077
+    tar -czf "/backups/$BACKUP_FILE" -C /source .
+    chown "$BACKUP_UID:$BACKUP_GID" "/backups/$BACKUP_FILE"
+  '
 tar -tzf "$DEST/$FILE" >/dev/null
 chmod 600 -- "$DEST/$FILE"
 printf 'Backup created and archive verified: %s\n' "$DEST/$FILE"
