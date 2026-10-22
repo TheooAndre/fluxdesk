@@ -5,6 +5,7 @@ import type { ResearchConfig } from '../engine/backtest.ts';
 import type { StoredResearchReport } from '../../server/research/runner.ts';
 import { api } from '../lib/api.ts';
 import LineChart from './LineChart.tsx';
+import './StrategyLab.css';
 
 type Interval = '15m' | '1h' | '4h' | '1d';
 type Model = ResearchConfig['model'];
