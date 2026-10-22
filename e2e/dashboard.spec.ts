@@ -142,6 +142,12 @@ test('mobile dashboard reacts to loss of network and preserves navigation', asyn
   test.skip(!isMobile, 'Mobile-only offline UX');
   await page.goto('/');
   await context.setOffline(true);
+  // WebKit's context-level network emulation can leave navigator.onLine unchanged.
+  // Model the browser's observable offline signal while the network is blocked.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    window.dispatchEvent(new Event('offline'));
+  });
   await expect(page.getByText(/Offline: showing cached views/)).toBeVisible();
   await page
     .getByRole('navigation', { name: 'Mobile navigation' })
@@ -149,6 +155,10 @@ test('mobile dashboard reacts to loss of network and preserves navigation', asyn
     .click();
   await expect(page.getByText('Four-model entry scanner')).toBeVisible();
   await context.setOffline(false);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    window.dispatchEvent(new Event('online'));
+  });
 });
 
 test('all-timeframe entry scanner supports both sides and selective timeframe inspection', async ({
