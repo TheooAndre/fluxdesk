@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Candle, Venue } from '../../src/types.ts';
 import { assertInterval, nextCandleStart, type CandleInterval } from '../../src/engine/intervals.ts';
 import { assetIdentity } from '../market.ts';
