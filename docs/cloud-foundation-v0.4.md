@@ -17,11 +17,17 @@
   21 October 2026 security disclosure reported possible unauthorized access
   to encrypted/decrypted environment variables; **do not store gateway
   secrets there until the incident is closed and account security is reviewed**.
-- The owner selected **Oracle Cloud Always Free** instead of paying for the Northflank
-  6 GB NVMe volume. No OCI account/VM has been accessed or provisioned from this chat.
-  The recommended A1 staging configuration is 1 Arm OCPU, 6 GB RAM,
-  50 GB boot plus a separately attached 50 GB block volume, within Oracle's
-  current Always Free 2 OCPU/12 GB and 200 GB shared storage limits.
+- The owner has since selected **Northflank** for staging because its
+  service interface is simpler than managing OCI. The owner approved
+  **approximately $0.90/month for a 6 GB NVMe volume only**; this is not
+  approval for a paid compute plan, plan upgrade, egress charges or other
+  billable resources. Use the existing Northflank `Default` project,
+  Single Read/Write `/data` storage, one Sandbox instance and the
+  `feat/cloud-foundation-v0.4` branch. See the
+  [Northflank staging runbook](northflank-staging-v0.4.md).
+- Oracle remains a **prepared, unused fallback**. No OCI account or VM was
+  provisioned. Its A1 Arm64 plus separate disk configuration remains
+  documented in case we need to migrate.
 - The portable VPS configuration at `deploy/vps/` supports Oracle Always
   Free, Google Compute Engine and conventional VPS hosts (single Node API,
   Docker volume, Caddy-managed TLS, local encrypted/offsite backup process).
@@ -32,7 +38,7 @@
   [OCI staging runbook](oci-always-free-v0.4.md).
 - See [22 October hosting comparison](backend-hosting-options-2026-10.md)
   for a verified 2026 free-tier matrix and recommended providers. No cloud
-  VM or persistent disk has been deployed yet.
+  VM, service, private gateway token or persistent disk has been deployed yet.
 
 ## Scope and release gates
 
