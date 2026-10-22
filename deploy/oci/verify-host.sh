@@ -45,7 +45,16 @@ DOMAIN="$(sed -n 's/^FLUXDESK_BACKEND_DOMAIN=//p' "$ENV_FILE" | head -n 1)"
   fail "Set a DNS hostname without https:// or URL path"
 [[ "$DOMAIN" != *.example ]] || fail "Replace example hostname with real DNS"
 unset DOMAIN
-pass "Gateway secret format and private environment file validated (no values printed)"
+VOLUME_ID="$(sed -n 's/^FLUXDESK_DATA_VOLUME_ID=//p' "$ENV_FILE" | head -n 1)"
+[[ "$VOLUME_ID" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] ||
+  fail "Set FLUXDESK_DATA_VOLUME_ID to the UUID created on the OCI block disk"
+[[ -f "$DATA/.fluxdesk-volume-id" ]] ||
+  fail "Missing /data volume identity marker on attached disk"
+ACTUAL_ID="$(cat "$DATA/.fluxdesk-volume-id")"
+[[ "$ACTUAL_ID" == "$VOLUME_ID" ]] ||
+  fail "OCI block disk marker does not match FLUXDESK_DATA_VOLUME_ID"
+unset VOLUME_ID ACTUAL_ID
+pass "Gateway secret, mounted-disk identity and private environment file validated (no values printed)"
 
 command -v docker >/dev/null || fail "Docker Engine not installed"
 sudo docker info >/dev/null || fail "Docker daemon is unavailable"
