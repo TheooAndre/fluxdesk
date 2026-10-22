@@ -141,6 +141,14 @@ test('mobile dashboard reacts to loss of network and preserves navigation', asyn
 }) => {
   test.skip(!isMobile, 'Mobile-only offline UX');
   await page.goto('/');
+  // E2E uses the Vite dev server without a registered production service
+  // worker. Warm the lazy tab module before blocking network; cold offline
+  // installation is separately validated on the installed iPhone PWA.
+  const mobileNav = page.getByRole('navigation', { name: 'Mobile navigation' });
+  await mobileNav.getByRole('button', { name: 'Signals' }).click();
+  await expect(page.getByText('Four-model entry scanner')).toBeVisible();
+  await mobileNav.getByRole('button', { name: 'Markets' }).click();
+  await expect(page.getByText('Market overview')).toBeVisible();
   await context.setOffline(true);
   // WebKit's context-level network emulation can leave navigator.onLine unchanged.
   // Model the browser's observable offline signal while the network is blocked.
