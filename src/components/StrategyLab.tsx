@@ -70,7 +70,7 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
           <small>Expectancy: {formatResult(result.development.expectancyR)} R</small>
         </article>
         <article className="lab-sample">
-          <h3>Untouched holdout sample</h3>
+          <h3>Chronological holdout sample</h3>
           <p>{result.holdout.count} trades</p>
           <strong>{formatUsd(result.holdout.netPnl)}</strong>
           <small>Expectancy: {formatResult(result.holdout.expectancyR)} R</small>
@@ -185,19 +185,19 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
           <p className="lab-footnote">Fetch 80–1,000 completed candles from the selected perpetual exchange. Missing or corrupted data is rejected. Requires internet access.</p>
           <form onSubmit={(e) => { e.preventDefault(); if (!unavailable) fetchMutation.mutate(); }} className="lab-fields">
             <label>Contract ID
-              <input value={assetId} onChange={(e) => setAssetId(e.target.value)}
+              <input value={assetId} onChange={(e) => { setAssetId(e.target.value); setReport(null); }}
                 placeholder="binance:BTCUSDT" autoComplete="off" aria-label="Research asset ID"/>
             </label>
             <div className="lab-input-row">
               <label>Timeframe
                 <select aria-label="Research timeframe" value={interval}
-                  onChange={(e) => setIntervalValue(e.target.value as Interval)}>
+                  onChange={(e) => { setIntervalValue(e.target.value as Interval); setReport(null); }}>
                   {(['15m', '1h', '4h', '1d'] as const).map((tf) => <option key={tf} value={tf}>{tf}</option>)}
                 </select>
               </label>
               <label>Candles
                 <input aria-label="Historical candle count" type="number" min={80} max={1000} step={1}
-                  value={count} onChange={(e) => setCount(Number(e.target.value))}/>
+                  value={count} onChange={(e) => { setCount(Number(e.target.value)); setReport(null); }}/>
               </label>
             </div>
             <button className="lab-action" type="submit" disabled={unavailable}>
@@ -232,7 +232,7 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
 
         <section className="lab-panel" aria-label="Backtest settings">
           <h3><Play size={17} aria-hidden="true"/> Research configuration</h3>
-          <p className="lab-footnote">No parameter search is performed. Set assumptions before inspecting holdout results.</p>
+          <p className="lab-footnote">No parameter search is performed. Treat the holdout as a one-time evaluation: repeatedly changing rules after seeing it can invalidate that evidence.</p>
           <form className="lab-fields" onSubmit={(e) => {
             e.preventDefault();
             if (!unavailable && effectiveId) { setReport(null); runMutation.mutate(); }
