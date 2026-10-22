@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type { AddressInfo } from 'node:net';
 vi.mock('../server/market.ts', async (importOriginal) => {
@@ -110,4 +110,42 @@ it('rejects research mutations from a different origin', async () => {
     body: '{}',
   });
   expect(response.status).toBe(400);
+});
+
+
+it('accepts same-origin HTTPS browser mutations through a Host-preserving proxy', async () => {
+  const requestWithOrigin = (browserOrigin: string) => new Promise<{ status: number; error: string }>((resolve, reject) => {
+    // Vite terminates HTTPS and forwards to localhost:8787 over HTTP.
+    // Host MUST remain the browser-facing Mac address and preview port.
+    const req = request(origin + '/api/research/datasets', {
+      method: 'POST',
+      headers: {
+        host: '192.0.2.10:4183',
+        origin: browserOrigin,
+        'content-type': 'application/json',
+      },
+    }, (res) => {
+      let payload = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => { payload += chunk; });
+      res.on('end', () => {
+        try {
+          resolve({
+            status: res.statusCode ?? 0,
+            error: (JSON.parse(payload) as { error: string }).error,
+          });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on('error', reject);
+    // Deliberately out of range. If origin validation succeeds, the API should
+    // reject the count; it must not reject the request as cross-origin.
+    req.end(JSON.stringify({ assetId: 'binance:BTCUSDT', interval: '1h', count: 20 }));
+  });
+  const allowed = await requestWithOrigin('https://192.0.2.10:4183');
+  expect(allowed).toEqual({ status: 400, error: 'Invalid candle count' });
+  const rejected = await requestWithOrigin('https://attacker.example');
+  expect(rejected).toEqual({ status: 400, error: 'Cross-origin mutation blocked' });
 });
