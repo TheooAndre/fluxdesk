@@ -30,3 +30,7 @@
 .selector-bar>.selected-input:first-child{border-radius:11px 0 0 11px}
 .selector-bar>.selected-input:last-child{border-radius:0 11px 11px 0}
 @media(max-width:850px){.selector-bar>.selected-input{border-radius:0!important}}
+
+/* Mobile readability: keep descriptive text comfortably legible without zoom. */
+.footnote,.app-footer,.metric small,.metric span,.small-label,.tiny-label,.feed-meta,.feed-card p{font-size:12px}
+@media(max-width:480px){.metric small,.metric span,.footnote,.app-footer{font-size:12px}}
