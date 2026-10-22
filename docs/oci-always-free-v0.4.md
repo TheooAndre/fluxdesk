@@ -190,6 +190,17 @@ Caddy obtains and renews the TLS certificate after DNS propagates and
 ports 80/443 are reachable. Do not configure Vercel's upstream URL
 until the VM's endpoint presents a valid HTTPS certificate.
 
+**Don't own a domain?** A free alternative is
+[DuckDNS](https://www.duckdns.org/) (vendor describes its service as free).
+Sign in to DuckDNS on your own device and reserve a non-identifying hostname,
+for example `fluxdesk-staging-unique.duckdns.org`. Point its IPv4 record to
+the OCI VM's public IPv4, then use **that complete hostname** as
+`FLUXDESK_BACKEND_DOMAIN`. Keep the DuckDNS update token private. If OCI's
+public IP changes, the DNS record must be updated. The backend is still
+secured by the gateway token and Vercel protection; a DNS name is **not**
+authentication. Caddy requires valid public DNS plus external 80/443 for
+publicly trusted ACME certificates.
+
 Before starting any application container:
 
 ```sh
