@@ -111,5 +111,7 @@ export async function fetchAndSaveResearchDataset(input: unknown): Promise<Datas
 
 export async function executeResearchBacktest(input: unknown): Promise<StoredResearchReport> {
   const args = parseResearchBacktest(input);
-  return exclusive(async () => runStoredBacktest(args.datasetId, args.config));
+  // The CLI can replay deeper archives, but HTTP must never block the API
+  // event loop with unbounded quadratic signal-history evaluation.
+  return exclusive(async () => runStoredBacktest(args.datasetId, args.config, undefined, 3_000));
 }
