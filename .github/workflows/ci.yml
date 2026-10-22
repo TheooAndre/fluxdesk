@@ -43,6 +43,8 @@ jobs:
             cat /tmp/fluxdesk-container-smoke.log >&2
             exit 1
           fi
+      - name: Smoke-test 256MiB Sandbox API authorization and disk persistence
+        run: bash scripts/cloud-runtime-smoke.sh fluxdesk-api:ci
       - name: Bundle budget (200KB gzipped per initial chunk)
         run: |
           node - <<'JS'
