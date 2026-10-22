@@ -3,6 +3,34 @@
 This module is **research-only**. It does not connect an account, place orders, or claim
 a profitable edge. It is connected to a browser preview but has no exchange execution integration.
 
+## Local iPhone HTTPS preview
+
+The Vite preview must keep the browser-facing `Host` header on proxied
+`/api` requests. The browser submits a POST with
+`Origin: https://<mac-ip>:4183`; the local API listens on
+`http://127.0.0.1:8787`. Setting `changeOrigin: true` would rewrite
+the Host to `127.0.0.1:8787` and make the existing same-origin mutation
+check reject legitimate requests. Both dev and preview proxy settings use
+`changeOrigin: false`. The same-origin API guard remains enabled.
+
+After updating the branch, restart both API and preview processes to pick up
+the new proxy configuration. To launch the preview on a separate port:
+
+```bash
+pnpm dev:api
+# In a second terminal, after pnpm build:
+FLUXDESK_PWA_HTTPS=1 pnpm exec vite preview --host 0.0.0.0 --port 4183 --strictPort
+```
+
+Ensure the certificate in `.cert/` is trusted on the iPhone and includes
+the Mac's LAN address in its subject alternative names. The iPhone and Mac
+must be able to reach each other. This is a local test only: do **not**
+forward the API or preview port to the public internet without authentication.
+
+If historical fetch still fails after this change, capture the exact new
+error. Exchange HTTP errors and incomplete historical pages are separate
+from the proxy-origin issue.
+
 ## Browser Strategy Lab (research preview)
 
 Open **Strategy Lab** from the FluxDesk desktop sidebar or iPhone bottom navigation.
