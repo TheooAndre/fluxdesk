@@ -9,3 +9,6 @@ test-results/
 
 .lighthouseci/
 lighthouse-report/
+
+# Local TLS certificates and private keys for iPhone PWA testing
+.cert/

@@ -13,6 +13,7 @@ const market = (id: string, base: string, venue: 'binance' | 'hyperliquid', r: n
 });
 const btc = market('binance:BTCUSDT', 'BTC', 'binance', 3, 600_000_000);
 const eth = market('binance:ETHUSDT', 'ETH', 'binance', 5, 300_000_000);
+const ethHyper = market('hyperliquid:ETH', 'ETH', 'hyperliquid', 4, 250_000_000);
 const hype = market('hyperliquid:HYPE', 'HYPE', 'hyperliquid', 2, 90_000_000);
 const candles = Array.from({ length: 150 }, (_, i) => ({
   time: Date.now() - (150 - i) * 3600_000,
@@ -27,8 +28,8 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/markets', (route) =>
     route.fulfill({
       json: {
-        assets: [btc, eth, hype],
-        benchmarks: { BTC: btc, ETH: eth, SOL: null, HYPE: hype, XAU: null },
+        assets: [btc, eth, ethHyper, hype],
+        benchmarks: { [btc.id]: btc, [eth.id]: eth, [ethHyper.id]: ethHyper, [hype.id]: hype },
         asOf: Date.now(),
         checkedAt: Date.now(),
         feeds: [
@@ -46,7 +47,7 @@ test.beforeEach(async ({ page }) => {
             lastSuccessAt: Date.now(),
             lastAttemptAt: Date.now(),
             ageMs: 0,
-            markets: 1,
+            markets: 2,
           },
         ],
       },
@@ -104,12 +105,13 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route('**/api/alerts', (route) => route.fulfill({ json: { alerts: [], events: [] } }));
 });
-test('market table sorts and asset selection are usable', async ({ page, isMobile }) => {
+test('market table sorts and asset selection are usable', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Market overview')).toBeVisible();
   await expect(page.getByRole('table')).toBeVisible();
   await page.getByLabel('Sort by').selectOption('relative');
-  await expect(page.getByRole('row', { name: /ETH/ })).toBeVisible();
+  await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Inspect ETH on binance' }) })).toBeVisible();
+  await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Inspect ETH on hyperliquid' }) })).toBeVisible();
   await page.getByLabel('Selected asset').selectOption(eth.id);
   await expect(page.getByText('ETH', { exact: true }).first()).toBeVisible();
 });
@@ -126,7 +128,7 @@ test('four entry model descriptions and macro empty state', async ({ page }) => 
     'Trend Continuation',
     'Consolidation / Chop',
   ])
-    await expect(page.getByText(x, { exact: true })).toBeVisible();
+    await expect(page.locator('b').getByText(x, { exact: true })).toBeVisible();
   await (
     mobile ? nav.getByRole('button', { name: 'Macro' }) : page.getByRole('button', { name: 'Macro calendar' })
   ).click();
@@ -140,6 +142,12 @@ test('mobile dashboard reacts to loss of network and preserves navigation', asyn
   test.skip(!isMobile, 'Mobile-only offline UX');
   await page.goto('/');
   await context.setOffline(true);
+  // WebKit's context-level network emulation can leave navigator.onLine unchanged.
+  // Model the browser's observable offline signal while the network is blocked.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    window.dispatchEvent(new Event('offline'));
+  });
   await expect(page.getByText(/Offline: showing cached views/)).toBeVisible();
   await page
     .getByRole('navigation', { name: 'Mobile navigation' })
@@ -147,6 +155,10 @@ test('mobile dashboard reacts to loss of network and preserves navigation', asyn
     .click();
   await expect(page.getByText('Four-model entry scanner')).toBeVisible();
   await context.setOffline(false);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    window.dispatchEvent(new Event('online'));
+  });
 });
 
 test('all-timeframe entry scanner supports both sides and selective timeframe inspection', async ({
@@ -159,8 +171,36 @@ test('all-timeframe entry scanner supports both sides and selective timeframe in
       ? page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('button', { name: 'Signals' })
       : page.getByRole('button', { name: 'Entry models' })
   ).click();
-  await expect(page.getByText('LONG + SHORT')).toBeVisible();
+  await expect(page.locator('.pill').getByText('LONG + SHORT', { exact: true })).toBeVisible();
   await expect(page.getByText(/15\/15 intervals checked/)).toBeVisible();
   await page.getByLabel('Signal detail timeframe').selectOption('1m');
   await expect(page.getByLabel('Analysis timeframe')).toHaveValue('1m');
+});
+
+test('benchmark search exposes distinct exchange markets and supports pointer selection', async ({ page }) => {
+  await page.goto('/');
+  const search = page.getByRole('combobox', { name: 'Search comparison benchmark' });
+  await search.click();
+  await search.fill('ETH');
+  const options = page.getByRole('listbox', { name: 'Available comparison benchmarks' });
+  await expect(options).toBeVisible();
+  await expect(options.getByRole('option', { name: 'ETH · binance' })).toBeVisible();
+  await expect(options.getByRole('option', { name: 'ETH · hyperliquid' })).toBeVisible();
+  await options.getByRole('option', { name: 'ETH · binance' }).click();
+  await expect(search).toHaveValue('ETH · binance');
+  await search.click();
+  await search.fill('ETH');
+  await options.getByRole('option', { name: 'ETH · hyperliquid' }).click();
+  await expect(search).toHaveValue('ETH · hyperliquid');
+
+  await search.click();
+  await search.fill('HYPE');
+  await expect(options.getByRole('option', { name: 'HYPE · hyperliquid' })).toBeVisible();
+  await options.getByRole('option', { name: 'HYPE · hyperliquid' }).click();
+  await expect(search).toHaveValue('HYPE · hyperliquid');
+
+  await search.click();
+  await search.fill('USD');
+  await options.getByRole('option', { name: 'USD / USDT · cash baseline' }).click();
+  await expect(search).toHaveValue('USD / USDT · cash baseline');
 });

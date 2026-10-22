@@ -1,9 +1,15 @@
 {
   "ci": {
     "collect": {
-      "staticDistDir": "./dist",
       "numberOfRuns": 2,
-      "settings": {}
+      "settings": {},
+      "url": [
+        "http://127.0.0.1:4179/",
+        "http://127.0.0.1:4179/offline.html"
+      ],
+      "startServerCommand": "node scripts/lighthouse-server.mjs",
+      "startServerReadyPattern": "Lighthouse fixture ready",
+      "startServerReadyTimeout": 15000
     },
     "assert": {
       "assertions": {

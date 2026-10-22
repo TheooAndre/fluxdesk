@@ -49,7 +49,7 @@ it('serves a complete unavailable-feed response instead of a misleading healthy 
   const body = await response.json();
   expect(response.status).toBe(200);
   expect(body.feeds.map((f: { status: string }) => f.status)).toEqual(['unavailable', 'unavailable']);
-  expect(body.benchmarks.BTC).toBeNull();
+  expect(body.benchmarks).toEqual({});
   expect(response.headers.get('cache-control')).toBe('no-store');
 });
 it.each([
@@ -57,6 +57,7 @@ it.each([
   '/api/correlations?asset=binance:BTCUSDT&minimum=NaN',
   '/api/pair?a=binance:BTCUSDT&b=hyperliquid:BTC',
   '/api/asset?asset=binance:BTCUSDT:ignored',
+  '/api/asset?asset=binance:BTCUSDT&major=binance:BTCUSDT:ignored',
 ])('rejects invalid research request %s', async (path) => {
   const response = await fetch(origin + path);
   expect(response.status).toBe(400);

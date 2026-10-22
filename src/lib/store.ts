@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import type { Interval, Major, SignalModel } from '../types.ts';
+import type { Interval, BenchmarkId, SignalModel } from '../types.ts';
 import { intervalsFor } from '../engine/intervals.ts';
 export type Tab = 'overview' | 'signals' | 'pairs' | 'alerts' | 'calendar';
 type Ui = {
   tab: Tab;
   assetId: string;
-  benchmark: Major;
+  benchmark: BenchmarkId;
   tf: Interval;
   search: string;
   sort: 'volume' | 'relative' | 'oi';
@@ -14,7 +14,7 @@ type Ui = {
   model: SignalModel | 'all';
   setTab: (t: Tab) => void;
   setAsset: (id: string) => void;
-  setBenchmark: (x: Major) => void;
+  setBenchmark: (x: BenchmarkId) => void;
   setTf: (tf: Interval) => void;
   setSearch: (s: string) => void;
   setSort: (s: Ui['sort']) => void;
@@ -26,7 +26,7 @@ const initial = new URLSearchParams(window.location.search).get('asset');
 export const useUi = create<Ui>((set) => ({
   tab: 'overview',
   assetId: initial ?? 'binance:BTCUSDT',
-  benchmark: 'BTC',
+  benchmark: 'binance:BTCUSDT',
   tf: '1h',
   search: '',
   sort: 'volume',

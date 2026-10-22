@@ -21,7 +21,9 @@ export function startLiquidations(){
    for(const rule of snapshot().alerts.filter(x=>x.enabled&&x.kind==='liquidation'&&x.assetId===record.assetId)){
     const amount=liqSummary(rule.assetId).observedUsd;if(amount!==null&&amount>=rule.threshold){void triggered(rule,`${rule.assetId}: ≥ $${amount.toLocaleString('en-US',{maximumFractionDigits:0})} observed liquidation snapshots in 5m`).then(e=>{if(e)void deliver(e)});}
    }
-  }catch{}});
+  } catch {
+  // Ignore malformed exchange messages and keep the stream running.
+    }});
   const disconnected=()=>{online=false;connectedSince=null;socket=null;if(!reconnect)reconnect=setTimeout(()=>{reconnect=null;connect();},5000);};socket.addEventListener('error',disconnected);socket.addEventListener('close',disconnected);
  }catch{if(!reconnect)reconnect=setTimeout(()=>{reconnect=null;connect();},10000);}}
  connect();
