@@ -1,5 +1,20 @@
 # FluxDesk v0.4 Cloud Foundation (draft)
 
+## Provisioning status (22 October 2026)
+
+A Vercel project named `fluxdesk` has been created under the connected Vercel
+account. Vercel confirmed **Vercel Authentication enabled for all deployments**.
+The project has **no live deployment**, no backend URL, and no gateway secrets.
+
+The first attempt to link `TheooAndre/fluxdesk` directly returned:
+`You need to add a Login Connection to your GitHub account first.`
+The owner must connect their GitHub account in Vercel's account settings,
+then authorize/import the existing repository into this project. The GitHub
+repository must not be duplicated. Verify the Git integration deploys PR
+branches as previews and `main` to production, while enforcing deployment
+protection. Do not publish a production dashboard before the private backend
+and persistent volume are configured.
+
 ## Scope and release gates
 
 The intended architecture has **two distinct services**:
