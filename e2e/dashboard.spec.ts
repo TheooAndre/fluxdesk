@@ -268,7 +268,7 @@ test('Strategy Lab uses a saved dataset and renders a clearly labelled research-
   await expect(page.getByRole('heading', { name: 'Strategy Lab · v0.3' })).toBeVisible();
   await expect(page.getByText('No datasets stored. Fetch historical candles to begin.')).toBeVisible();
   await page.getByRole('button', { name: /Fetch & archive history/ }).click();
-  await expect(page.getByLabel('Historical dataset')).toHaveValue(dataset.id);
+  await expect(page.getByRole('combobox', { name: 'Historical dataset', exact: true })).toHaveValue(dataset.id);
   await page.getByRole('button', { name: /Run research backtest/ }).click();
   await expect(page.getByRole('heading', { name: 'Backtest results' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Backtest trade log' })).toBeVisible();
