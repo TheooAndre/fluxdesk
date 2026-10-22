@@ -11,6 +11,7 @@ import { snapshot, addAlert, deleteAlert, subscribe } from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
 import { calendar } from './calendar.ts';
 import { vapidKey } from './notifications.ts';
+import { ResearchRequestError, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
 const json = (res: ServerResponse, data: unknown, status = 200) => {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -69,8 +70,12 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     path = url.pathname;
     if (path.startsWith('/api/')) {
       const allowed =
-        path === '/api/alerts'
+        path === '/api/research/datasets'
           ? ['GET', 'POST']
+          : path === '/api/research/backtests'
+            ? ['POST']
+            : path === '/api/alerts'
+              ? ['GET', 'POST']
           : path.startsWith('/api/alerts/')
             ? ['DELETE']
             : path === '/api/push/subscribe'
@@ -82,6 +87,12 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       }
     }
     checkOrigin(req);
+    if (path === '/api/research/datasets' && req.method === 'GET')
+      return json(res, await listResearchDatasets());
+    if (path === '/api/research/datasets' && req.method === 'POST')
+      return json(res, { dataset: await fetchAndSaveResearchDataset(await body(req)) }, 201);
+    if (path === '/api/research/backtests' && req.method === 'POST')
+      return json(res, await executeResearchBacktest(await body(req)));
     if (path === '/api/health')
       return json(res, { ok: true, at: Date.now(), liquidations: liquidityStatus() });
     if (path === '/api/markets') {
@@ -255,7 +266,9 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     return json(
       res,
       { error: message },
-      /Invalid|Unsupported|Choose|threshold|Too |limit|blocked|Cross-origin|requires|not available|large/i.test(
+      error instanceof ResearchRequestError
+        ? error.status
+        : /Invalid|Unsupported|Choose|threshold|Too |limit|blocked|Cross-origin|requires|not available|large/i.test(
         message,
       )
         ? 400
