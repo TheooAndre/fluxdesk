@@ -18,7 +18,7 @@ COPY --from=builder /app/server ./server
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/dist ./dist
 RUN mkdir -p /data && chown node:node /data
-USER node
+USER node:node
 EXPOSE 8787
 # Startup fails closed unless REVERSE_PROXY_OIDC=true or a valid gateway
 # credential (32+ bytes) is provided. No credential is baked into the image.
