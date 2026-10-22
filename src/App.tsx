@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { registerSW } from 'virtual:pwa-register';
 import {
@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleHelp,
   Download,
+  FlaskConical,
   GitCompareArrows,
   Menu,
   Radio,
@@ -30,10 +31,13 @@ import LineChart from './components/LineChart.tsx';
 import { intervalsFor } from './engine/intervals.ts';
 import FeedHealth from './components/FeedHealth.tsx';
 import BenchmarkSelector from './components/BenchmarkSelector.tsx';
+// Loaded only when research is opened, preserving overview startup performance.
+const StrategyLab = lazy(() => import('./components/StrategyLab.tsx'));
 const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'overview', label: 'Markets', icon: BarChart3 },
   { id: 'signals', label: 'Entry models', icon: Zap },
   { id: 'pairs', label: 'Correlation', icon: GitCompareArrows },
+  { id: 'research', label: 'Strategy Lab', icon: FlaskConical },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'calendar', label: 'Macro calendar', icon: CalendarDays },
 ];
@@ -1221,7 +1225,7 @@ function App() {
           <div className="notice tiny-notice">
             <ShieldAlert size={16} /> Research-only. No automatic trading or validated predictive edge.
           </div>
-          <small>FLUXDESK / v0.2</small>
+          <small>FLUXDESK / v0.3 RESEARCH PREVIEW</small>
         </div>
       </aside>
       <div className="body">
@@ -1246,7 +1250,7 @@ function App() {
         </header>
         <main>
           <Intro tab={ui.tab} />
-          <div className="selector-bar">
+          {ui.tab !== 'research' && <div className="selector-bar">
             <div className="selected-input">
               <span className="tiny-label">SELECTED ASSET</span>
               <select
@@ -1280,7 +1284,7 @@ function App() {
                 ))}
               </select>
             </div>
-          </div>
+          </div>}
           {offline && (
             <div className="notice warning">
               <WifiOff size={17} /> Offline: showing cached views when available. Live market and alerts
@@ -1326,6 +1330,11 @@ function App() {
           {ui.tab === 'pairs' && <PairsTab key={ui.assetId} item={selected} assets={mk.data?.assets ?? []} />}
           {ui.tab === 'alerts' && <AlertsTab item={selected} />}
           {ui.tab === 'calendar' && <CalendarTab />}
+          {ui.tab === 'research' && (
+            <Suspense fallback={<Loading label="Loading Strategy Lab…"/>}>
+              <StrategyLab initialAssetId={ui.assetId} offline={offline}/>
+            </Suspense>
+          )}
           <footer className="app-footer">
             Data: Binance USDⓈ-M & Hyperliquid perps · Market data may be delayed or unavailable · No
             execution connected
@@ -1343,7 +1352,9 @@ function App() {
                   ? 'Signals'
                   : x.id === 'pairs'
                     ? 'Pairs'
-                    : x.id === 'alerts'
+                    : x.id === 'research'
+                      ? 'Lab'
+                      : x.id === 'alerts'
                       ? 'Alerts'
                       : 'Macro'}
             </span>
