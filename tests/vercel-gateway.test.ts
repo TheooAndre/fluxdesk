@@ -1,7 +1,8 @@
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import gateway from '../api/[...path].ts';
+import gateway from '../api/gateway.ts';
+import { readFile } from 'node:fs/promises';
 
 const SECRET = 'backend-secret-for-tests-only-1234567890';
 const servers: Server[] = [];
@@ -39,14 +40,38 @@ function call(port: number, path: string, method = 'GET', origin?: string, body 
 }
 
 describe('private Vercel API gateway', () => {
+  it('routes all browser API paths before the SPA fallback using Vite-supported functions', async () => {
+    const settings = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8')) as {
+      rewrites: Array<{ source: string; destination: string }>;
+    };
+    expect(settings.rewrites[0]).toEqual({
+      source: '/api/:path*', destination: '/api/gateway?__fd_route=:path*',
+    });
+    expect(settings.rewrites.at(-1)).toEqual({
+      source: '/(.*)', destination: '/index.html',
+    });
+  });
+
+  it('rejects missing or malicious route metadata before contacting backend', async () => {
+    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
+    const mock = vi.fn(async () => Response.json({ ok: true }));
+    vi.stubGlobal('fetch', mock);
+    const port = await start();
+    expect((await call(port, '/api/gateway')).status).toBe(404);
+    expect((await call(port, '/api/gateway?__fd_route=../secrets')).status).toBe(404);
+    expect((await call(port, '/api/gateway?__fd_route=health&__fd_route=markets')).status).toBe(404);
+    expect(mock).not.toHaveBeenCalled();
+  });
+
   it('fails closed without HTTPS backend and strong server-held token', async () => {
     const port = await start();
-    const missing = await call(port, '/api/health');
+    const missing = await call(port, '/api/gateway?__fd_route=health');
     expect(missing.status).toBe(503);
     expect(JSON.parse(missing.body)).toEqual({ error: 'Private API backend is not configured' });
     vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
     vi.stubEnv('FLUXDESK_BACKEND_URL', 'http://api.example.com');
-    expect((await call(port, '/api/health')).status).toBe(503);
+    expect((await call(port, '/api/gateway?__fd_route=health')).status).toBe(503);
   });
 
   it('sends only a fixed HTTPS backend request with secret and browser host', async () => {
@@ -55,7 +80,7 @@ describe('private Vercel API gateway', () => {
     const mock = vi.fn(async () => Response.json({ ok: true }));
     vi.stubGlobal('fetch', mock);
     const port = await start();
-    const result = await call(port, '/api/health?check=1');
+    const result = await call(port, '/api/gateway?__fd_route=health&check=1');
     expect(result.status).toBe(200);
     expect(JSON.parse(result.body)).toEqual({ ok: true });
     expect(result.body).not.toContain(SECRET);
@@ -76,11 +101,11 @@ describe('private Vercel API gateway', () => {
     vi.stubGlobal('fetch', mock);
     const port = await start();
     const payload = JSON.stringify({ assetId: 'binance:BTCUSDT', interval: '1h', count: 80 });
-    expect((await call(port, '/api/research/datasets', 'POST', 'https://attacker.example', payload)).status).toBe(403);
-    expect((await call(port, '/api/research/datasets', 'POST', undefined, payload)).status).toBe(403);
+    expect((await call(port, '/api/gateway?__fd_route=research/datasets', 'POST', 'https://attacker.example', payload)).status).toBe(403);
+    expect((await call(port, '/api/gateway?__fd_route=research/datasets', 'POST', undefined, payload)).status).toBe(403);
     expect(mock).not.toHaveBeenCalled();
     const origin = 'https://127.0.0.1:' + port;
-    const result = await call(port, '/api/research/datasets', 'POST', origin, payload);
+    const result = await call(port, '/api/gateway?__fd_route=research/datasets', 'POST', origin, payload);
     expect(result.status).toBe(201);
     expect(mock).toHaveBeenCalledTimes(1);
     const [, options] = mock.mock.calls[0] as unknown as [URL, RequestInit];
@@ -95,7 +120,7 @@ describe('private Vercel API gateway', () => {
       status: 302, headers: { location: 'https://attacker.example' },
     })));
     const port = await start();
-    const result = await call(port, '/api/health');
+    const result = await call(port, '/api/gateway?__fd_route=health');
     expect(result.status).toBe(502);
     expect(result.body).not.toContain('attacker.example');
     expect(result.body).not.toContain(SECRET);
