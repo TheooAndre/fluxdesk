@@ -1,0 +1,72 @@
+# Provider-neutral deployment for an owner-managed Linux VM (OCI, Google, Hetzner).
+# First create deploy/vps/.env locally, chmod 600, and point an A/AAAA DNS
+# record at the VM. No secrets are committed to Git.
+name: fluxdesk-backend
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8787"
+      DATA_DIR: /data
+      FLUXDESK_GATEWAY_TOKEN: ${FLUXDESK_GATEWAY_TOKEN:?Set a random 32+ byte secret in deploy/vps/.env}
+    volumes:
+      - research-data:/data
+    expose:
+      - "8787"
+    networks:
+      - private
+    # No public 8787 port: ONLY the TLS reverse proxy is internet-facing.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const http=require('node:http');
+          http.get({hostname:'127.0.0.1',port:8787,path:'/api/health',headers:{
+          'x-fluxdesk-gateway-token':process.env.FLUXDESK_GATEWAY_TOKEN,
+          'x-fluxdesk-public-host':'health.fluxdesk.internal'}},
+          r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))
+      start_period: 45s
+      interval: 30s
+      timeout: 8s
+      retries: 3
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      FLUXDESK_BACKEND_DOMAIN: ${FLUXDESK_BACKEND_DOMAIN:?Set the DNS hostname in deploy/vps/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - private
+    security_opt:
+      - no-new-privileges:true
+networks:
+  private:
+volumes:
+  research-data:
+    name: fluxdesk_backend_data
+  caddy-data:
+  caddy-config:
