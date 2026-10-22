@@ -29,7 +29,7 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({
       json: {
         assets: [btc, eth, ethHyper, hype],
-        benchmarks: { BTC: btc, ETH: eth, SOL: null, HYPE: hype, XAU: null },
+        benchmarks: { [btc.id]: btc, [eth.id]: eth, [ethHyper.id]: ethHyper, [hype.id]: hype },
         asOf: Date.now(),
         checkedAt: Date.now(),
         feeds: [
