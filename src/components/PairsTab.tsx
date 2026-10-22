@@ -4,7 +4,7 @@ import { ChevronRight } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { useUi } from '../lib/store.ts';
 import type { Market } from '../types.ts';
-import { price, short } from '../lib/format.ts';
+import { short } from '../lib/format.ts';
 import LineChart from './LineChart.tsx';
 import { Pill, ErrorText, Loading, Card, BadgeVenue, Segmented } from './UiPrimitives.tsx';
 
