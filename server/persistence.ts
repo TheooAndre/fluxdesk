@@ -35,6 +35,7 @@ export async function assertDurableDataDirectory(
     directory?: string;
     requireMount?: boolean;
     mountinfoPath?: string;
+    volumeId?: string;
   } = {},
 ): Promise<void> {
   const raw = config.directory ?? process.env.DATA_DIR;
@@ -52,6 +53,23 @@ export async function assertDurableDataDirectory(
     }
     if (!hasMountAt(mountinfo, directory))
       throw Error('Persistent volume missing at DATA_DIR; refusing to start');
+  }
+
+  // OCI must match a unique identity initialized ON the attached disk.
+  // This catches a Docker bind mount accidentally pointing at a boot-volume
+  // fallback directory after an unavailable data disk or VM restart.
+  const expectedId = config.volumeId ?? process.env.FLUXDESK_DATA_VOLUME_ID;
+  if (expectedId !== undefined) {
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(expectedId))
+      throw Error('Invalid expected cloud data volume ID');
+    let actualId: string;
+    try {
+      actualId = (await readFile(resolve(directory, '.fluxdesk-volume-id'), 'utf8')).trim();
+    } catch {
+      throw Error('Mounted data volume identity is missing');
+    }
+    if (actualId !== expectedId)
+      throw Error('Mounted data volume identity mismatch; refusing to start');
   }
 
   // Confirm non-root runtime can write before starting background scanners.
