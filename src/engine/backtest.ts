@@ -55,7 +55,6 @@ export type ResearchResult = {
 };
 
 const finitePositive = (x: number) => Number.isFinite(x) && x > 0;
-const same = (a: number, b: number) => Math.abs(a - b) < 1e-10;
 
 function validate(bars: Candle[], c: ResearchConfig) {
   if (bars.length < 67) throw Error('At least 67 completed candles required');
