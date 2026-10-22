@@ -5,6 +5,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "/api/gateway?__fd_route=:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
