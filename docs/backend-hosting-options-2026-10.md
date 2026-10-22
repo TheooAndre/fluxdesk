@@ -33,7 +33,7 @@ state has been checked. No FluxDesk secrets or resources were provisioned.
 
 | Host | Free continuous compute | Durable storage | Deployment fit |
 | --- | --- | --- | --- |
-| **Northflank Developer Sandbox** | Yes; two always-on services, one addon, two cron jobs | Persistent volumes supported generally; verify **free-tier** quota and availability before selecting a plan | Simplest $0 preview candidate; vendor says free sandbox is **not for production** |
+| **Northflank Developer Sandbox** | Two free always-on services at limited resources | Owner's existing Default project offers a **6 GB NVMe volume at $0.15/GB/month ≈ $0.90/month** | **Selected for staging** with owner-approved storage charge only; stop if plan upgrade adds compute/egress charges |
 | **Oracle OCI Always Free VM** | Up to the equivalent of 2 Ampere A1 OCPU and 12 GB RAM in the home region, subject to capacity | 200 GB combined boot/block volume limit | Best longer-lived $0 candidate if VM capacity and account verification permit; you manage OS, TLS, security, patching and backups |
 | **Google Cloud Compute Engine** | One e2-micro in supported US regions | 30 GB standard persistent disk and 1 GB outbound transfer/month included | $0 option but only 0.5 GB RAM and US location; borderline for container build, websocket collector and periodic research |
 | **Railway Free/Trial** | Trial: $5 one-time, 30 days; Free: $1 usage per month | Trial/Free max 0.5 GB volume | Nice managed hosting, but continuous usage may exceed free quota; active incident blocks provisioning |
@@ -60,24 +60,29 @@ state has been checked. No FluxDesk secrets or resources were provisioned.
 Pricing is region-, quota-, VAT- and date-dependent. Free-tier eligibility
 isn't guaranteed until account creation, quota inspection and service testing.
 
-## Recommended staging decision
+## Selected staging decision (22 October 2026)
 
-1. **Preferred short-term free preview:** Northflank Sandbox if the selected
-   free plan supports a persistent volume for our single service. Its always-on
-   compute is valuable, but do not make it the sole copy of important datasets.
-   Connect GitHub, choose a European region if offered, enforce one replica,
-   use its managed HTTPS ingress, mount persistent storage, and set the
-   gateway secret in the provider's secret UI.
-2. **Best ongoing $0 ownership option:** OCI Always Free Ampere A1 VM. Keep
-   its CPU/memory/boot volumes within the **2026** Always Free thresholds
-   (do not rely on old 4-OCPU/24-GB tutorials). Use the portable Compose/Caddy
-   recipe in `deploy/vps`. Requires Oracle signup, quota and SSH administration.
-3. **Fallback with minimal provider setup:** Fly.io or a small paid VPS
-   if Oracle capacity isn't available and Northflank free volume quotas are
-   insufficient.
-4. **Railway:** revisit only after its security incident closes, tokens are
-   safe to provision, and free usage is sufficient. No upgrades or paid
-   resources without explicit user approval.
+The owner initially selected Oracle Always Free, but found OCI infrastructure
+management too complex and explicitly chose **Northflank** with an approved
+estimated **$0.90/month** for its 6 GB NVMe persistent volume. The existing
+account and `Default` project are available; no new project is necessary.
+The owner supplied screenshots confirming the volume price and smallest
+free service plan (0.1 shared vCPU, 256 MB RAM).
+
+1. **Use Northflank Developer Sandbox** for exactly one staging service,
+   one **Single Read/Write** volume, and HTTP/HTTPS on port 8787 through
+   Northflank's TLS ingress. Attach the volume at `/data`. Detailed
+   current UI walkthrough: [Northflank staging runbook](northflank-staging-v0.4.md).
+2. **Cost guard:** The $0.90 figure covers **storage only**. If Northflank
+   requires switching to Pay as you go, the smallest published `nf-compute-10`
+   plan costs about **$2.70/month additional**, and network egress/taxes may
+   also apply. Explicitly confirm the total with the owner before upgrading
+   or agreeing to charges beyond the 6 GB volume.
+3. **Keep OCI as a documented fallback only.** No OCI account/VM has been
+   provisioned; its separate disk and Caddy deployment files remain in the
+   repo for portability. There is no need to share Oracle passwords.
+4. **Railway:** revisit only after the 21 October security incident closes
+   and stored secrets have been reviewed.
 
 ## Portable Linux VPS deployment
 
