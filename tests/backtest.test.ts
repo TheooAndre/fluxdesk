@@ -35,7 +35,7 @@ describe('deterministic strategy research', () => {
     expect(result.trades).toHaveLength(1);
     expect(result.trades[0]!.signalTime).toBe(data[69]!.closeTime);
     expect(result.trades[0]!.entryTime).toBe(data[70]!.time);
-    expect(result.trades[0]!.exitReason).toBe('end_of_data');
+    expect(result.trades[0]!.exitReason).toBe('sample_end');
   });
 
   it('chooses the stop if a candle crosses both stop and target', () => {
@@ -74,6 +74,29 @@ describe('deterministic strategy research', () => {
     data[12] = { ...data[12]!, high: 95 };
     expect(() => backtest(data, config)).toThrow('Overlapping, unordered or invalid candles');
     expect(() => backtest(bars(), { ...config, holdoutFraction: 0 })).toThrow('Holdout');
+  });
+
+  it('liquidates an unfinished development trade at the split without contaminating holdout', () => {
+    const data = bars();
+    const result = backtest(data, config, at(73));
+    expect(result.splitIndex).toBe(75);
+    expect(result.development.count).toBe(1);
+    expect(result.holdout.count).toBe(0);
+    expect(result.trades[0]).toMatchObject({
+      sample: 'development', exitReason: 'sample_end',
+      exitTime: data[74]!.closeTime,
+    });
+  });
+
+  it('never uses the last development signal as a holdout entry', () => {
+    const result = backtest(bars(), config, at(74));
+    expect(result.trades).toHaveLength(0);
+  });
+
+  it('rejects missing candles rather than silently backtesting across gaps', () => {
+    const data = bars();
+    data.splice(28, 1);
+    expect(() => backtest(data, config)).toThrow('Overlapping, unordered or invalid candles');
   });
 
   it('keeps holdout results separately labeled and discloses insufficient sample', () => {
