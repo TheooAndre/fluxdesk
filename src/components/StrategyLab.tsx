@@ -245,11 +245,11 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
             </label>
             <div className="lab-input-row">
               <label>Initial equity ($)
-                <input aria-label="Initial research equity" type="number" min={1} max={10000000} step={100}
+                <input aria-label="Initial research equity" type="number" min={1} max={10000000} step={1}
                   value={initialEquity} onChange={(e) => { setInitialEquity(Number(e.target.value)); setReport(null); }}/>
               </label>
               <label>Risk per trade (%)
-                <input aria-label="Research risk percentage" type="number" min={0.001} max={5} step={0.1}
+                <input aria-label="Research risk percentage" type="number" min={0.001} max={5} step={0.001}
                   value={riskPct} onChange={(e) => { setRiskPct(Number(e.target.value)); setReport(null); }}/>
               </label>
             </div>
