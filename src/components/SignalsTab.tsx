@@ -4,7 +4,7 @@ import { Activity, ChevronRight, ShieldAlert, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { useUi } from '../lib/store.ts';
 import type { Market, EntrySignal, SignalModel } from '../types.ts';
-import { price, short, clock } from '../lib/format.ts';
+import { price, clock } from '../lib/format.ts';
 import LineChart from './LineChart.tsx';
 import { intervalsFor } from '../engine/intervals.ts';
 import { Pill, ErrorText, Loading, Card } from './UiPrimitives.tsx';
