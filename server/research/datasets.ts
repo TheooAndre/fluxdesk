@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Candle, Venue } from '../../src/types.ts';
 import { assertInterval, nextCandleStart, type CandleInterval } from '../../src/engine/intervals.ts';
@@ -104,7 +104,16 @@ export async function saveHistoricalDataset(
   const temporary = join(dir, '.' + randomUUID() + '.tmp');
   try {
     await writeFile(temporary, JSON.stringify(dataset), { mode: 0o600, flag: 'wx' });
-    await rename(temporary, path);
+    // Publishing through an exclusive hard link is atomic and NEVER replaces an
+    // existing content-addressed file (rename would overwrite it on POSIX).
+    try {
+      await link(temporary, path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      // A repeated identical import is fine, but a damaged existing snapshot
+      // must fail rather than being silently replaced or declared valid.
+      await loadHistoricalDataset(receipt.id, dir);
+    }
   } finally {
     await unlink(temporary).catch((e: NodeJS.ErrnoException) => {
       if (e.code !== 'ENOENT') throw e;
