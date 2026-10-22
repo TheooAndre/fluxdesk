@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ChevronRight, CircleHelp, Download, Menu, Radio, Search, ShieldAlert, WifiOff, ArrowDownUp } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp } from 'lucide-react';
 import { api } from './lib/api.ts';
 import { useUi, type Tab } from './lib/store.ts';
 import { money, pct, price, clock } from './lib/format.ts';
