@@ -22,7 +22,7 @@ describe('provider-neutral, self-hosted backend security', () => {
   });
   it('keeps the environment example free of real production credentials', async () => {
     const sample = await read('.env.example');
-    expect(sample).toMatch(/FLUXDESK_GATEWAY_TOKEN=replace-with-/);
+    expect(sample).toMatch(/FLUXDESK_GATEWAY_TOKEN=SET_ME/);
     expect(sample).not.toContain('VITE_FLUXDESK_GATEWAY_TOKEN');
     expect(sample).toContain('FLUXDESK_BACKEND_DOMAIN');
     const gitignore = await readFile(new URL('../.gitignore', import.meta.url), 'utf8');
