@@ -1,128 +1,191 @@
-# Northflank Sandbox backend staging runbook
+# FluxDesk v0.4: Northflank staging deployment
 
-**Release:** FluxDesk v0.4, private preview only  
-**Git source:** `TheooAndre/fluxdesk` on `feat/cloud-foundation-v0.4`  
-**Status:** account owner confirmed Northflank account and GitHub setup.
-No authenticated Northflank management connection is available to this ChatGPT
-conversation, so **we have not created a project, service, volume or secret**.
+**Status (22 October 2026):** The owner has approved **approximately $0.90/month
+for a 6 GB Northflank NVMe volume** and selected Northflank over OCI for
+ease of use. The existing Northflank team is on **Free** with an existing
+project named **Default**. Do not create another project. The two relevant
+screens were inspected directly: the project-level **Volumes** creation
+screen (6 GB, $0.15/GB/month) and the **Combined service** setup screen
+(0.1 vCPU, 256 MB RAM, BuildKit, root Dockerfile).
 
-Northflank's developer Sandbox includes two always-on free services, one
-addon, and limited resources. Public documentation confirms volumes exist
-but **does not establish a free persistent-volume allocation** for a particular
-Sandbox account. Verify the amount/billing in the UI before provisioning.
-Northflank requires a payment method even for free-tier resource creation.
+**No Northflank provider connection exists in ChatGPT.** These are user-side
+console instructions, not claims that a service, volume, secret or project
+was remotely created. Vercel is already connected and protected.
 
-Vendor documentation:
+## 0. Billing gate: approval is for storage, not a paid-plan upgrade
+
+Northflank currently publishes **$0.15/GB/month** for persistent storage.
+The owner's chosen **6 GB volume costs approximately $0.90/month**,
+before possible taxes, network egress, compute or plan charges. Northflank
+Sandbox documents advertise **two free always-on services**, but the
+pay-as-you-go price of its smallest `nf-compute-10` compute plan
+(0.1 shared vCPU, 256 MB) is about **$2.70/month**. If the UI forces
+an upgrade to Pay as you go, or the *total* expected recurring charge exceeds
+the approved 6 GB volume price, **STOP and review the full bill before
+agreeing to any additional charge**. Do not assume Sandbox allowances
+carry over to the pay-as-you-go plan.
+
+The Sandbox is for **testing**, not production reliability. Configure a
+billing alert near your personal comfort level; an alert is not a hard cap.
+Volumes remain billable even when paused or detached and cannot be shrunk.
+Only the account owner can accept any billing terms.
+
+Official vendor references:
 - https://northflank.com/pricing
 - https://northflank.com/docs/v1/application/billing/pricing-on-northflank
-- https://northflank.com/docs/v1/application/getting-started/link-your-git-account
-- https://northflank.com/docs/v1/application/getting-started/build-and-deploy-your-code
 - https://northflank.com/docs/v1/application/databases-and-persistence/add-a-volume
-- https://northflank.com/docs/v1/application/observe/configure-health-checks
+- https://northflank.com/docs/v1/application/network/configure-ports
+- https://northflank.com/docs/v1/application/getting-started/build-and-deploy-your-code
 
-## Gate 1: confirm free persistent volume before deploying
+## 1. Create persistent volume in existing Default project
 
-1. Sign in to `https://app.northflank.com/`, confirm **Developer Sandbox**
-   on the team's Billing → Plans page. Do not select Pay as you go.
-2. Verify the Git integration has access to *only* the
-   `TheooAndre/fluxdesk` repository where feasible.
-3. Choose **Create project**, name `fluxdesk-staging`, choose **EU West**
-   (region is immutable), and keep it for sandbox/staging only.
-4. Inspect **Create service → Combined service → Advanced → Volumes** or
-   the project's available storage options, without launching a service.
-5. Confirm whether the free plan can **create and attach** a *Single
-   Read/Write* persistent volume at **container mount path `/data`**
-   without a paid upgrade, with at least 1 GiB usable capacity preferred.
-   Do not confuse the default ephemeral disk with a persistent volume.
-   If the UI displays payment, disabled volume options, or insufficient
-   resources, STOP and use our Oracle Cloud Always Free plan instead.
-6. Do not enter secrets, enable paid features or launch the container before
-   we confirm this gate. Send only the free/paid status and nonsecret
-   project ID or URL back to the chat.
+In Northflank go to **Ety's Team → Default → Volumes → Create volume**.
 
-## Gate 2: backend combined service (only after Gate 1 passes)
+| Setting | Value |
+| --- | --- |
+| Name | `fluxdesk-backend-data` (or existing planned name `FluxDesk Backend`) |
+| Type | **Blank volume** |
+| Storage type | **NVMe** |
+| Storage size | **6 GB**; do not enlarge |
+| Access mode, if available | **Single Read/Write (ReadWriteOnce)**, not shared |
+| **Container mount path** | **`/data`** |
+| Optional internal volume subpath | Empty; mount the volume root |
+| Attach to resources | Select `fluxdesk-api-staging` if created; otherwise create unattached and attach afterward |
 
-- **Service:** `fluxdesk-api-staging`; type **Combined (build and run)**.
-- **Repository:** `TheooAndre/fluxdesk`, branch
-  `feat/cloud-foundation-v0.4`. **Do not select main**; main is v0.3.
-- **Build method:** Dockerfile, path `/Dockerfile`, build context `/`.
-- **Instances:** exactly 1, no autoscaling or separate replicas.
-- **CPU/RAM:** selected free Sandbox allocation; do not upgrade.
-- **Runtime environment values:**
+The screenshot's default path `/mydata` is **not suitable**.
+Enable **Use custom volume mount paths** if needed, then enter `/data`.
+The combined service's environment will set `DATA_DIR=/data`.
 
-  | Key | Value |
-  | --- | --- |
-  | `NODE_ENV` | `production` |
-  | `HOST` | `0.0.0.0` |
-  | `PORT` | `8787` |
-  | `DATA_DIR` | `/data` |
-  | `FLUXDESK_GATEWAY_TOKEN` | Random secret, 32+ bytes, provider-managed private runtime variable |
+Northflank states that Single Read/Write is the default mode for a
+single-pod workload; if the access-mode control is missing, confirm
+the saved volume's mode in its details before attaching it.
 
-- **Storage:** attach the permitted *Single Read/Write* volume at `/data`.
-  The backend **refuses to start** without an actual Linux mount at
-  `DATA_DIR` when it listens on a public-interface host. We use this to
-  prevent accidental loss of alerts and research archives on redeploy.
-  The Docker image runs as `node:node`; Northflank uses the image's
-  group to set volume ownership. Validate nonroot read/write in logs.
-- **Networking:** public HTTPS port forwarding to container TCP/HTTP
-  **8787**. A `*.code.run` domain with Northflank TLS is suitable.
-  The port is accessible externally but **all backend routes require the
-  private gateway token**; without it, `GET /api/health` returns **401**.
-  Do not publish bare TCP 8787 through another router.
-- **Health checks:** use a **TCP readiness probe** to container port
-  **8787**, not an unauthenticated HTTP check, which would return 401
-  and repeatedly restart a healthy API. The platform's command-probe
-  option can also run an authenticated localhost health query, but the
-  secret must never be echoed in logs.
-- **Auto-deploy:** prefer **disabled** during initial acceptance; when
-  enabled later, scope strictly to v0.4 branch and review migrations first.
+If the **Attach to resources** list is empty because the service does not
+yet exist, first try creating the volume unattached. If Northflank requires
+a service to exist first, use step 2 to create the service with **Private
+TCP port**, no externally accessible endpoint and no credential; startup
+will intentionally fail until the volume and gateway secret are added.
+Then attach the volume from either the service's Volumes page or the
+project-level Volumes page. Attaching may redeploy the container.
 
-To generate the private token on your own machine without posting it:
+Do not create a volume until the billing UI confirms its charges are
+within the approved amount; stop on any paid-plan or extra-compute prompt.
+
+## 2. Create one staging Combined service
+
+Within **Default → Services → Create service → Combined**:
+
+| Control | Value |
+| --- | --- |
+| Name | `fluxdesk-api-staging` |
+| Git repository | `TheooAndre/fluxdesk` |
+| Branch | **`feat/cloud-foundation-v0.4`**, never `main` |
+| Build method | Dockerfile, BuildKit |
+| Build context | `/` |
+| Dockerfile | `/Dockerfile` |
+| Build compute | Default BuildKit plan; do not buy upgrades |
+| Runtime compute | **`nf-compute-10`** (0.1 shared vCPU, 256 MB) while free |
+| Instances | Exactly **1**, no autoscaling |
+| Ephemeral disk | Default 1 GB; **not** the archive |
+| Runtime mode | Default Docker entrypoint and command |
+| CI | Can stay enabled |
+| Auto-deploy | Disable if controllable during acceptance, or pin to v0.4 branch |
+
+The 256 MB plan is very small. CI includes a container smoke test under
+**0.1 vCPU / 256 MB**, but production traffic and large backtests may
+still exceed these resources. Watch memory and CPU graphs during staging.
+If a higher compute plan requires charges, stop and review with the owner.
+
+Set **Runtime variables** only (not build arguments):
+
+| Name | Value |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `HOST` | `0.0.0.0` |
+| `PORT` | `8787` |
+| `DATA_DIR` | `/data` |
+| `FLUXDESK_GATEWAY_TOKEN` | A fresh random secret of at least 32 bytes |
+
+Generate the private gateway token on your own Mac:
+
 ```bash
 openssl rand -hex 32
 ```
-Paste this value **only** into Northflank's environment variable editor,
-and the Vercel preview project's server-side environment under the identical
-name. Never put it into GitHub, `VITE_*`, screenshots or this chat.
 
-## Gate 3: protected Vercel preview integration
+Store it **only** in Northflank's private runtime-variable editor and,
+later, Vercel's Preview-only environment. Never paste it into GitHub,
+screenshots or chat; never use a `VITE_` prefix. It is not an API key
+for exchange order execution. **Do not set**
+`FLUXDESK_DATA_VOLUME_ID` in Northflank: that is an OCI-specific check.
 
-Only after the staging service reports healthy and has a valid HTTPS URL:
+The Docker image uses nonroot `node:node`. Northflank's volume typically
+inherits the group from the image; if `Cloud data directory is not writable`
+appears, verify mount ownership rather than running the service as root.
+If `Persistent volume missing at DATA_DIR` appears, recheck the mount
+path and attachment. Do not bypass the check.
 
-1. In the existing Vercel project `fluxdesk`, keep Deployment Protection
-   enabled for **all deployments** and verify in a signed-out browser.
-2. Set preview-only environment variable `FLUXDESK_BACKEND_URL` to the
-   Northflank backend URL including `https://` and trailing slash
-   (no path, userinfo, query or fragment).
-3. Set preview-only, **server-only** `FLUXDESK_GATEWAY_TOKEN` to the same
-   private value you generated on your own machine.
-4. Redeploy the **v0.4 branch preview only** so Functions receive the new
-   environment variables. Do not promote production or share secrets.
-5. Smoke test `/api/health` from the authenticated preview and compare
-   with the direct Northflank endpoint:
-    - Direct anonymous backend GET: **401**
-    - Authenticated Vercel preview `/api/health`: **200** JSON, no secrets.
-    - Foreign-origin POSTs: **blocked**.
-6. Test Binance/Hyperliquid candles and backtest research; archive at least
-   one dataset, restart the backend container, and confirm the same dataset ID
-   and alert state survive. Follow with an offline/reconnect PWA iPhone test.
-7. Export an encrypted backup and verify restoration to a separate test
-   environment before treating historical research as durable.
+## 3. Start privately, then expose only HTTPS
+
+During initial service creation, leave port **8787 / TCP / Private** as shown
+in the screenshots. This is NOT internet-accessible; that is safe while
+verifying that the volume, process and private gateway token work.
+
+**Health checks:** choose a **TCP readiness check on port 8787**. A generic
+HTTP GET to `/api/health` without the gateway token correctly returns 401
+and must not be used to mark the service unhealthy.
+
+After the service is healthy and the shared gateway token is configured,
+edit **Configure → Networking**, change the service's port 8787 from
+**TCP / Private** to **HTTP / Public**. Northflank public ingress supports
+HTTP/HTTP2, **not ordinary TCP**; it generates a `*.code.run` hostname
+and terminates HTTPS automatically. Do not expose a raw TCP endpoint or
+forward the local 8787 port outside Northflank's HTTPS ingress.
+
+A direct unauthenticated request from your Mac should return:
+
+```bash
+curl -i https://YOUR-NORTHFLANK-HOSTNAME.code.run/api/health
+# HTTP 401 JSON { "error": "Gateway authentication required" }
+```
+
+A direct 200 response without credentials is **a release-blocking security
+failure**. Do not test the private secret using a public URL or copy it into
+terminal commands that may enter shell history.
+
+## 4. Connect the existing protected Vercel preview
+
+In Vercel's **existing** `fluxdesk` project:
+
+1. Keep **Vercel Authentication enabled for all deployments**; verify the
+   preview is blocked in a private, signed-out browser.
+2. Set **Preview-only** `FLUXDESK_BACKEND_URL` to the exact Northflank
+   HTTPS origin, ending in `/` (for example,
+   `https://my-service.code.run/`). No path, query or username.
+3. Set **Preview-only** `FLUXDESK_GATEWAY_TOKEN` to the **same private**
+   random value as the Northflank runtime secret.
+4. Redeploy only the v0.4 Git branch **Preview**. Never deploy this feature
+   branch as `production` or promote PR #12 to `main` yet.
+5. From the authorized preview, `GET /api/health` must return JSON 200;
+   direct anonymous Northflank requests must return 401.
+6. Test market feeds, BTC historical fetch, research archive, backtest,
+   equity/trade warnings, iPhone PWA offline shell and reconnection.
+7. Restart the service and verify the **same dataset fingerprint** remains
+   accessible. Export an encrypted offsite backup and test restore.
+   Persistence across a restart is not equivalent to a disaster-recovery
+   backup.
 
 ## Stop conditions
 
-- A plan upgrade or volume incurs nonzero charges without user approval.
-- No writable single-instance persistent volume can be attached at `/data`.
-- TLS or Deployment Protection is disabled, secret appears in logs, or
-  unauthorized API request succeeds.
-- Gateway mode starts without mounted persistence, or fails to survive a
-  controlled restart.
-- Sandbox compute is too small for stable WebSocket plus research operations.
+- Northflank requires a paid-plan upgrade or another recurring charge beyond
+  the owner's **~$0.90/month** storage authorization.
+- Memory/CPU limits, storage permissions or volume attachment prevent a
+  healthy staging service.
+- HTTP 200 is available on the Northflank backend **without** the gateway
+  secret, or the Vercel preview is accessible while signed out.
+- GitHub CI or Docker smoke tests fail; a research dataset disappears after
+  restart; backup restoration fails.
+- Owner sees any unexpected fee, credit-card verification problem or secret
+  leakage.
 
-In any stop case, keep Vercel public API disabled and choose OCI Always Free
-(or a different persistent hosting option) rather than silently running the
-stateful backend on ephemeral disk.
-
-**Security boundary:** the Northflank Sandbox is for staging/testing, not
-a reliable production home for personal trading research data. Backups remain
-mandatory even when an attached volume works.
+**Scope:** This is a single-user read-only research dashboard. Do not add
+exchange execution, auto-trading or other live money-moving endpoints.
