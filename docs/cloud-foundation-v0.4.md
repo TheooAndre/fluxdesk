@@ -2,27 +2,27 @@
 
 ## Provisioning status (22 October 2026)
 
-A Vercel project named `fluxdesk` has been created under the connected Vercel
-account. Vercel confirmed **Vercel Authentication enabled for all deployments**.
-The project has **no live deployment**, no backend URL, and no gateway secrets.
-
-On 22 October, the owner confirmed the GitHub Login Connection; Vercel
-now lists `TheooAndre` as a connected namespace and accepted Git source
-metadata for this repository. **The existing project still needs its own Git
-repository linkage** via Project Settings → Git → Connect. The account login
-link and a project's build-trigger connection are separate things.
-
-One attempted **preview** Git-source API deployment was unexpectedly classified
-by Vercel as `production`. It was **canceled immediately** and Vercel now
-reports `live: false`. Do not create or promote another deployment until the
-existing project's production Git branch is explicitly set to `main`.
-The project remains protected with Vercel Authentication on all deployments.
-
-For a plain Vite project, Next.js `api/[...path].ts` filesystem catch-all
-routes are unsupported. Our supported `api/gateway.ts` Vercel Function is
-reached via an explicit `/api/:path*` rewrite before the SPA fallback.
-Verify the deployed routes return JSON (`503` before backend secrets are set),
-not HTML from the SPA.
+- Vercel project `fluxdesk` is connected to GitHub
+  `TheooAndre/fluxdesk`; the feature branch produces automatic **preview**
+  builds. The verified preview is commit `34b8fc2`. The project has Vercel
+  Authentication enabled on **all** deployments.
+- Vercel reports `live: false`. An early deployment erroneously classified as
+  production was canceled. No production dashboard or backend is live.
+- The protected preview passed GitHub CI #227 but our automated protected-URL
+  fetch is denied with HTTP 403 due to current deployment-access permissions.
+  We have not verified live cloud API routes end to end.
+- Railway is connected but project creation returned
+  `Deploys have been paused due to an upstream issue`. Inspection confirmed
+  zero Railway projects, services and volumes provisioned. Railway's
+  21 October 2026 security disclosure reported possible unauthorized access
+  to encrypted/decrypted environment variables; **do not store gateway
+  secrets there until the incident is closed and account security is reviewed**.
+- The portable VPS configuration at `deploy/vps/` supports Oracle Always
+  Free, Google Compute Engine and conventional VPS hosts (single Node API,
+  Docker volume, Caddy-managed TLS, local encrypted/offsite backup process).
+- See [22 October hosting comparison](backend-hosting-options-2026-10.md)
+  for a verified 2026 free-tier matrix and recommended providers. No cloud
+  VM or persistent disk has been deployed yet.
 
 ## Scope and release gates
 
@@ -88,6 +88,45 @@ instances that mount separate volumes, or deployments that discard `/data`.
 Existing backtests are synchronous and bounded to 3,000 candles via HTTP.
 Longer archives are available to the CLI, not the browser. No order execution,
 leverage, exchange API keys, or auto-trading are enabled.
+
+## Self-managed VPS option (OCI / Google / Hetzner)
+
+An owner-managed Linux VM can run the same service without platform coupling.
+Install Docker Engine and Compose, create a DNS A/AAAA record to the VM,
+permit only SSH from known addresses plus TCP 80/443 for Caddy, and disable
+direct exposure of TCP 8787. On the VM:
+
+```sh
+git clone https://github.com/TheooAndre/fluxdesk.git
+cd fluxdesk
+git fetch origin
+git switch --track origin/feat/cloud-foundation-v0.4
+cp deploy/vps/.env.example deploy/vps/.env
+chmod 600 deploy/vps/.env
+# Edit the env file locally: set actual DNS hostname and 32+ random byte token.
+# Never paste the filled file or the token into ChatGPT/GitHub.
+docker compose --env-file deploy/vps/.env -f deploy/vps/compose.yaml config
+docker compose --env-file deploy/vps/.env -f deploy/vps/compose.yaml up -d --build
+```
+
+The compose file has two services: an internal API (port 8787 **not published**)
+and Caddy listening on public 80/443. A named Docker volume persists the alerts,
+subscriptions and datasets. The container has a healthcheck that authenticates
+to the private API. Caddy obtains TLS certificates automatically once DNS
+and reachability are correct. Provision a minimum 1 GB of available RAM and
+additional swap/disk for builds; the CI tests do **not** validate a particular
+host VM's actual memory and network restrictions.
+
+The backup script is manual until a host scheduler is configured:
+
+```sh
+bash deploy/vps/backup.sh
+```
+
+It creates a restrictive local archive of the Docker volume, **not a
+validated offsite backup**. Copy the archive to separately encrypted storage,
+add a retention policy and restore test with the API stopped. Keep the volume
+as the only live writer and do not run multiple app replicas.
 
 ## Operational deployment sequence
 
