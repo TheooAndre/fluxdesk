@@ -25,6 +25,24 @@ jobs:
           docker compose --env-file deploy/vps/.env.example -f deploy/vps/compose.yaml -f deploy/oci/compose.oci.yaml config --quiet
           bash -n deploy/vps/backup.sh
           bash -n deploy/oci/verify-host.sh
+      - name: Build backend container and verify missing-volume startup fails closed
+        run: |
+          docker build --pull -t fluxdesk-api:ci .
+          set +e
+          timeout 25s docker run --rm \
+            -e FLUXDESK_GATEWAY_TOKEN=ci-only-strong-gateway-secret-1234567890 \
+            fluxdesk-api:ci > /tmp/fluxdesk-container-smoke.log 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ] || [ "$status" -eq 124 ]; then
+            echo 'Container unexpectedly started without a persistent volume' >&2
+            exit 1
+          fi
+          if ! grep -q 'Persistent volume missing at DATA_DIR' /tmp/fluxdesk-container-smoke.log; then
+            echo 'Container failed for a reason other than the expected volume safety check' >&2
+            cat /tmp/fluxdesk-container-smoke.log >&2
+            exit 1
+          fi
       - name: Bundle budget (200KB gzipped per initial chunk)
         run: |
           node - <<'JS'
