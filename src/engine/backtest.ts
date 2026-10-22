@@ -33,7 +33,7 @@ export type ResearchTrade = {
   fees: number;
   netPnl: number;
   rMultiple: number;
-  exitReason: 'stop' | 'target' | 'end_of_data';
+  exitReason: 'stop' | 'target' | 'sample_end' | 'end_of_data';
   sample: 'development' | 'holdout';
 };
 export type ResearchResult = {
@@ -71,7 +71,7 @@ function validate(bars: Candle[], c: ResearchConfig) {
     if (![b.time, b.closeTime, b.open, b.high, b.low, b.close].every(
       (v) => typeof v === 'number' && Number.isFinite(v),
     )) throw Error('Invalid or incomplete candle timestamp/OHLC');
-    if (b.time <= previousClose || b.closeTime! < b.time ||
+    if ((previousClose >= 0 && b.time !== previousClose + 1) || b.closeTime! < b.time ||
         ![b.open, b.high, b.low, b.close].every(finitePositive) ||
         b.low > Math.min(b.open, b.close) || b.high < Math.max(b.open, b.close))
       throw Error('Overlapping, unordered or invalid candles');
@@ -97,8 +97,15 @@ export function backtest(
   let peak = equity;
   let maxDrawdownPct = 0;
   const cost = (config.costs.feeBpsPerSide + config.costs.slippageBpsPerSide) / 10_000;
-  // Warm-up and decision bar are fully historical at the moment of execution.
-  for (let i = 64; i < bars.length - 1; i++) {
+  // Never carry an open trade across the locked chronological sample boundary.
+  // The holdout can use old bars to warm up indicators, but its signal and
+  // entry must both occur *within* the holdout period.
+  const phases = [
+    { first: 64, end: splitIndex, sample: 'development' },
+    { first: splitIndex, end: bars.length, sample: 'holdout' },
+  ] as const;
+  for (const phase of phases) {
+  for (let i = phase.first; i < phase.end - 1; i++) {
     const decision = bars[i]!;
     const signal = signalAt(bars.slice(0, i + 1), [config.model])
       .find((s) => s.model === config.model && s.barTime === decision.time);
@@ -115,7 +122,7 @@ export function backtest(
     if (!finitePositive(size)) continue;
     let exit = NaN, exitIndex = -1;
     let exitReason: ResearchTrade['exitReason'] = 'end_of_data';
-    for (let j = i + 1; j < bars.length; j++) {
+    for (let j = i + 1; j < phase.end; j++) {
       const b = bars[j]!;
       // Gaps through the stop exit at the worse opening price.
       if (direction === 1 && b.open <= stop || direction === -1 && b.open >= stop) {
@@ -129,7 +136,11 @@ export function backtest(
         exit = signal.target; exitIndex = j; exitReason = 'target'; break;
       }
     }
-    if (exitIndex < 0) { exitIndex = bars.length - 1; exit = bars[exitIndex]!.close; }
+    if (exitIndex < 0) {
+      exitIndex = phase.end - 1;
+      exit = bars[exitIndex]!.close;
+      exitReason = phase.sample === 'development' ? 'sample_end' : 'end_of_data';
+    }
     const exitFill = exit * (1 - direction * config.costs.slippageBpsPerSide / 10_000);
     const grossPnl = direction * (exitFill - entry) * size;
     const fees = (entry + exitFill) * size * config.costs.feeBpsPerSide / 10_000;
@@ -140,7 +151,7 @@ export function backtest(
       exitTime: bars[exitIndex]!.closeTime!, direction: signal.direction,
       entry, exit: exitFill, stop, target: signal.target, size,
       grossPnl, fees, netPnl, rMultiple: netPnl / riskBudget, exitReason,
-      sample: i + 1 < splitIndex ? 'development' : 'holdout',
+      sample: phase.sample,
     });
     equity += netPnl;
     peak = Math.max(peak, equity);
@@ -149,6 +160,8 @@ export function backtest(
     // executable new entry using information already consumed by this trade.
     i = exitIndex;
     if (equity <= 0) break;
+  }
+  if (equity <= 0) break;
   }
   const development = stats(trades.filter((t) => t.sample === 'development'));
   const holdout = stats(trades.filter((t) => t.sample === 'holdout'));
@@ -163,6 +176,7 @@ export function backtest(
       'Research simulation only: market impact, funding, liquidity, margin and capacity are not modeled.',
       'No parameter tuning or strategy selection is permitted using holdout outcomes.',
       'Bar-level exit sequencing assumes the adverse stop triggers before the target.',
+      'Open development trades are marked to market at the split boundary and never enter holdout.',
       ...(holdout.count < 30 ? ['Holdout contains fewer than 30 closed trades; evidence is insufficient.'] : []),
     ],
   };
