@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Candle, EntrySignal, SignalModel } from '../src/types.ts';
+import type { Candle, EntrySignal } from '../src/types.ts';
 import { backtest, type ResearchConfig } from '../src/engine/backtest.ts';
 
 const config: ResearchConfig = {
@@ -20,7 +20,7 @@ const signal = (bar: Candle, direction: 'long' | 'short' = 'long'): EntrySignal 
   barTime: bar.time, barCloseTime: bar.closeTime, status: 'candidate',
 });
 const at = (index: number, direction: 'long' | 'short' = 'long') =>
-  (history: Candle[], _models: SignalModel[]) =>
+  (history: Candle[]) =>
     history.length === index + 1 ? [signal(history.at(-1)!, direction)] : [];
 
 describe('deterministic strategy research', () => {
