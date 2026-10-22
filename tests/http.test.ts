@@ -77,3 +77,37 @@ it('returns 400 for malformed JSON and malformed liquidation windows', async () 
   expect((await fetch(`${origin}/api/alerts`, { method: 'POST', body: '{' })).status).toBe(400);
   expect((await fetch(`${origin}/api/liquidations?minutes=NaN`)).status).toBe(400);
 });
+
+it('offers a read-only research archive catalog with no synthetic datasets', async () => {
+  const response = await fetch(origin + '/api/research/datasets');
+  expect(response.status).toBe(200);
+  const data = (await response.json()) as { datasets: unknown[]; rejected: number };
+  expect(Array.isArray(data.datasets)).toBe(true);
+  expect(typeof data.rejected).toBe('number');
+  expect(response.headers.get('cache-control')).toBe('no-store');
+});
+it('rejects invalid or unsafe research requests before accessing exchange APIs', async () => {
+  for (const [path, body] of [
+    ['/api/research/datasets', { assetId: 'binance:BTCUSDT', interval: '1h', count: 9999 }],
+    ['/api/research/datasets', { assetId: 'binance:BTCUSDT:extra', interval: '1h', count: 500 }],
+    ['/api/research/backtests', { datasetId: '../private', config: {} }],
+  ] as const) {
+    const response = await fetch(origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(400);
+  }
+  const wrongMethod = await fetch(origin + '/api/research/backtests');
+  expect(wrongMethod.status).toBe(405);
+  expect(wrongMethod.headers.get('allow')).toBe('POST');
+});
+it('rejects research mutations from a different origin', async () => {
+  const response = await fetch(origin + '/api/research/datasets', {
+    method: 'POST',
+    headers: { origin: 'https://untrusted.example', 'content-type': 'application/json' },
+    body: '{}',
+  });
+  expect(response.status).toBe(400);
+});
