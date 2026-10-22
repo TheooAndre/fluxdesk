@@ -101,6 +101,9 @@ describe('historical dataset ingestion', () => {
     edited.candles[0]!.close = 100.5;
     await writeFile(file, JSON.stringify(edited));
     await expect(loadHistoricalDataset(receipt.id, dir)).rejects.toThrow('checksum mismatch');
+    await expect(saveHistoricalDataset(data, dir)).rejects.toThrow('checksum mismatch');
+    const stillTampered = JSON.parse(await readFile(file, 'utf8')) as HistoricalDataset;
+    expect(stillTampered.candles[0]!.close).toBe(100.5);
     await expect(loadHistoricalDataset('../state', dir)).rejects.toThrow('Invalid dataset ID');
   });
 });
