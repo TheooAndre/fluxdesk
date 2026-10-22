@@ -8,6 +8,13 @@
 #
 # DO NOT create this volume on an ephemeral /srv directory. Run
 # deploy/oci/verify-host.sh before the very first docker compose up.
+# An OCI-specific disk identity is verified inside the API container on EVERY
+# startup, catching a reboot race if a host bind inadvertently falls back
+# to a directory on the VM boot disk.
+services:
+  api:
+    environment:
+      FLUXDESK_DATA_VOLUME_ID: ${FLUXDESK_DATA_VOLUME_ID:?Set the OCI block disk identity in deploy/vps/.env}
 volumes:
   research-data:
     name: fluxdesk_backend_data
