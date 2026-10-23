@@ -120,6 +120,52 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/watchlist**', (route) => route.fulfill({ json: { assetIds: [] } }));
   await page.route('**/api/alerts', (route) => route.fulfill({ json: { alerts: [], events: [] } }));
 });
+test('categories filter contracts and open the selected venue chart', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Categories', exact: true }).click();
+  const chips = page.getByRole('group', { name: 'Asset categories' });
+  await chips.getByRole('button', { name: /^Perps/ }).click();
+  await expect(page.getByRole('button', { name: 'Chart HYPE on hyperliquid' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Chart BTC on binance' })).toHaveCount(0);
+  await chips.getByRole('button', { name: /^L1/ }).click();
+  await expect(page.getByRole('button', { name: 'Chart ETH on binance' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Chart ETH on hyperliquid' })).toBeVisible();
+  await page.getByLabel('Search category assets').fill('ETH');
+  await page.getByLabel('Category exchange').selectOption('hyperliquid');
+  await expect(page.getByRole('button', { name: 'Chart ETH on binance' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Chart ETH on hyperliquid' }).click();
+  await expect(page.getByLabel('Selected asset')).toHaveValue('hyperliquid:ETH');
+  await expect(page.getByRole('img', { name: 'ETH 1h interactive price and volume chart' })).toBeVisible();
+  await expect(page.getByLabel('Market category')).toHaveValue('l1');
+  await page.getByRole('button', { name: 'Categories', exact: true }).click();
+  await chips.getByRole('button', { name: /^AI/ }).click();
+  await expect(page.getByText('No current contracts match this category and search.')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath('market-categories.png'), fullPage: true });
+  expect(errors).toEqual([]);
+});
+
+test('TradingView account shortcut validates layouts and survives reload', async ({ page }) => {
+  await page.goto('/');
+  const open = () => page.getByText('My TradingView · account & saved indicators', { exact: true }).click();
+  await open();
+  await expect(page.getByRole('link', { name: 'Open TradingView chart' })).toHaveAttribute('href', /symbol=BINANCE%3ABTCUSDT.P/);
+  const input = page.getByLabel('Saved TradingView layout URL (optional)');
+  await input.fill('https://evil.test/chart/abc/');
+  await page.getByRole('button', { name: 'Save layout shortcut' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Enter an HTTPS TradingView' })).toBeVisible();
+  await input.fill('https://www.tradingview.com/chart/Ab12Cd34/');
+  await page.getByRole('button', { name: 'Save layout shortcut' }).click();
+  await page.reload();
+  await open();
+  await expect(page.getByRole('link', { name: 'Open my saved layout' })).toHaveAttribute('href', 'https://www.tradingview.com/chart/Ab12Cd34/');
+  await input.fill('');
+  await page.getByRole('button', { name: 'Save layout shortcut' }).click();
+  await expect(page.getByRole('link', { name: 'Open my saved layout' })).toHaveCount(0);
+});
+
 test('market table sorts and asset selection are usable', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Market overview')).toBeVisible();

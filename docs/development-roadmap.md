@@ -12,16 +12,19 @@ Updated 23 October 2026. Research only; no order execution or claimed predictive
 | Faster exchange snapshots | Owner accepted | Foreground 10s polling, coalescing, venue backoff; explicit original ages retained |
 | Shorter address | Owner accepted | Owner reports working; final exact alias and its protection have not been independently verified |
 | Price basis, timestamps, live funding and price premium | Implemented; preview acceptance pending | Last trade vs mark labels, exchange vs receipt ages, same-basis comparisons, Binance interval metadata and hourly Hyperliquid funding |
-| Full CI | Baseline green; latest additions pending | CI #306 passed every gate at `57de5b7`, including all five browsers, 256 MiB container restart/persistence, Lighthouse and dependency audit; next commit requires its own CI |
+| Full CI | Latest commit verification pending | CI #308 passed unit/smoke/build, all five browsers and 256 MiB persistence/backup tests, but failed the unchanged 2500 ms mobile LCP gate. Production now prerenders and hydrates the actual loading UI; latest commit requires its own full CI |
 | All-deployment authentication / mutation checks at final alias | Pending | Check logged-out access and authenticated mutations on final address |
 | Backup and restore | Tool implemented; hosted/offsite acceptance pending | Encrypted CLI backup/verify/restore; local dataset fingerprint round-trip passes. An actual Northflank backup and offsite copy/restore remain unverified |
 | Open-position equity and exposure cap | Implemented; preview acceptance pending | Engine v2 bar-close trade-price proxy, separate realized drawdown, default 1× / max 3× entry notional, versioned legacy display |
 | Shared mobile/desktop watchlist | Implemented; hosted acceptance pending | Up to 50 venue-specific contracts, durable atomic backend writes, foreground cross-device refresh, no optimistic success on write failure |
+| Interactive TradingView library chart | Implemented; preview acceptance pending | Candles/line, base-volume pane, crosshair, EMA 20/50, zoom/pan/fit and expansion; exact venue history and completed bars |
+| Chart / Categories browser | Implemented; preview acceptance pending | 15 overlapping curated themes, counts of available venue contracts, search and exchange filters, exact-contract chart selection |
+| TradingView account indicators | External shortcut only | Optional validated saved-layout URL on this device; sign in on TradingView itself. Embedded account/Pine synchronization is unsupported and intentionally out of scope |
 | Remote iPhone PWA acceptance | Pending | Installed Safari app, reopen/resume, offline shell, reconnect, update flow and alerts |
 
 ## Next work in order
 
-1. Complete the live pricing/funding, watchlist and engine v2 preview checks; obtain green CI at the latest commit. Prior intermittent LCP failure is resolved in baseline CI #306, without threshold changes.
+1. Obtain green CI at the latest commit, including production hydration and chart tests. Complete chart/categories, live pricing/funding, watchlist and engine v2 preview checks. Keep existing performance thresholds.
 2. Finish cloud release gates above, including an actual backup/restore exercise, before promotion.
 3. Add historical funding datasets and real mark/oracle price histories to Strategy Lab. Bar-close open-position equity and entry exposure caps are implemented; intrabar margin/liquidation accounting remains outside the current engine. Never substitute today's funding for historical payments.
 4. Add a separate statistical research engine for pair stationarity and hedge stability with out-of-sample validation.

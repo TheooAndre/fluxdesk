@@ -58,6 +58,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: E2E browser and mobile flows (mocked market APIs)
         run: pnpm e2e
+      - name: Production HTML hydration and chart startup
+        run: pnpm exec playwright test --config playwright.production.config.ts
       - name: Preserve Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v6

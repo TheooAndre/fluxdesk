@@ -4,16 +4,20 @@ import { registerSW } from 'virtual:pwa-register';
 import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star } from 'lucide-react';
 import { api } from './lib/api.ts';
 import { useWatchlist } from './lib/use-watchlist.ts';
-import { useUi, type Tab } from './lib/store.ts';
+import { useUi, restoreAssetFromLocation, type Tab } from './lib/store.ts';
 import { money, pct, price, clock } from './lib/format.ts';
+import { CATEGORIES, categoryLabel, marketCategories, matchesCategory } from './lib/categories.ts';
+import type { CategoryFilter } from './lib/categories.ts';
 import { priceBasisLabel, quoteAge, relativeToBenchmark } from './lib/market-quality.ts';
 import type { Market } from './types.ts';
-import LineChart from './components/LineChart.tsx';
 import { intervalsFor } from './engine/intervals.ts';
 import FeedHealth from './components/FeedHealth.tsx';
 import BenchmarkSelector from './components/BenchmarkSelector.tsx';
+import TradingViewAccount from './components/TradingViewAccount.tsx';
 import { Card, Pill, Loading, ErrorText, BadgeVenue } from './components/UiPrimitives.tsx';
-// Loaded only when research is opened, preserving overview startup performance.
+// Load each workspace module only when its view or data is needed.
+const CategoryBrowser = lazy(() => import('./components/CategoryBrowser.tsx'));
+const TradingChart = lazy(() => import('./components/TradingChart.tsx'));
 const Watchlist = lazy(() => import('./components/Watchlist.tsx'));
 const PerpetualDetails = lazy(() => import('./components/PerpetualDetails.tsx'));
 const StrategyLab = lazy(() => import('./components/StrategyLab.tsx'));
@@ -29,10 +33,11 @@ const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'calendar', label: 'Macro calendar', icon: CalendarDays },
 ];
-function useDashboard() {
+function useDashboard(enabled: boolean) {
   const ui = useUi();
   const mk = useQuery({
     queryKey: ['markets'],
+    enabled,
     queryFn: ({ signal }) => api.markets(signal),
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
@@ -44,7 +49,7 @@ function useDashboard() {
   const asset = useQuery({
     queryKey: ['asset', ui.assetId, ui.tf, ui.benchmark],
     queryFn: ({ signal }) => api.asset(ui.assetId, ui.tf, ui.benchmark, signal),
-    enabled: !!ui.assetId,
+    enabled: enabled && !!ui.assetId,
     refetchInterval: 60_000,
   });
   return { ui, mk, asset, selected: mk.data?.assets.find((a) => a.id === ui.assetId) };
@@ -68,13 +73,14 @@ function MarketTable({
 }) {
   const ui = useUi();
   const [visibleRows, setVisibleRows] = useState(50);
-  useEffect(() => setVisibleRows(50), [ui.search, ui.venue]);
+  useEffect(() => setVisibleRows(50), [ui.search, ui.venue, ui.category]);
   const filtered = useMemo(
     () =>
       assets
         .filter(
           (x) =>
             (ui.venue === 'all' || x.venue === ui.venue) &&
+            matchesCategory(x, ui.category) &&
             (x.base.toLowerCase().includes(ui.search.toLowerCase()) ||
               x.symbol.toLowerCase().includes(ui.search.toLowerCase())),
         )
@@ -94,7 +100,7 @@ function MarketTable({
           const bval = ui.sort === 'volume' ? b.volumeUsd24h : (b.oiUsd ?? -1);
           return (aval - bval) * (ui.descending ? -1 : 1);
         }),
-    [assets, ui.search, ui.sort, ui.venue, ui.descending, benchmark, isUsd],
+    [assets, ui.search, ui.sort, ui.venue, ui.category, ui.descending, benchmark, isUsd],
   );
   return (
     <Card
@@ -123,6 +129,9 @@ function MarketTable({
           <option value="all">Both venues</option>
           <option value="binance">Binance</option>
           <option value="hyperliquid">Hyperliquid</option>
+        </select>
+        <select aria-label="Market category" value={ui.category} onChange={(event) => ui.setCategory(event.target.value as CategoryFilter)}>
+          <option value="all">All sectors</option>{CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}<option value="uncategorized">Uncategorized</option>
         </select>
         <select
           aria-label="Sort by"
@@ -257,6 +266,7 @@ function AssetChart({
   item: Market | undefined;
   candles: Awaited<ReturnType<typeof api.asset>>['candles'] | undefined;
 }) {
+  const ui = useUi();
   return (
     <Card title="Selected market" aside={<span className="small-label">Trade candles · closed bars</span>}>
       {item ? (
@@ -278,7 +288,9 @@ function AssetChart({
               <Radio size={12} /> {item.timestampBasis === 'exchange' ? 'Exchange' : item.timestampBasis === 'received' ? 'Received' : 'Timestamp'} · {clock(item.asOf)} · {quoteAge(item.asOf, now)}
             </Pill>
           </div>
-          {candles?.length ? <LineChart data={candles} /> : <Loading label="Fetching historical bars…" />}
+          <div className="selected-categories">{marketCategories(item).length ? marketCategories(item).map((category) => <Pill key={category}>{categoryLabel(category)}</Pill>) : <Pill>Uncategorized</Pill>}</div>
+          <TradingViewAccount assetId={item.id} interval={ui.tf} />
+          {candles?.length ? <Suspense fallback={<Loading label="Loading interactive chart…" />}><TradingChart key={item.id + ':' + ui.tf} data={candles} assetId={item.id} base={item.base} interval={ui.tf} /></Suspense> : <Loading label="Fetching historical bars…" />}
         </>
       ) : (
         <p className="empty">Select an asset to inspect</p>
@@ -455,8 +467,15 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 function App() {
-  const { ui, mk, asset, selected } = useDashboard();
-  const watchlist = useWatchlist(ui.tab === 'overview');
+  const [overviewPanel, setOverviewPanel] = useState<'chart' | 'categories'>('chart');
+  const [booted, setBooted] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const { ui, mk, asset, selected } = useDashboard(booted);
+  const watchlist = useWatchlist(booted && ui.tab === 'overview');
+  useEffect(() => {
+    restoreAssetFromLocation();
+    setBooted(true);
+  }, []);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5_000);
@@ -464,7 +483,7 @@ function App() {
   }, []);
   const degraded =
     mk.isError ||
-    !navigator.onLine ||
+    offline ||
     !mk.data ||
     !mk.data.feeds ||
     mk.data.feeds.some(
@@ -472,9 +491,9 @@ function App() {
     );
   const benchmark = ui.benchmark === 'USD' ? null : mk.data?.benchmarks?.[ui.benchmark] ?? null;
   const [menu, setMenu] = useState(false);
-  const [offline, setOffline] = useState(!navigator.onLine);
   useEffect(() => {
     const update = () => setOffline(!navigator.onLine);
+    update();
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
     return () => {
@@ -483,7 +502,7 @@ function App() {
     };
   }, []);
   return (
-    <div className="layout">
+    <div className="layout" aria-busy={!booted}>
       <aside className={'sidebar ' + (menu ? 'side-open' : '')}>
         <a className="logo" href="/">
           <span className="logo-icon">
@@ -592,7 +611,7 @@ function App() {
               <RefreshCw size={14} aria-hidden="true" /> {mk.isFetching ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
-          {mk.isError && <ErrorText error={mk.error} />} {mk.isLoading && <Loading />}
+          {mk.isError && <ErrorText error={mk.error} />} {(!booted || mk.isLoading) && <Loading />}
           {mk.data && (
             <FeedHealth feeds={mk.data.feeds ?? []} now={now} disconnected={offline || mk.isError} />
           )}
@@ -613,10 +632,18 @@ function App() {
                   onRemove={(id) => watchlist.change.mutate({ id, add: false })} />
               </Suspense>
               <Snapshot assets={mk.data?.assets ?? []} benchmark={benchmark} isUsd={ui.benchmark === 'USD'} />
-              <div className="overview-grid">
+              <div className="overview-tabs" role="group" aria-label="Market workspace view">
+                <button className={overviewPanel === 'chart' ? 'active' : ''} aria-pressed={overviewPanel === 'chart'} onClick={() => setOverviewPanel('chart')}>Chart</button>
+                <button className={overviewPanel === 'categories' ? 'active' : ''} aria-pressed={overviewPanel === 'categories'} onClick={() => setOverviewPanel('categories')}>Categories</button>
+              </div>
+              {overviewPanel === 'categories' ? <Suspense fallback={<Loading label="Loading categories…" />}>
+                <CategoryBrowser assets={mk.data?.assets ?? []} selected={ui.category} venue={ui.venue} search={ui.search}
+                  onCategory={ui.setCategory} onVenue={ui.setVenue} onSearch={ui.setSearch}
+                  onSelect={(id) => { ui.setAsset(id); setOverviewPanel('chart'); }} />
+              </Suspense> : <div className="overview-grid">
                 <AssetChart item={selected} now={now} candles={asset.isError ? undefined : asset.data?.candles} />
                 <Insights item={selected} detail={asset.isError ? undefined : asset.data} />
-              </div>
+              </div>}
               {selected && <Suspense fallback={<Loading label="Loading perpetual pricing…" />}>
                 <PerpetualDetails key={selected.id} item={selected} now={now} offline={offline} />
               </Suspense>}
