@@ -22,7 +22,7 @@ Updated 23 October 2026. Research only; no order execution or claimed predictive
 | TradingView account indicators | External shortcut only | Optional validated saved-layout URL on this device; sign in on TradingView itself. Embedded account/Pine synchronization is unsupported and intentionally out of scope |
 | General phone use | Owner accepted 23 October | Everything working properly on the phone |
 | Crypto stat-arb research | Implemented; CI #320 and live QA passed | Original 19 October protocol/source/tests and synthetic report, local bounded report import, all folds and untouched-holdout status. No market edge or trading authorization; see [integration guide](statarb-integration.md) |
-| Remote iPhone PWA acceptance | Specific installed/offline/alert checks pending | Installed Safari app, reopen/resume, offline shell, reconnect, update flow and alerts |
+| Remote iPhone PWA acceptance | Resume, offline shell and reconnect owner-passed | Installed app background/resume, airplane-mode reopen/offline indication and fresh-data recovery on reconnect passed. Separate update flow and actual push delivery remain pending |
 
 ## Next work in order
 
@@ -52,5 +52,5 @@ Primary references consulted 23 October 2026:
 
 - General phone UI acceptance is complete as of 23 October. Vercel access and final-alias automated feature/mutation checks pass.
 - Cross-client save/reload/remove was verified in authenticated live QA; original favorites were retained.
-- On the installed iPhone app: reopen, background/resume, offline shell, reconnect, update and alert delivery.
+- Installed iPhone background/resume, offline reopen and fresh-data recovery on reconnect are owner-passed. Separate update flow and real push notification delivery remain pending.
 - Actual hosted encrypted backup, matching computer download and isolated local restore are owner-completed. Archive SHA-256: `5cc39e2e462b8696ad1f5e222b9b445cb0d8e8521dfeb2cadc735ac47a79cef0`; 7 files / 6 matching dataset IDs. Keep the encrypted copy and recoverable password-manager entry. Repeat backups manually after important changes; no recurring scheduler is installed. See [backup/restore runbook](backup-restore.md).
