@@ -3,6 +3,22 @@ on:
   push:
   pull_request:
 jobs:
+  statarb:
+    name: Offline stat-arb mechanics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: research/statarb/requirements-validation.txt
+      - run: python -m pip install -r research/statarb/requirements-validation.txt
+      - name: Original research mechanics and passive terminal export
+        env:
+          PYTHONPATH: research/statarb/src
+        run: python -m pytest research/statarb/tests -q
   quality:
     # Playwright 1.56.1 has browser binaries for Ubuntu 24.04, not 26.04.
     runs-on: ubuntu-24.04

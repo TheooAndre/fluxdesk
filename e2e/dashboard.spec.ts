@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import statarbDemo from '../src/research/statarb-demo.json' with { type: 'json' };
 const market = (id: string, base: string, venue: 'binance' | 'hyperliquid', r: number, vol: number) => ({
   id,
   base,
@@ -493,4 +494,29 @@ test('Strategy Lab v2 reports open-position drawdown and sends the exposure cap'
   await expect(page.getByText('historical mark prices, intrabar excursions and funding are excluded.', { exact: false })).toBeVisible();
   expect(submittedCap).toBe(1.5);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('stat-arb research preserves its evidence boundary and all synthetic folds', async ({ page }) => {
+  await page.goto('/');
+  // Both responsive navs can be in the DOM; choose the rendered control.
+  await page.getByRole('button', { name: /^(Correlation|Pairs)$/ }).filter({ visible: true }).click();
+  await page.getByRole('button', { name: 'Stat-arb research', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Crypto stat-arb research', exact: true })).toBeVisible();
+  await expect(page.getByText('No tradable edge established.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Development walk-forward', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Show original synthetic demo' }).click();
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC · mechanical demonstration only' })).toBeVisible();
+  const folds = page.getByRole('region', { name: 'Development walk-forward folds' });
+  await expect(folds.getByRole('row')).toHaveCount(5);
+  await expect(folds.getByText('None · abstained', { exact: true })).toHaveCount(3);
+  await expect(page.getByText('Not opened; no holdout results supplied.', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  await page.getByLabel('Import stat-arb report', { exact: true }).setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{"liveReady":true}') });
+  await expect(page.getByRole('alert')).toContainText('Import rejected');
+  await expect(page.getByRole('heading', { name: 'Development walk-forward', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear report', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Development walk-forward', exact: true })).toHaveCount(0);
+  await page.getByLabel('Import stat-arb report', { exact: true }).setInputFiles({ name: 'original-demo.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(statarbDemo)) });
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC · mechanical demonstration only' })).toBeVisible();
+  await expect(folds.getByRole('row')).toHaveCount(5);
 });

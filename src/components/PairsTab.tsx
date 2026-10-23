@@ -5,10 +5,11 @@ import { api } from '../lib/api.ts';
 import { useUi } from '../lib/store.ts';
 import type { Market } from '../types.ts';
 import { short } from '../lib/format.ts';
+import StatArbResearch from './StatArbResearch.tsx';
 import LineChart from './LineChart.tsx';
 import { Pill, ErrorText, Loading, Card, BadgeVenue, Segmented } from './UiPrimitives.tsx';
 
-function PairsTab({ item, assets }: { item: Market | undefined; assets: Market[] }) {
+function CorrelationScanner({ item, assets }: { item: Market | undefined; assets: Market[] }) {
   const ui = useUi();
   const [other, setOther] = useState('');
   const scan = useQuery({
@@ -153,4 +154,13 @@ function PairsTab({ item, assets }: { item: Market | undefined; assets: Market[]
   );
 }
 
+function PairsTab(props: { item: Market | undefined; assets: Market[] }) {
+  const [view, setView] = useState<'scanner' | 'statarb'>('scanner');
+  return <div className="content-stack">
+    <div role="group" aria-label="Correlation lab views">
+      <Segmented items={[{ label: 'Correlation scanner', value: 'scanner' }, { label: 'Stat-arb research', value: 'statarb' }]} value={view} onChange={setView} />
+    </div>
+    {view === 'statarb' ? <StatArbResearch /> : <CorrelationScanner {...props} />}
+  </div>;
+}
 export default PairsTab;

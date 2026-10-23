@@ -11,23 +11,25 @@ Updated 23 October 2026. Research only; no order execution or claimed predictive
 | Archive persistence through real service restart | Owner accepted | Archive reloaded and dataset SHA-256 matched |
 | Faster exchange snapshots | Owner accepted | Foreground 10s polling, coalescing, venue backoff; explicit original ages retained |
 | Shorter address | Owner accepted; authenticated API verified | `https://fluxdesk-terminal.vercel.app/` redirects logged-out visitors to Vercel SSO. Reconnected Vercel access now returns the current prerendered build and HTTP 200 for health, markets and saved favorites |
-| Price basis, timestamps, live funding and price premium | Implemented; preview acceptance pending | Last trade vs mark labels, exchange vs receipt ages, same-basis comparisons, Binance interval metadata and hourly Hyperliquid funding |
-| Full CI | Core CI green; final list layout checks pending | CI #316 passed 189 unit tests, smoke/build/container checks, five development browsers, 8 production hydration tests, Lighthouse and dependency audit. One Firefox watchlist case passed on retry; traces are now retained even for retried passing jobs. The compact list layout passes 4 focused desktop/mobile checks. Track latest results in PR #12 |
+| Price basis, timestamps, live funding and price premium | Owner accepted on phone; automated checks pass | Last trade vs mark labels, exchange vs receipt ages, same-basis comparisons, Binance interval metadata and hourly Hyperliquid funding |
+| Full CI | CI #318 passed at `4c43961`; new research checks pending | Prior revision passed 189 unit tests, smoke/build/container checks, five development browsers, 8 production hydration tests, Lighthouse and dependency audit without test retries. New stat-arb changes add report boundary/browser coverage and a separate offline Python test job. Track latest results in PR #12 |
 | Final-alias authenticated feature checks | Passed in automated live QA | Logged-out Vercel SSO, backend 401 without gateway authentication, authenticated health/700 markets, live chart/category navigation, isolated favorite save/reload/second-client/remove, original favorites retained, no page errors or horizontal mobile overflow |
 | Backup and restore | Tool implemented; hosted/offsite acceptance pending | Encrypted CLI backup/verify/restore; local dataset fingerprint round-trip passes. An actual Northflank backup and offsite copy/restore remain unverified |
-| Open-position equity and exposure cap | Implemented; preview acceptance pending | Engine v2 bar-close trade-price proxy, separate realized drawdown, default 1× / max 3× entry notional, versioned legacy display |
+| Open-position equity and exposure cap | Phone UI accepted; mechanics tested | Engine v2 bar-close trade-price proxy, separate realized drawdown, default 1× / max 3× entry notional, versioned legacy display |
 | Shared mobile/desktop watchlist | Live persistence verified | Up to 50 venue contracts, atomic backend writes, second-client refresh, no optimistic save success. The keyboard-accessible list has a bounded scroll area so larger lists do not push the chart down the page |
-| Interactive TradingView library chart | Implemented; preview acceptance pending | Candles/line, base-volume pane, crosshair, EMA 20/50, zoom/pan/fit and expansion; exact venue history and completed bars |
-| Chart / Categories browser | Implemented; preview acceptance pending | 15 overlapping curated themes, counts of available venue contracts, search and exchange filters, exact-contract chart selection |
+| Interactive TradingView library chart | Owner accepted on phone; automated checks pass | Candles/line, base-volume pane, crosshair, EMA 20/50, zoom/pan/fit and expansion; exact venue history and completed bars |
+| Chart / Categories browser | Owner accepted on phone; automated checks pass | 15 overlapping curated themes, counts of available venue contracts, search and exchange filters, exact-contract chart selection |
 | TradingView account indicators | External shortcut only | Optional validated saved-layout URL on this device; sign in on TradingView itself. Embedded account/Pine synchronization is unsupported and intentionally out of scope |
-| Remote iPhone PWA acceptance | Pending | Installed Safari app, reopen/resume, offline shell, reconnect, update flow and alerts |
+| General phone use | Owner accepted 23 October | Everything working properly on the phone |
+| Crypto stat-arb research | Implemented; new revision checks pending | Original 19 October protocol/source/tests and synthetic report, local bounded report import, all folds and untouched-holdout status. No market edge or trading authorization; see [integration guide](statarb-integration.md) |
+| Remote iPhone PWA acceptance | Specific installed/offline/alert checks pending | Installed Safari app, reopen/resume, offline shell, reconnect, update flow and alerts |
 
 ## Next work in order
 
 1. Obtain green CI at the latest commit, including production hydration and chart tests. Complete chart/categories, live pricing/funding, watchlist and engine v2 preview checks. Keep existing performance thresholds.
 2. Finish cloud release gates above, including an actual backup/restore exercise, before promotion.
 3. Add historical funding datasets and real mark/oracle price histories to Strategy Lab. Bar-close open-position equity and entry exposure caps are implemented; intrabar margin/liquidation accounting remains outside the current engine. Never substitute today's funding for historical payments.
-4. Add a separate statistical research engine for pair stationarity and hedge stability with out-of-sample validation.
+4. Crypto stat-arb source and offline report workflow are integrated into Correlation Lab. Next: obtain auditable historical funding/PIT data and account-tier fees, then run market walk-forward validation; do not interpret scanner correlation as cointegration. Do not open the final holdout while choosing data or adapting the integration.
 5. Add saved terminal layouts; the shared persistent watchlist is implemented.
 
 ## Live funding conventions
@@ -48,7 +50,7 @@ Primary references consulted 23 October 2026:
 
 ## Owner checks needed before release
 
-- Vercel access is restored and final-alias automated feature/mutation checks pass. Accept the rendered chart/categories and saved favorites on the physical iPhone app.
-- With both preview frontend and Northflank backend on the latest commit, save a venue-specific market on one device, reload, and confirm it appears on the other device. Confirm removal persists too.
+- General phone UI acceptance is complete as of 23 October. Vercel access and final-alias automated feature/mutation checks pass.
+- Cross-client save/reload/remove was verified in authenticated live QA; original favorites were retained.
 - On the installed iPhone app: reopen, background/resume, offline shell, reconnect, update and alert delivery.
 - Choose the destination for an encrypted offsite backup. Keep its password in the owner's password manager; do not send credentials in chat. Follow [backup/restore runbook](backup-restore.md) and verify the actual hosted archive separately from local fixture tests.

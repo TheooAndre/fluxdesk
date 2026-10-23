@@ -12,3 +12,8 @@ lighthouse-report
 playwright-report
 test-results
 *.log
+
+# Offline Python research is not part of the hosted Node runtime
+research
+.venv-statarb
+reports
