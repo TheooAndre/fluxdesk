@@ -117,6 +117,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/calendar', (route) =>
     route.fulfill({ json: { configured: false, events: [], message: 'Calendar API not configured' } }),
   );
+  await page.route('**/api/watchlist**', (route) => route.fulfill({ json: { assetIds: [] } }));
   await page.route('**/api/alerts', (route) => route.fulfill({ json: { alerts: [], events: [] } }));
 });
 test('market table sorts and asset selection are usable', async ({ page }) => {
@@ -388,4 +389,62 @@ test('funding errors remain unavailable and stale cached quotes are visibly labe
   await expect(panel.getByText('Reported funding · interval unknown')).toBeVisible();
   await expect(panel.getByText('Age unknown')).toBeVisible();
   await expect(panel.getByText('Longs pay shorts')).toHaveCount(0);
+});
+
+test('saved markets persist after reload, select the correct venue and recover from failed saves', async ({ page }) => {
+  let saved = ['hyperliquid:HYPE'];
+  let fail = false;
+  await page.route('**/api/watchlist**', (route) => {
+    const request = route.request();
+    if (request.method() !== 'GET' && fail) return route.fulfill({ status: 503, json: { error: 'Could not persist watchlist' } });
+    if (request.method() === 'POST') saved = [...new Set([...saved, request.postDataJSON().assetId as string])];
+    if (request.method() === 'DELETE') saved = saved.filter((id) => id !== new URL(request.url()).searchParams.get('asset'));
+    return route.fulfill({ json: { assetIds: saved } });
+  });
+  await page.goto('/');
+  const watchlist = page.getByRole('heading', { name: 'Saved markets' }).locator('..').locator('..');
+  await expect(watchlist.getByRole('button', { name: 'Inspect saved hyperliquid:HYPE' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save ETH on hyperliquid to watchlist' }).click();
+  await expect(watchlist.getByRole('button', { name: 'Inspect saved hyperliquid:ETH' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Remove ETH on hyperliquid from watchlist' })).toHaveAttribute('aria-pressed', 'true');
+  await watchlist.getByRole('button', { name: 'Inspect saved hyperliquid:ETH' }).click();
+  await expect(page.getByLabel('Selected asset')).toHaveValue('hyperliquid:ETH');
+  await watchlist.getByRole('button', { name: 'Remove hyperliquid:HYPE from watchlist' }).click();
+  await expect(watchlist.getByRole('button', { name: 'Inspect saved hyperliquid:HYPE' })).toHaveCount(0);
+  fail = true;
+  await page.getByRole('button', { name: 'Save BTC on binance to watchlist' }).click();
+  await expect(watchlist.getByText('Could not persist watchlist', { exact: false })).toBeVisible();
+  await expect(watchlist.getByRole('button', { name: 'Inspect saved binance:BTCUSDT' })).toHaveCount(0);
+  fail = false;
+  await page.getByRole('button', { name: 'Save BTC on binance to watchlist' }).click();
+  await expect(watchlist.getByRole('button', { name: 'Inspect saved binance:BTCUSDT' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('Strategy Lab v2 reports open-position drawdown and sends the exposure cap', async ({ page }) => {
+  const dataset = { id: 'b'.repeat(64), assetId: btc.id, venue: 'binance', interval: '1h', capturedAt: Date.now(), firstOpenTime: 1, lastCloseTime: Date.now() - 1, bars: 100 };
+  await page.route('**/api/research/datasets', (route) => route.fulfill({ json: { datasets: [dataset], rejected: 0 } }));
+  let submittedCap: number | undefined;
+  await page.route('**/api/research/backtests', (route) => {
+    const input = route.request().postDataJSON() as { config: { maxGrossLeverage: number } };
+    submittedCap = input.config.maxGrossLeverage;
+    return route.fulfill({ json: { schemaVersion: 1, engineVersion: 'single-position-next-bar-v2', dataset,
+      result: { hypothesis: 'Synthetic UI test, not market evidence.', config: { ...input.config, initialEquity: 10000 }, bars: 100, splitIndex: 75, trades: [],
+        equityCurve: [{ time: 1, value: 10000, position: 'flat', sample: 'development' }, { time: 2, value: 9800, position: 'long', sample: 'development' }],
+        summary: { count: 0, netPnl: 0, expectancyR: null, maxDrawdownPct: 0, maxOpenEquityDrawdownPct: 2, maxEntryGrossLeverage: 0, sizeCappedCount: 0, winRate: null },
+        development: { count: 0, netPnl: 0, expectancyR: null }, holdout: { count: 0, netPnl: 0, expectancyR: null }, warnings: ['Funding and intrabar risk are not modeled.'] } } });
+  });
+  await page.goto('/');
+  const mobileNav = page.getByRole('navigation', { name: 'Mobile navigation' });
+  await (await mobileNav.isVisible() ? mobileNav.getByRole('button', { name: 'Lab' }) : page.getByRole('button', { name: 'Strategy Lab', exact: true })).click();
+  await expect(page.getByLabel('Maximum gross exposure')).toHaveValue('1');
+  await page.getByLabel('Maximum gross exposure').fill('1.5');
+  await page.getByRole('button', { name: 'Run research backtest' }).click();
+  await expect(page.getByRole('heading', { name: 'Bar-close equity · open and closed trades' })).toBeVisible();
+  await expect(page.getByText('Bar-close max drawdown', { exact: true })).toBeVisible();
+  await expect(page.getByText('2.00%', { exact: true })).toBeVisible();
+  await expect(page.getByText('historical mark prices, intrabar excursions and funding are excluded.', { exact: false })).toBeVisible();
+  expect(submittedCap).toBe(1.5);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

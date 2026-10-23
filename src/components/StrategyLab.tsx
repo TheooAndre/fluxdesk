@@ -36,6 +36,7 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
   const { result, dataset } = report;
   const [maxTrades, setMaxTrades] = useState(25);
   const equity = useMemo(() => {
+    if (result.equityCurve) return result.equityCurve;
     let total = result.config.initialEquity;
     return [
       { value: total },
@@ -61,6 +62,8 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
         <Metric label="Net P&L, after costs" value={formatUsd(result.summary.netPnl)}/>
         <Metric label="Expectancy" value={result.summary.expectancyR === null ? 'N/A' : formatResult(result.summary.expectancyR) + ' R'}/>
         <Metric label="Win rate" value={result.summary.winRate === null ? 'N/A' : formatResult(result.summary.winRate * 100, 1) + '%'}/>
+        {result.summary.maxOpenEquityDrawdownPct !== undefined && <Metric label="Bar-close max drawdown" value={formatResult(result.summary.maxOpenEquityDrawdownPct) + '%'} note="Trade-price proxy; excludes intrabar risk"/>}
+        {result.summary.maxEntryGrossLeverage !== undefined && <Metric label="Peak entry exposure" value={formatResult(result.summary.maxEntryGrossLeverage) + '×'} note={`${result.summary.sizeCappedCount ?? 0} trade(s) limited by exposure cap`}/>}
         <Metric label="Closed-trade max drawdown" value={formatResult(result.summary.maxDrawdownPct) + '%'}/>
       </div>
       <div className="lab-samples">
@@ -78,10 +81,10 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
         </article>
       </div>
       <section className="lab-panel">
-        <h3>Closed-trade equity curve</h3>
-        {result.trades.length ? <LineChart data={equity} height={180}/> :
+        <h3>{result.equityCurve ? 'Bar-close equity · open and closed trades' : 'Closed-trade equity curve'}</h3>
+        {result.equityCurve || result.trades.length ? <LineChart data={equity} height={180}/> :
           <p className="lab-empty">No trades qualified. The equity curve has no realized observations.</p>}
-        <p className="lab-footnote">Equity changes when a trade is closed; interim adverse excursions and mark-to-market risk are not shown.</p>
+        <p className="lab-footnote">{result.equityCurve ? 'Includes unrealized P&L at completed trade-candle closes and paid entry fees. This is a trade-price proxy: historical mark prices, intrabar excursions and funding are excluded. Exit costs are deducted when trades close.' : 'Equity changes when a trade is closed; interim adverse excursions and mark-to-market risk are not shown.'}</p>
       </section>
       <section className="lab-panel">
         <h3>Trade log</h3>
@@ -89,7 +92,7 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
           <>
             <div className="lab-table-scroller">
               <table className="lab-table" aria-label="Backtest trade log">
-                <thead><tr><th scope="col">Entry</th><th scope="col">Side</th><th scope="col">Exit reason</th><th scope="col">Sample</th><th scope="col">Net P&L</th><th scope="col">R</th></tr></thead>
+                <thead><tr><th scope="col">Entry</th><th scope="col">Side</th><th scope="col">Exit reason</th><th scope="col">Sample</th><th scope="col">Net P&L</th><th scope="col">R</th><th scope="col">Entry exposure</th></tr></thead>
                 <tbody>
                   {result.trades.slice(0, maxTrades).map((trade, index) => (
                     <tr key={trade.entryTime + '-' + index}>
@@ -99,6 +102,7 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
                       <td>{trade.sample}</td>
                       <td>{formatUsd(trade.netPnl)}</td>
                       <td>{formatResult(trade.rMultiple)}</td>
+                      <td>{trade.grossLeverage === undefined ? 'N/A' : formatResult(trade.grossLeverage) + '×'}{trade.sizeCapped ? ' · capped' : ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -134,6 +138,7 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
   const [fee, setFee] = useState(4);
   const [slippage, setSlippage] = useState(5);
   const [holdoutPct, setHoldoutPct] = useState(25);
+  const [exposureCap, setExposureCap] = useState(1);
   const [report, setReport] = useState<StoredResearchReport | null>(null);
 
   const datasetQuery = useQuery({
@@ -164,6 +169,7 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
         riskFraction: riskPct / 100,
         costs: { feeBpsPerSide: fee, slippageBpsPerSide: slippage },
         holdoutFraction: holdoutPct / 100,
+        maxGrossLeverage: exposureCap,
       });
     },
     onSuccess: (value) => setReport(value),
@@ -264,6 +270,11 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
                   value={slippage} onChange={(e) => { setSlippage(Number(e.target.value)); setReport(null); }}/>
               </label>
             </div>
+            <label>Maximum entry exposure (× equity)
+              <input aria-label="Maximum gross exposure" type="number" min={0.1} max={3} step={0.1}
+                value={exposureCap} onChange={(e) => { setExposureCap(Number(e.target.value)); setReport(null); }}/>
+              <small className="lab-footnote">Entry notional cap, default 1×. This does not simulate exchange margin or liquidation.</small>
+            </label>
             <label>Chronological holdout (% of candles)
               <input aria-label="Holdout percent" type="number" min={10} max={50} step={5}
                 value={holdoutPct} onChange={(e) => { setHoldoutPct(Number(e.target.value)); setReport(null); }}/>

@@ -1,12 +1,10 @@
 import type { ResearchConfig, ResearchResult } from '../../src/engine/backtest.ts';
 import { backtest } from '../../src/engine/backtest.ts';
-import {
-  datasetReceipt, loadHistoricalDataset, type DatasetReceipt,
-} from './datasets.ts';
+import { datasetReceipt, loadHistoricalDataset, type DatasetReceipt } from './datasets.ts';
 
 export type StoredResearchReport = {
   schemaVersion: 1;
-  engineVersion: 'single-position-next-bar-v1';
+  engineVersion: 'single-position-next-bar-v1' | 'single-position-next-bar-v2';
   dataset: DatasetReceipt;
   result: ResearchResult;
 };
@@ -19,11 +17,10 @@ export async function runStoredBacktest(
   maxBars = 50_000,
 ): Promise<StoredResearchReport> {
   const dataset = await loadHistoricalDataset(datasetId, directory);
-  if (dataset.candles.length > maxBars)
-    throw Error('Research dataset exceeds bounded backtest candle limit');
+  if (dataset.candles.length > maxBars) throw Error('Research dataset exceeds bounded backtest candle limit');
   return {
     schemaVersion: 1,
-    engineVersion: 'single-position-next-bar-v1',
+    engineVersion: 'single-position-next-bar-v2',
     dataset: datasetReceipt(dataset),
     result: backtest(dataset.candles, config),
   };

@@ -7,7 +7,7 @@
 - The owner restarted the actual service, then verified the archive reloaded with the same dataset ID. Backup/restore remains a separate unverified gate.
 - Vercel project `fluxdesk` uses the feature branch for previews and a server-only authenticated gateway to the backend. Secret configuration is preview-scoped. Main remains v0.3; this draft is not promoted to production.
 - The owner reports the shorter address works. The exact final alias and logged-out protection at that alias have not been independently verified in this session. Vercel browser sign-in is deferred at the owner's request.
-- Prior CI #304 passed lint/types/tests/build/container persistence and all five browser projects, but failed Lighthouse LCP (2685ms, limit 2500ms). A later feature commit must pass its own full CI; no threshold is relaxed.
+- CI #306 passed every gate at `57de5b7`: functional tests, container persistence, all five browser projects, Lighthouse and dependency audit. This clears the earlier intermittent LCP failure without relaxing thresholds. Subsequent feature commits require their own full CI.
 - Northflank is the selected staging host. OCI and the portable VPS deployment files remain unused fallbacks; no fallback service is provisioned.
 - See [development list](development-roadmap.md) for the current feature order and acceptance evidence, and the [Northflank runbook](northflank-staging-v0.4.md) for setup details.
 
@@ -111,7 +111,9 @@ bash deploy/vps/backup.sh
 ```
 
 It creates a restrictive local archive of the Docker volume, **not a
-validated offsite backup**. Copy the archive to separately encrypted storage,
+validated offsite backup**. Prefer the encrypted application archive tool
+and isolated verification in [backup/restore runbook](backup-restore.md)
+for portable alerts, watchlists and research snapshots. Copy the archive to separately encrypted storage,
 add a retention policy and restore test with the API stopped. Keep the volume
 as the only live writer and do not run multiple app replicas.
 

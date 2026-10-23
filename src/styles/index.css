@@ -43,3 +43,13 @@
 
 .asset-chart-head { flex-wrap: wrap; gap: 12px; }
 .asset-chart-head > .pill { align-self: flex-start; }
+
+.market-identity { display: flex; align-items: center; gap: 9px; }
+.watchlist-star { display: inline-flex; padding: 6px; border: 0; background: transparent; color: #91a7bf; }
+.watchlist-star[aria-pressed="true"] { color: #ffc856; }
+.watchlist-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); gap: 10px; }
+.watchlist-market { display: flex; align-items: center; gap: 6px; border: 1px solid #29394e; background: #192638; border-radius: 9px; padding: 10px; min-width: 0; }
+.watchlist-inspect { flex: 1; display: flex; gap: 9px; align-items: center; text-align: left; color: #e8f1ff; background: transparent; border: 0; padding: 0; min-width: 0; }
+.watchlist-inspect b { font-size: 12px; }.watchlist-inspect small { display: block; font-size: 10px; color: #91a7bf; margin-top: 4px; overflow-wrap: anywhere; }
+.watchlist-empty { display: flex; gap: 9px; align-items: center; color: #91a7bf; font-size: 12px; margin-bottom: 0; }
+@media(max-width: 480px) { .watchlist-grid { grid-template-columns: 1fr; } }

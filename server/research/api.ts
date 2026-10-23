@@ -65,6 +65,7 @@ export function parseResearchBacktest(input: unknown): { datasetId: string; conf
       initialEquity: numeric(c.initialEquity, 'initial equity', 1, 10_000_000),
       riskFraction: numeric(c.riskFraction, 'risk fraction', 0.00001, 0.05),
       holdoutFraction: numeric(c.holdoutFraction, 'holdout fraction', 0.1, 0.5),
+      maxGrossLeverage: c.maxGrossLeverage === undefined ? 1 : numeric(c.maxGrossLeverage, 'gross exposure cap', 0.1, 3),
       costs: {
         feeBpsPerSide: numeric(costs.feeBpsPerSide, 'fee rate', 0, 100),
         slippageBpsPerSide: numeric(costs.slippageBpsPerSide, 'slippage', 0, 100),

@@ -39,7 +39,9 @@ it('links deterministic backtest output to the exact validated dataset', async (
   const b = await runStoredBacktest(receipt.id, config, directory);
   expect(a).toEqual(b);
   expect(a.dataset).toEqual(receipt);
-  expect(a.engineVersion).toBe('single-position-next-bar-v1');
+  expect(a.engineVersion).toBe('single-position-next-bar-v2');
+  expect(a.result.config.maxGrossLeverage).toBe(1);
+  expect(a.result.equityCurve).toHaveLength(91);
   expect(a.result.bars).toBe(90);
   expect(a.result.summary.count).toBe(0);
   expect(a.result.summary.expectancyR).toBeNull();

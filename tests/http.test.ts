@@ -159,3 +159,13 @@ it('serves read-only perpetual data without caching and rejects mutation methods
   expect(await response.json()).toMatchObject({ assetId: 'binance:BTCUSDT', status: 'unavailable', fundingRate: null, intervalHours: null });
   expect((await fetch(origin + '/api/perpetual?asset=binance:BTCUSDT', { method: 'POST' })).status).toBe(405);
 });
+
+it('exposes a no-store watchlist and blocks unsafe mutations', async () => {
+  const response = await fetch(origin + '/api/watchlist');
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(Array.isArray((await response.json()).assetIds)).toBe(true);
+  expect((await fetch(origin + '/api/watchlist', { method: 'PUT' })).status).toBe(405);
+  expect((await fetch(origin + '/api/watchlist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: 'binance:BTCUSDT:extra' }) })).status).toBe(400);
+  expect((await fetch(origin + '/api/watchlist?asset=binance:BTCUSDT', { method: 'DELETE', headers: { origin: 'https://other.example' } })).status).toBe(400);
+});

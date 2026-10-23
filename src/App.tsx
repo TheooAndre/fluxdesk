@@ -1,8 +1,9 @@
 import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { registerSW } from 'virtual:pwa-register';
-import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star } from 'lucide-react';
 import { api } from './lib/api.ts';
+import { useWatchlist } from './lib/use-watchlist.ts';
 import { useUi, type Tab } from './lib/store.ts';
 import { money, pct, price, clock } from './lib/format.ts';
 import { priceBasisLabel, quoteAge, relativeToBenchmark } from './lib/market-quality.ts';
@@ -13,6 +14,7 @@ import FeedHealth from './components/FeedHealth.tsx';
 import BenchmarkSelector from './components/BenchmarkSelector.tsx';
 import { Card, Pill, Loading, ErrorText, BadgeVenue } from './components/UiPrimitives.tsx';
 // Loaded only when research is opened, preserving overview startup performance.
+const Watchlist = lazy(() => import('./components/Watchlist.tsx'));
 const PerpetualDetails = lazy(() => import('./components/PerpetualDetails.tsx'));
 const StrategyLab = lazy(() => import('./components/StrategyLab.tsx'));
 const SignalsTab = lazy(() => import('./components/SignalsTab.tsx'));
@@ -52,7 +54,13 @@ function MarketTable({
   selectedId,
   benchmark,
   isUsd,
+  watchlistIds,
+  watchlistDisabled,
+  onToggleWatchlist,
 }: {
+  watchlistIds: string[];
+  watchlistDisabled: boolean;
+  onToggleWatchlist: (id: string) => void;
   assets: Market[];
   selectedId: string;
   benchmark: Market | null;
@@ -149,6 +157,11 @@ function MarketTable({
                   onClick={() => ui.setAsset(x.id)}
                 >
                   <td>
+                    <div className="market-identity">
+                    <button className="watchlist-star" aria-label={`${watchlistIds.includes(x.id) ? 'Remove' : 'Save'} ${x.base} on ${x.venue} ${watchlistIds.includes(x.id) ? 'from' : 'to'} watchlist`} aria-pressed={watchlistIds.includes(x.id)} disabled={watchlistDisabled}
+                      onClick={(event) => { event.stopPropagation(); onToggleWatchlist(x.id); }}>
+                      <Star size={16} aria-hidden="true" fill={watchlistIds.includes(x.id) ? 'currentColor' : 'none'} />
+                    </button>
                     <button
                       className="asset-name asset-button"
                       aria-label={`Inspect ${x.base} on ${x.venue}`}
@@ -163,6 +176,7 @@ function MarketTable({
                         <small>{x.venue === 'binance' ? 'Binance perp' : 'Hyperliquid perp'}</small>
                       </span>
                     </button>
+                    </div>
                   </td>
                   <td className="number font-medium">{price(x.price)}<small className="price-basis">{priceBasisLabel(x)}</small></td>
                   <td className={'number ' + (x.return24h >= 0 ? 'positive' : 'negative')}>
@@ -442,6 +456,7 @@ interface BeforeInstallPromptEvent extends Event {
 }
 function App() {
   const { ui, mk, asset, selected } = useDashboard();
+  const watchlist = useWatchlist(ui.tab === 'overview');
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5_000);
@@ -591,6 +606,12 @@ function App() {
           ) : null}
           {ui.tab === 'overview' && (
             <div className="content-stack">
+              <Suspense fallback={<Loading label="Loading saved markets…" />}>
+                <Watchlist assets={mk.data?.assets ?? []} ids={watchlist.assetIds} now={now}
+                  loading={watchlist.query.isPending} error={watchlist.change.error ?? watchlist.query.error}
+                  disabled={offline || watchlist.change.isPending} onSelect={ui.setAsset}
+                  onRemove={(id) => watchlist.change.mutate({ id, add: false })} />
+              </Suspense>
               <Snapshot assets={mk.data?.assets ?? []} benchmark={benchmark} isUsd={ui.benchmark === 'USD'} />
               <div className="overview-grid">
                 <AssetChart item={selected} now={now} candles={asset.isError ? undefined : asset.data?.candles} />
@@ -605,6 +626,9 @@ function App() {
                 benchmark={benchmark}
                 isUsd={ui.benchmark === 'USD'}
                 selectedId={ui.assetId}
+                watchlistIds={watchlist.assetIds}
+                watchlistDisabled={offline || watchlist.query.isPending || watchlist.query.isError || watchlist.change.isPending}
+                onToggleWatchlist={(id) => watchlist.change.mutate({ id, add: !watchlist.assetIds.includes(id) })}
               />
             </div>
           )}

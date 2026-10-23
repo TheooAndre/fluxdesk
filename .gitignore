@@ -13,3 +13,7 @@ lighthouse-report/
 
 # Local TLS certificates and private keys for iPhone PWA testing
 .cert/
+
+# Encrypted operational backups remain outside git
+*.fdbackup
+deploy/vps/backups/

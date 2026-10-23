@@ -10,6 +10,7 @@ import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
 import type { AlertKind, AlertRule, Market } from '../src/types.ts';
 import { snapshot, addAlert, deleteAlert, subscribe } from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
+import { savedWatchlist, changeWatchlist } from './watchlist.ts';
 import { calendar } from './calendar.ts';
 import { vapidKey } from './notifications.ts';
 import { ResearchRequestError, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
@@ -75,7 +76,9 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     path = url.pathname;
     if (path.startsWith('/api/')) {
       const allowed =
-        path === '/api/research/datasets'
+        path === '/api/watchlist'
+          ? ['GET', 'POST', 'DELETE']
+          : path === '/api/research/datasets'
           ? ['GET', 'POST']
           : path === '/api/research/backtests'
             ? ['POST']
@@ -92,6 +95,12 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       }
     }
     checkOrigin(req, access.originHost, access.gatewayProtected);
+    if (path === '/api/watchlist') {
+      if (req.method === 'GET') return json(res, await savedWatchlist());
+      const id = req.method === 'POST' ? (await body(req)).assetId : url.searchParams.get('asset');
+      if (typeof id !== 'string') throw Error('Invalid asset identifier');
+      return json(res, await changeWatchlist(validatedId(id), req.method === 'POST'));
+    }
     if (path === '/api/research/datasets' && req.method === 'GET')
       return json(res, await listResearchDatasets());
     if (path === '/api/research/datasets' && req.method === 'POST')

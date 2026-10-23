@@ -61,6 +61,22 @@ export const api = {
     postResearch<{ dataset: DatasetReceipt }>('/api/research/datasets', payload),
   researchBacktest: (datasetId: string, config: ResearchConfig) =>
     postResearch<StoredResearchReport>('/api/research/backtests', { datasetId, config }),
+  watchlist: (signal?: AbortSignal) => get<{ assetIds: string[] }>('/api/watchlist', signal),
+  changeWatchlist: async (id: string, add: boolean): Promise<{ assetIds: string[] }> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const response = await fetch(add ? '/api/watchlist' : '/api/watchlist?asset=' + encodeURIComponent(id), {
+        method: add ? 'POST' : 'DELETE', signal: controller.signal, cache: 'no-store',
+        ...(add ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: id }) } : {}),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ error: 'Watchlist update failed' })) as { error?: string };
+        throw Error(data.error ?? 'Watchlist update failed');
+      }
+      return await response.json() as { assetIds: string[] };
+    } finally { clearTimeout(timer); }
+  },
   markets: (signal?: AbortSignal) =>
     get<MarketSnapshot & { benchmarks: Record<string, Market | null> }>('/api/markets', signal),
   perpetual: (id: string, signal?: AbortSignal) =>

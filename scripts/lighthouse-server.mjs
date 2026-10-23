@@ -34,6 +34,7 @@ const server = createServer(async (req, res) => {
     res.setHeader('content-type', 'application/json; charset=utf-8');
     const body = pathname === '/api/markets' ? emptyMarkets
       : pathname === '/api/asset' ? emptyAsset
+      : pathname === '/api/watchlist' ? { assetIds: [] }
       : pathname === '/api/alerts' ? { alerts: [], events: [] }
       : pathname === '/api/calendar' ? { configured: false, events: [], message: 'Not configured' }
       : pathname === '/api/signals' ? { asset: emptyAsset.id, checkedAt: Date.now(), inspected: [], failed: [], signals: [] }

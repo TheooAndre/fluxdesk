@@ -12,18 +12,20 @@ Updated 23 October 2026. Research only; no order execution or claimed predictive
 | Faster exchange snapshots | Owner accepted | Foreground 10s polling, coalescing, venue backoff; explicit original ages retained |
 | Shorter address | Owner accepted | Owner reports working; final exact alias and its protection have not been independently verified |
 | Price basis, timestamps, live funding and price premium | Implemented; preview acceptance pending | Last trade vs mark labels, exchange vs receipt ages, same-basis comparisons, Binance interval metadata and hourly Hyperliquid funding |
-| Full CI at latest feature commit | Pending | Prior CI #304 passed functional/container/browser gates but failed LCP: 2685ms vs 2500ms; thresholds stay unchanged |
+| Full CI | Baseline green; latest additions pending | CI #306 passed every gate at `57de5b7`, including all five browsers, 256 MiB container restart/persistence, Lighthouse and dependency audit; next commit requires its own CI |
 | All-deployment authentication / mutation checks at final alias | Pending | Check logged-out access and authenticated mutations on final address |
-| Backup and restore | Pending | Durable volume restart is verified; offsite backup and isolated restore still need verification |
+| Backup and restore | Tool implemented; hosted/offsite acceptance pending | Encrypted CLI backup/verify/restore; local dataset fingerprint round-trip passes. An actual Northflank backup and offsite copy/restore remain unverified |
+| Open-position equity and exposure cap | Implemented; preview acceptance pending | Engine v2 bar-close trade-price proxy, separate realized drawdown, default 1× / max 3× entry notional, versioned legacy display |
+| Shared mobile/desktop watchlist | Implemented; hosted acceptance pending | Up to 50 venue-specific contracts, durable atomic backend writes, foreground cross-device refresh, no optimistic success on write failure |
 | Remote iPhone PWA acceptance | Pending | Installed Safari app, reopen/resume, offline shell, reconnect, update flow and alerts |
 
 ## Next work in order
 
-1. Complete the live pricing/funding preview check and page-load performance fix; obtain green CI.
+1. Complete the live pricing/funding, watchlist and engine v2 preview checks; obtain green CI at the latest commit. Prior intermittent LCP failure is resolved in baseline CI #306, without threshold changes.
 2. Finish cloud release gates above, including an actual backup/restore exercise, before promotion.
-3. Improve historical Strategy Lab accounting: historical funding datasets, marked-to-market drawdown and explicit leverage/capital limits. Never use today's funding as a substitute for historical payments.
+3. Add historical funding datasets and real mark/oracle price histories to Strategy Lab. Bar-close open-position equity and entry exposure caps are implemented; intrabar margin/liquidation accounting remains outside the current engine. Never substitute today's funding for historical payments.
 4. Add a separate statistical research engine for pair stationarity and hedge stability with out-of-sample validation.
-5. Add persistent mobile watchlists and saved terminal layouts.
+5. Add saved terminal layouts; the shared persistent watchlist is implemented.
 
 ## Live funding conventions
 
@@ -40,3 +42,10 @@ Primary references consulted 23 October 2026:
 - https://www.binance.com/en/support/faq/detail/360033525031
 - https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals
 - https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding
+
+## Owner checks needed before release
+
+- Confirm the final short URL and logged-out protection on that alias.
+- With both preview frontend and Northflank backend on the latest commit, save a venue-specific market on one device, reload, and confirm it appears on the other device. Confirm removal persists too.
+- On the installed iPhone app: reopen, background/resume, offline shell, reconnect, update and alert delivery.
+- Choose the destination for an encrypted offsite backup. Keep its password in the owner's password manager; do not send credentials in chat. Follow [backup/restore runbook](backup-restore.md) and verify the actual hosted archive separately from local fixture tests.

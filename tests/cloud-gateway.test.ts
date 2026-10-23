@@ -44,6 +44,7 @@ describe('gateway credential and public binding security', () => {
     const base = 'http://127.0.0.1:' + (server.address() as AddressInfo).port;
     expect((await fetch(base + '/api/health')).status).toBe(401);
     expect((await fetch(base + '/api/perpetual?asset=binance:BTCUSDT')).status).toBe(401);
+    expect((await fetch(base + '/api/watchlist')).status).toBe(401);
     expect((await fetch(base + '/')).status).toBe(401);
     const trustedHeaders = {
       'x-fluxdesk-gateway-token': SECRET,

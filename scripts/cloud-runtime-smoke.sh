@@ -51,6 +51,23 @@ status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' \
   "http://127.0.0.1:$PORT/api/health")"
 [[ "$status" == "200" ]] || { echo "Authorized health expected 200, got $status" >&2; exit 1; }
 
+# Exercise a real persisted watchlist mutation through the authenticated API.
+status="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+  -H "x-fluxdesk-gateway-token: $SECRET" \
+  -H 'x-fluxdesk-public-host: fluxdesk-ci.example' \
+  -H 'Origin: https://fluxdesk-ci.example' \
+  -H 'Content-Type: application/json' --data '{"assetId":"binance:BTCUSDT"}' \
+  "http://127.0.0.1:$PORT/api/watchlist")"
+[[ "$status" == "200" ]] || { echo "Watchlist save expected 200, got $status" >&2; exit 1; }
+
+# Exercise encrypted backup and isolated restore in the actual 256MiB image.
+# This random CI-only password is never logged and never leaves /tmp.
+docker exec "$NAME" node -e "require('node:fs').writeFileSync('/tmp/backup-password', require('node:crypto').randomBytes(32).toString('hex'), { mode: 0o600 })"
+docker exec "$NAME" node --import tsx scripts/archive-cli.ts backup /data /tmp/ci.fdbackup --password-file /tmp/backup-password
+docker exec "$NAME" node --import tsx scripts/archive-cli.ts verify /tmp/ci.fdbackup --password-file /tmp/backup-password
+docker exec "$NAME" node --import tsx scripts/archive-cli.ts restore /tmp/ci.fdbackup /tmp/isolated-restore --password-file /tmp/backup-password
+docker exec "$NAME" node -e "if (JSON.parse(require('node:fs').readFileSync('/tmp/isolated-restore/watchlist.json', 'utf8')).assetIds[0] !== 'binance:BTCUSDT') process.exit(1)"
+
 # Write as the nonroot application user, rather than as the host/root.
 docker exec "$NAME" node -e "require('node:fs').writeFileSync('/data/.ci-persistence-proof', 'preserved', { mode: 0o600 })"
 
@@ -63,4 +80,9 @@ docker exec "$NAME" node -e "
   if (fs.readFileSync('/data/.ci-persistence-proof', 'utf8') !== 'preserved')
     process.exit(1);
 "
-echo "PASS: gateway authentication and mounted archive survived a container restart at 0.1 vCPU / 256MiB."
+curl -fsS --max-time 10 \
+  -H "x-fluxdesk-gateway-token: $SECRET" \
+  -H 'x-fluxdesk-public-host: fluxdesk-ci.example' \
+  "http://127.0.0.1:$PORT/api/watchlist" | \
+  node -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{if(JSON.parse(s).assetIds[0]!=='binance:BTCUSDT')process.exit(1)})"
+echo "PASS: encrypted backup/restore, gateway authentication, watchlist and mounted archive survived a container restart at 0.1 vCPU / 256MiB."
