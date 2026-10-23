@@ -7,7 +7,7 @@ import { marketSnapshot, candles, assetIdentity, enrichedOpenInterest, perpetual
 import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
-import type { AlertKind, AlertRule, Market } from '../src/types.ts';
+import type { AlertKind, AlertCondition, AlertRule, Market } from '../src/types.ts';
 import { snapshot, addAlert, deleteAlert, subscribe, forgetSubscription } from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
 import { savedWatchlist, changeWatchlist } from './watchlist.ts';
@@ -204,23 +204,26 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === '/api/alerts' && req.method === 'POST') {
       const o = await body(req),
         kind = o.kind as AlertKind;
-      if (!['price', 'volume', 'liquidation'].includes(kind)) throw Error('Invalid alert type');
+      if (!['price', 'price_range', 'volume', 'liquidation'].includes(kind)) throw Error('Invalid alert type');
       const assetId = validatedId(String(o.assetId ?? ''));
       if (kind === 'liquidation' && !assetId.startsWith('binance:'))
         throw Error('Public market-wide Hyperliquid liquidations are not available from this connector');
-      const threshold = positiveNumber(o.threshold);
-      if (kind === 'volume' && threshold > 100_000) throw Error('Volume threshold too high');
-      if (o.direction !== undefined && o.direction !== 'above' && o.direction !== 'below')
-        throw Error('Invalid alert direction');
-      const direction = o.direction === 'below' ? 'below' : 'above';
+      let condition: AlertCondition;
+      if (kind === 'price_range') {
+        if (typeof o.lowerPrice !== 'number' || typeof o.upperPrice !== 'number')
+          throw Error('Invalid price range: both bounds must be numbers');
+        const lowerPrice = positiveNumber(o.lowerPrice), upperPrice = positiveNumber(o.upperPrice);
+        if (lowerPrice >= upperPrice) throw Error('Invalid price range: lower price must be less than upper price');
+        condition = { kind, lowerPrice, upperPrice };
+      } else {
+        const threshold = positiveNumber(o.threshold);
+        if (kind === 'volume' && threshold > 100_000) throw Error('Volume threshold too high');
+        if (o.direction !== undefined && o.direction !== 'above' && o.direction !== 'below')
+          throw Error('Invalid alert direction');
+        condition = { kind, threshold, direction: o.direction === 'below' ? 'below' : 'above' };
+      }
       const a: AlertRule = {
-        id: randomUUID(),
-        assetId,
-        kind,
-        threshold,
-        direction,
-        enabled: true,
-        createdAt: Date.now(),
+        id: randomUUID(), assetId, ...condition, enabled: true, createdAt: Date.now(),
       };
       await addAlert(a);
       return json(res, { alert: a }, 201);

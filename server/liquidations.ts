@@ -19,6 +19,7 @@ export function startLiquidations(){
    events.push(record);const cut=Date.now()-3600_000;while(events.length&&((events[0]?.time??0)<cut||events.length>20_000))events.shift();
    // Threshold interpreted as observed notional over rolling 5 min; not total venue activity.
    for(const rule of snapshot().alerts.filter(x=>x.enabled&&x.kind==='liquidation'&&x.assetId===record.assetId)){
+    if (rule.kind !== 'liquidation') continue;
     const amount=liqSummary(rule.assetId).observedUsd;if(amount!==null&&amount>=rule.threshold){void triggered(rule,`${rule.assetId}: ≥ $${amount.toLocaleString('en-US',{maximumFractionDigits:0})} observed liquidation snapshots in 5m`).then(e=>{if(e)void deliver(e)});}
    }
   } catch {

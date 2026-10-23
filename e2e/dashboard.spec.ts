@@ -600,3 +600,32 @@ test('push notification toggle rolls back a new device subscription when saving 
   await expect(page.getByRole('button', { name: 'Enable iPhone push notifications', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => localStorage.getItem('test.push.active'))).toBeNull();
 });
+
+test('price range alert validates bounds, saves, reloads and removes', async ({ page }) => {
+  let rules: Record<string, unknown>[] = [];
+  await page.route('**/api/alerts', async (route) => {
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      expect(input).toEqual({ assetId: 'binance:BTCUSDT', kind: 'price_range', lowerPrice: 90000, upperPrice: 110000 });
+      const alert = { ...input, id: '00000000-0000-4000-8000-000000000001', createdAt: Date.now(), enabled: true };
+      rules = [alert]; await route.fulfill({ status: 201, json: { alert } });
+    } else await route.fulfill({ json: { alerts: rules, events: [] } });
+  });
+  await page.route('**/api/alerts/*', async (route) => { rules = []; await route.fulfill({ json: { ok: true } }); });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Alert type', exact: true }).selectOption('price_range');
+  await page.getByLabel('Lower price (USD)', { exact: true }).fill('120000');
+  await page.getByLabel('Upper price (USD)', { exact: true }).fill('110000');
+  await expect(page.getByRole('button', { name: 'Create alert', exact: true })).toBeDisabled();
+  await expect(page.getByText('Lower price must be less than upper price.', { exact: true })).toBeVisible();
+  await page.getByLabel('Lower price (USD)', { exact: true }).fill('90000');
+  await page.getByRole('button', { name: 'Create alert', exact: true }).click();
+  await expect(page.getByText('BTCUSDT · PRICE RANGE', { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.getByText('BTCUSDT · PRICE RANGE', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Delete alert', exact: true }).click();
+  await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toBeVisible();
+});

@@ -1,6 +1,7 @@
 import type {
   AlertEvent,
   AlertRule,
+  AlertInput,
   Candle,
   EconomicEvent,
   EntrySignal,
@@ -143,7 +144,7 @@ export const api = {
       events: LiquidationEvent[];
       coverage: string;
     }>(`/api/liquidations?asset=${encodeURIComponent(asset)}&minutes=5`),
-  createAlert: async (data: { assetId: string; kind: string; threshold: number; direction?: string }) => {
+  createAlert: async (data: AlertInput) => {
     const res = await fetch('/api/alerts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
