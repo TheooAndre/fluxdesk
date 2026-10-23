@@ -6,6 +6,7 @@ jobs:
   quality:
     # Playwright 1.56.1 has browser binaries for Ubuntu 24.04, not 26.04.
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -54,8 +55,31 @@ jobs:
           for(const file of files){const gz=zlib.gzipSync(fs.readFileSync(path.join('dist/assets',file))).length;if(gz>200_000){console.error(`${file} gz=${gz} over budget`);process.exitCode=1}}
           JS
       # Deployment requires an authenticated HTTPS production domain and user secrets.
+      - name: Install Playwright system dependencies
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          pnpm exec playwright install-deps chromium firefox webkit 2>&1 | tee /tmp/fluxdesk-browser-deps.log
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 5
+        env:
+          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: '30000'
+        run: |
+          set -o pipefail
+          for attempt in 1 2; do
+            if timeout --kill-after=10s 120s pnpm exec playwright install chromium firefox webkit 2>&1 | tee -a /tmp/fluxdesk-browser-download.log; then
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Preserve browser setup logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-setup-logs
+          path: /tmp/fluxdesk-browser-*.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: E2E browser and mobile flows (mocked market APIs)
         run: pnpm e2e
       - name: Production HTML hydration and chart startup
