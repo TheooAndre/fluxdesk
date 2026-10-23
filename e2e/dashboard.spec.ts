@@ -115,6 +115,55 @@ test('market table sorts and asset selection are usable', async ({ page }) => {
   await page.getByLabel('Selected asset').selectOption(eth.id);
   await expect(page.getByText('ETH', { exact: true }).first()).toBeVisible();
 });
+
+test('market snapshots poll every 10 seconds and refresh immediately after resume and reconnect', async ({ page }) => {
+  await page.clock.install();
+  let requests = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/markets') requests++;
+  });
+  await page.goto('/');
+  const refresh = page.getByRole('button', { name: 'Refresh markets' });
+  await expect(refresh).toBeEnabled();
+  const initial = requests;
+  await page.clock.fastForward(10_000);
+  await expect.poll(() => requests).toBeGreaterThan(initial);
+  await expect(refresh).toBeEnabled();
+
+  // A suspended/background app should not poll, then must refresh on return
+  // instead of waiting through another full polling interval.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+  });
+  const beforeHidden = requests;
+  await page.clock.fastForward(60_000);
+  expect(requests).toBe(beforeHidden);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+  });
+  await expect.poll(() => requests).toBeGreaterThan(beforeHidden);
+  await expect(refresh).toBeEnabled();
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    window.dispatchEvent(new Event('offline'));
+  });
+  await expect(refresh).toBeDisabled();
+  const beforeReconnect = requests;
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    window.dispatchEvent(new Event('online'));
+  });
+  await expect.poll(() => requests).toBeGreaterThan(beforeReconnect);
+  await expect(refresh).toBeEnabled();
+
+  const beforeManual = requests;
+  await refresh.click();
+  await expect.poll(() => requests).toBeGreaterThan(beforeManual);
+  await expect(refresh).toBeEnabled();
+});
 test('four entry model descriptions and macro empty state', async ({ page }) => {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Mobile navigation' });

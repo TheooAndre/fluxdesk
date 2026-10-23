@@ -4,7 +4,9 @@ import { RequestCache } from './cache.ts';
 
 const BINANCE = 'https://fapi.binance.com';
 const HL = 'https://api.hyperliquid.xyz/info';
-export const TTL = { markets: 45_000, history: 30_000, info: 24 * 3600_000, stale: 15 * 60_000 };
+// Quote reuse is shorter than the browser polling interval to avoid an extra
+// polling cycle on the old snapshot. Keep OI caching/freshness thresholds separate.
+export const TTL = { marketRefresh: 5_000, markets: 45_000, history: 30_000, info: 24 * 3600_000, stale: 15 * 60_000 };
 const cache = new RequestCache();
 export class UpstreamError extends Error {
   readonly status: number;
@@ -175,7 +177,7 @@ async function refreshVenue(venue: Venue) {
       state.assets = await (venue === 'binance' ? binanceMarkets() : hyperMarkets());
       state.lastSuccessAt = Date.now();
       state.error = undefined;
-      state.retryAt = Date.now() + TTL.markets;
+      state.retryAt = Date.now() + TTL.marketRefresh;
     } catch (error) {
       state.error = error instanceof Error ? error.message : 'Market feed failed';
       // Respect bans and throttles. A previously obtained snapshot retains its original age.

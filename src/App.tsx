@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { registerSW } from 'virtual:pwa-register';
-import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw } from 'lucide-react';
 import { api } from './lib/api.ts';
 import { useUi, type Tab } from './lib/store.ts';
 import { money, pct, price, clock } from './lib/format.ts';
@@ -31,7 +31,11 @@ function useDashboard() {
   const mk = useQuery({
     queryKey: ['markets'],
     queryFn: ({ signal }) => api.markets(signal),
-    refetchInterval: 45_000,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+    staleTime: 5_000,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
     retry: 1,
   });
   const asset = useQuery({
@@ -441,7 +445,7 @@ function App() {
   const { ui, mk, asset, selected } = useDashboard();
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    const timer = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(timer);
   }, []);
   const degraded =
@@ -515,7 +519,7 @@ function App() {
           <div className="top-actions">
             <span className="top-status">
               <span className={'live-dot ' + (degraded ? 'error-dot' : '')} />
-              {degraded ? 'Feeds need attention' : 'Feeds · ~45s'}
+              {degraded ? 'Feeds need attention' : 'Feeds · ~10s'}
             </span>
             <InstallControls />
           </div>
@@ -563,6 +567,17 @@ function App() {
               require connectivity to the dashboard server.
             </div>
           )}
+          <div className="row-between mb-2">
+            <span className="tiny-label">EXCHANGE FEEDS</span>
+            <button
+              className="subtle"
+              aria-label="Refresh markets"
+              disabled={mk.isFetching || offline}
+              onClick={() => void mk.refetch()}
+            >
+              <RefreshCw size={14} aria-hidden="true" /> {mk.isFetching ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
           {mk.isError && <ErrorText error={mk.error} />} {mk.isLoading && <Loading />}
           {mk.data && (
             <FeedHealth feeds={mk.data.feeds ?? []} now={now} disconnected={offline || mk.isError} />

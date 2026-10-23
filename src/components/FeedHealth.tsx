@@ -36,8 +36,8 @@ export default function FeedHealth({
                   : stale
                     ? 'Waiting for a fresh venue snapshot.'
                     : feed.venue === 'binance'
-                      ? 'USDT perps · refresh approximately every 45 seconds'
-                      : 'Default perp DEX · mark prices · USD-equivalent notionals')}
+                      ? 'USDT perps · refresh target ~10 seconds while app is active'
+                      : 'Default perp DEX · refresh target ~10 seconds while app is active · USD-equivalent notionals')}
             </p>
           </div>
         );
