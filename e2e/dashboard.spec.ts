@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import statarbDemo from '../src/research/statarb-demo.json' with { type: 'json' };
 const market = (id: string, base: string, venue: 'binance' | 'hyperliquid', r: number, vol: number) => ({
   id,
@@ -536,4 +536,67 @@ test('terminal layouts save, reload, apply and delete on this device', async ({ 
   await page.getByRole('button', { name: 'Delete layout AI research', exact: true }).click();
   await page.reload();
   await expect(page.getByText('Saved terminal layouts · 0', { exact: true })).toBeVisible();
+});
+
+
+async function mockDevicePush(page: Page) {
+  await page.addInitScript(() => {
+    const endpoint = 'https://push.example/this-device';
+    const subscription = {
+      endpoint,
+      keys: { p256dh: 'test-key', auth: 'test-auth' },
+      unsubscribe: async () => { localStorage.removeItem('test.push.active'); return true; },
+      toJSON: () => ({ endpoint, keys: { p256dh: 'test-key', auth: 'test-auth' } }),
+    };
+    const registration = { pushManager: {
+      getSubscription: async () => localStorage.getItem('test.push.active') ? subscription : null,
+      subscribe: async () => { localStorage.setItem('test.push.active', 'yes'); return subscription; },
+    } };
+    Object.defineProperty(navigator.serviceWorker, 'getRegistration', { configurable: true, value: async () => registration });
+    if (!('PushManager' in window)) Object.defineProperty(window, 'PushManager', { configurable: true, value: class {} });
+    Object.defineProperty(window, 'Notification', { configurable: true, value: { requestPermission: async () => 'granted' } });
+  });
+  await page.route('**/api/push/key', (route) => route.fulfill({ json: { key: 'BAAA' } }));
+  await page.route('**/api/push/subscribe', (route) => route.fulfill({ json: { ok: true } }));
+}
+
+test('push notification toggle follows subscription across enable, reload and disable', async ({ page }) => {
+  await mockDevicePush(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable iPhone push notifications', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Disable iPhone push notifications', exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Disable iPhone push notifications', exact: true })).toBeVisible();
+  const removed = page.waitForRequest((request) => request.url().endsWith('/api/push/subscribe') && request.method() === 'DELETE');
+  await page.getByRole('button', { name: 'Disable iPhone push notifications', exact: true }).click();
+  expect((await removed).postDataJSON()).toEqual({ endpoint: 'https://push.example/this-device' });
+  await expect(page.getByRole('button', { name: 'Enable iPhone push notifications', exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Enable iPhone push notifications', exact: true })).toBeVisible();
+});
+
+test('push notification toggle preserves disable action after server failure', async ({ page }) => {
+  await mockDevicePush(page);
+  await page.addInitScript(() => localStorage.setItem('test.push.active', 'yes'));
+  await page.route('**/api/push/subscribe', (route) => route.fulfill({ status: 503, json: { error: 'Disk unavailable' } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('button', { name: 'Disable iPhone push notifications', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Could not disable push notifications' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Disable iPhone push notifications', exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem('test.push.active'))).toBe('yes');
+});
+
+test('push notification toggle rolls back a new device subscription when saving fails', async ({ page }) => {
+  await mockDevicePush(page);
+  await page.route('**/api/push/subscribe', (route) => route.fulfill({ status: 503, json: { error: 'Disk unavailable' } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable iPhone push notifications', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Push subscription failed' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enable iPhone push notifications', exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem('test.push.active'))).toBeNull();
 });

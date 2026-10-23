@@ -156,6 +156,14 @@ export const api = {
     const res = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
     if (!res.ok) throw Error('Could not remove alert');
   },
+  unsubscribe: async (endpoint: string) => {
+    const res = await fetch('/api/push/subscribe', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    });
+    if (!res.ok) throw Error('Could not disable push notifications. Please retry.');
+  },
   vapidKey: () => get<{ key: string }>('/api/push/key'),
   subscribe: async (data: PushSubscription) => {
     const res = await fetch('/api/push/subscribe', {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePushNotifications } from '../lib/use-push-notifications.ts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellRing, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
@@ -25,26 +26,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
     mutationFn: api.deleteAlert,
     onSuccess: () => void client.invalidateQueries({ queryKey: ['alerts'] }),
   });
-  async function enablePush() {
-    try {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window))
-        throw Error('Push unsupported in this browser');
-      const p = await Notification.requestPermission();
-      if (p !== 'granted') throw Error('Notification permission was not granted');
-      const { key } = await api.vapidKey();
-      if (!key) throw Error('Configure VAPID keys on the server first');
-      const registration = await navigator.serviceWorker.ready;
-      const bytes = Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-      const sub = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: bytes as BufferSource,
-      });
-      await api.subscribe(sub);
-      setMessage('Push notifications enabled for this device.');
-    } catch (e) {
-      setMessage((e as Error).message);
-    }
-  }
+  const push = usePushNotifications();
   return (
     <div className="content-stack">
       <div className="section-intro">
@@ -125,9 +107,17 @@ function AlertsTab({ item }: { item: Market | undefined }) {
           >
             <BellRing size={16} /> Create alert
           </button>
-          <button className="secondary full mt-3" onClick={() => void enablePush()}>
-            <Bell size={16} /> Enable iPhone push notifications
+          <button
+            className="secondary full mt-3"
+            disabled={push.busy || push.state === 'checking' || push.state === 'unsupported'}
+            onClick={() => void (push.state === 'error' ? push.refresh() : push.toggle())}
+          >
+            <Bell size={16} /> {push.busy ? 'Updating notifications…' : push.state === 'checking'
+              ? 'Checking notifications…' : push.state === 'enabled' ? 'Disable iPhone push notifications'
+                : push.state === 'unsupported' ? 'Push notifications unavailable'
+                  : push.state === 'error' ? 'Retry notification status' : 'Enable iPhone push notifications'}
           </button>
+          {push.message && <div role="status" className="notice mt-3">{push.message}</div>}
           {message && (
             <div role="status" className="notice mt-3">
               {message}

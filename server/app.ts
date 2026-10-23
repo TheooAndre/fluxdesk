@@ -8,7 +8,7 @@ import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
 import type { AlertKind, AlertRule, Market } from '../src/types.ts';
-import { snapshot, addAlert, deleteAlert, subscribe } from './store.ts';
+import { snapshot, addAlert, deleteAlert, subscribe, forgetSubscription } from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
 import { savedWatchlist, changeWatchlist } from './watchlist.ts';
 import { calendar } from './calendar.ts';
@@ -87,7 +87,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
           : path.startsWith('/api/alerts/')
             ? ['DELETE']
             : path === '/api/push/subscribe'
-              ? ['POST']
+              ? ['POST', 'DELETE']
               : ['GET'];
       if (!allowed.includes(req.method ?? '')) {
         res.setHeader('allow', allowed.join(', '));
@@ -232,6 +232,13 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       return json(res, { ok: true });
     }
     if (path === '/api/push/key') return json(res, { key: vapidKey() });
+    if (path === '/api/push/subscribe' && req.method === 'DELETE') {
+      const { endpoint } = await body(req);
+      if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || endpoint.length > 2048)
+        throw Error('Invalid PushSubscription');
+      await forgetSubscription(endpoint);
+      return json(res, { ok: true });
+    }
     if (path === '/api/push/subscribe' && req.method === 'POST') {
       if (!vapidKey()) throw Error('VAPID is not configured');
       const data = await body(req);

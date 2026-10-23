@@ -22,6 +22,7 @@ Updated 23 October 2026. Research only; no order execution or claimed predictive
 | TradingView account indicators | External shortcut only | Optional validated saved-layout URL on this device; sign in on TradingView itself. Embedded account/Pine synchronization is unsupported and intentionally out of scope |
 | General phone use | Owner accepted 23 October | Everything working properly on the phone |
 | Crypto stat-arb research | Implemented; CI #320 and live QA passed | Original 19 October protocol/source/tests and synthetic report, local bounded report import, all folds and untouched-holdout status. No market edge or trading authorization; see [integration guide](statarb-integration.md) |
+| Push notification subscription controls | Implemented; physical-device toggle acceptance pending | Owner configured VAPID and enabled this device. Alerts detects the browser subscription on load/resume and offers a real enable/disable action; backend removal is device-specific and guarded by existing gateway/origin checks. Actual background notification delivery remains unverified |
 | Remote iPhone PWA acceptance | Resume, offline shell and reconnect owner-passed | Installed app background/resume, airplane-mode reopen/offline indication and fresh-data recovery on reconnect passed. Separate update flow and actual push delivery remain pending |
 
 ## Next work in order
