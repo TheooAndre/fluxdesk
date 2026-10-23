@@ -37,7 +37,7 @@ export default function Watchlist({
       {loading ? (
         <p className="muted">Loading watchlist…</p>
       ) : ids.length ? (
-        <div className="watchlist-grid">
+        <div className="watchlist-grid" role="region" aria-label="Saved markets list" tabIndex={0}>
           {ids.map((id) => {
             const asset = byId.get(id);
             return (

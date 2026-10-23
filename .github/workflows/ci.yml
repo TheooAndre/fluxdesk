@@ -84,8 +84,8 @@ jobs:
         run: pnpm e2e
       - name: Production HTML hydration and chart startup
         run: pnpm exec playwright test --config playwright.production.config.ts
-      - name: Preserve Playwright traces on failure
-        if: failure()
+      - name: Preserve Playwright traces and screenshots
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: playwright-traces

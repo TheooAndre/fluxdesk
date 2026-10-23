@@ -12,11 +12,11 @@ Updated 23 October 2026. Research only; no order execution or claimed predictive
 | Faster exchange snapshots | Owner accepted | Foreground 10s polling, coalescing, venue backoff; explicit original ages retained |
 | Shorter address | Owner accepted; authenticated API verified | `https://fluxdesk-terminal.vercel.app/` redirects logged-out visitors to Vercel SSO. Reconnected Vercel access now returns the current prerendered build and HTTP 200 for health, markets and saved favorites |
 | Price basis, timestamps, live funding and price premium | Implemented; preview acceptance pending | Last trade vs mark labels, exchange vs receipt ages, same-basis comparisons, Binance interval metadata and hourly Hyperliquid funding |
-| Full CI | Browser setup stall being addressed | Currency precision is explicit and Node 22 local unit/production/Lighthouse checks pass. CI #314 passed lint/types/unit/smoke/build and constrained persistence/backup checks, then stalled installing browsers for over 25 minutes. Browser dependencies and downloads now have separate bounded steps, a bounded retry and retained setup logs; no test or performance gates were relaxed |
-| All-deployment authentication / mutation checks at final alias | Pending | Check logged-out access and authenticated mutations on final address |
+| Full CI | Core CI green; final list layout checks pending | CI #316 passed 189 unit tests, smoke/build/container checks, five development browsers, 8 production hydration tests, Lighthouse and dependency audit. One Firefox watchlist case passed on retry; traces are now retained even for retried passing jobs. The compact list layout passes 4 focused desktop/mobile checks. Track latest results in PR #12 |
+| Final-alias authenticated feature checks | Passed in automated live QA | Logged-out Vercel SSO, backend 401 without gateway authentication, authenticated health/700 markets, live chart/category navigation, isolated favorite save/reload/second-client/remove, original favorites retained, no page errors or horizontal mobile overflow |
 | Backup and restore | Tool implemented; hosted/offsite acceptance pending | Encrypted CLI backup/verify/restore; local dataset fingerprint round-trip passes. An actual Northflank backup and offsite copy/restore remain unverified |
 | Open-position equity and exposure cap | Implemented; preview acceptance pending | Engine v2 bar-close trade-price proxy, separate realized drawdown, default 1× / max 3× entry notional, versioned legacy display |
-| Shared mobile/desktop watchlist | Implemented; hosted acceptance pending | Up to 50 venue-specific contracts, durable atomic backend writes, foreground cross-device refresh, no optimistic success on write failure |
+| Shared mobile/desktop watchlist | Live persistence verified | Up to 50 venue contracts, atomic backend writes, second-client refresh, no optimistic save success. The keyboard-accessible list has a bounded scroll area so larger lists do not push the chart down the page |
 | Interactive TradingView library chart | Implemented; preview acceptance pending | Candles/line, base-volume pane, crosshair, EMA 20/50, zoom/pan/fit and expansion; exact venue history and completed bars |
 | Chart / Categories browser | Implemented; preview acceptance pending | 15 overlapping curated themes, counts of available venue contracts, search and exchange filters, exact-contract chart selection |
 | TradingView account indicators | External shortcut only | Optional validated saved-layout URL on this device; sign in on TradingView itself. Embedded account/Pine synchronization is unsupported and intentionally out of scope |
@@ -48,7 +48,7 @@ Primary references consulted 23 October 2026:
 
 ## Owner checks needed before release
 
-- Vercel access is restored. Final-alias authenticated health, market and watchlist reads pass; finish the isolated mutation and rendered chart/category checks before release.
+- Vercel access is restored and final-alias automated feature/mutation checks pass. Accept the rendered chart/categories and saved favorites on the physical iPhone app.
 - With both preview frontend and Northflank backend on the latest commit, save a venue-specific market on one device, reload, and confirm it appears on the other device. Confirm removal persists too.
 - On the installed iPhone app: reopen, background/resume, offline shell, reconnect, update and alert delivery.
 - Choose the destination for an encrypted offsite backup. Keep its password in the owner's password manager; do not send credentials in chat. Follow [backup/restore runbook](backup-restore.md) and verify the actual hosted archive separately from local fixture tests.
