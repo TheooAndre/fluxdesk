@@ -520,3 +520,20 @@ test('stat-arb research preserves its evidence boundary and all synthetic folds'
   await expect(page.getByRole('heading', { name: 'SYNTHETIC · mechanical demonstration only' })).toBeVisible();
   await expect(folds.getByRole('row')).toHaveCount(5);
 });
+
+test('terminal layouts save, reload, apply and delete on this device', async ({ page }) => {
+  await page.goto('/');
+  await page.getByText('Saved terminal layouts · 0', { exact: true }).click();
+  await page.getByLabel('Market category', { exact: true }).selectOption('ai');
+  await page.getByLabel('Layout name', { exact: true }).fill('AI research');
+  await page.getByRole('button', { name: 'Save current layout', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Layouts saved on this device.' })).toBeVisible();
+  await page.reload();
+  await page.getByText('Saved terminal layouts · 1', { exact: true }).click();
+  await expect(page.getByLabel('Market category', { exact: true })).toHaveValue('all');
+  await page.getByRole('button', { name: 'AI research', exact: true }).click();
+  await expect(page.getByLabel('Market category', { exact: true })).toHaveValue('ai');
+  await page.getByRole('button', { name: 'Delete layout AI research', exact: true }).click();
+  await page.reload();
+  await expect(page.getByText('Saved terminal layouts · 0', { exact: true })).toBeVisible();
+});

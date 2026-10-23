@@ -30,7 +30,7 @@ Updated 23 October 2026. Research only; no order execution or claimed predictive
 2. Finish cloud release gates above, including an actual backup/restore exercise, before promotion.
 3. Add historical funding datasets and real mark/oracle price histories to Strategy Lab. Bar-close open-position equity and entry exposure caps are implemented; intrabar margin/liquidation accounting remains outside the current engine. Never substitute today's funding for historical payments.
 4. Crypto stat-arb source and offline report workflow are integrated into Correlation Lab. Next: obtain auditable historical funding/PIT data and account-tier fees, then run market walk-forward validation; do not interpret scanner correlation as cointegration. Do not open the final holdout while choosing data or adapting the integration.
-5. Add saved terminal layouts; the shared persistent watchlist is implemented.
+5. Saved terminal layouts implemented on each device: up to ten named market/timeframe/benchmark/category/venue/sort combinations, explicit apply/delete and local-storage errors. Shared watchlists remain server-backed; layouts are not included in server backups. Full CI/live acceptance pending for this addition.
 
 ## Live funding conventions
 

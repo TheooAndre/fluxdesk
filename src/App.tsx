@@ -14,6 +14,7 @@ import { intervalsFor } from './engine/intervals.ts';
 import FeedHealth from './components/FeedHealth.tsx';
 import BenchmarkSelector from './components/BenchmarkSelector.tsx';
 import TradingViewAccount from './components/TradingViewAccount.tsx';
+import TerminalLayouts from './components/TerminalLayouts.tsx';
 import { Card, Pill, Loading, ErrorText, BadgeVenue } from './components/UiPrimitives.tsx';
 // Load each workspace module only when its view or data is needed.
 const CategoryBrowser = lazy(() => import('./components/CategoryBrowser.tsx'));
@@ -625,6 +626,7 @@ function App() {
           ) : null}
           {ui.tab === 'overview' && (
             <div className="content-stack">
+              <TerminalLayouts />
               <Suspense fallback={<Loading label="Loading saved markets…" />}>
                 <Watchlist assets={mk.data?.assets ?? []} ids={watchlist.assetIds} now={now}
                   loading={watchlist.query.isPending} error={watchlist.change.error ?? watchlist.query.error}
