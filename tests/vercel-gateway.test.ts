@@ -13,8 +13,8 @@ afterEach(async () => {
     new Promise<void>((done, fail) => server.close((e) => e ? fail(e) : done()))));
 });
 
-async function start() {
-  const server = createServer((req, res) => { void gateway(req, res); });
+async function start(query?: Record<string, string | string[]>) {
+  const server = createServer((req, res) => { void gateway(Object.assign(req, { query }), res); });
   servers.push(server);
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
   return (server.address() as AddressInfo).port;
@@ -72,6 +72,60 @@ describe('private Vercel API gateway', () => {
     vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
     vi.stubEnv('FLUXDESK_BACKEND_URL', 'http://api.example.com');
     expect((await call(port, '/api/gateway?__fd_route=health')).status).toBe(503);
+  });
+
+  it.each([
+    ['/api/health?check=1', undefined, '/api/health?check=1'],
+    ['/api/health?__fd_route=health&check=1', undefined, '/api/health?check=1'],
+    ['/api/health?check=1', { __fd_route: 'health' }, '/api/health?check=1'],
+    ['/api/gateway?check=1', { __fd_route: 'health' }, '/api/health?check=1'],
+    ['/api/research/datasets?limit=2', undefined, '/api/research/datasets?limit=2'],
+  ])('forwards preserved public URL %s and Vercel query helpers', async (path, query, expected) => {
+    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
+    const mock = vi.fn(async () => Response.json({ status: 'ok' }));
+    vi.stubGlobal('fetch', mock);
+    const port = await start(query);
+    const result = await call(port, path);
+    expect(result.status).toBe(200);
+    expect(JSON.parse(result.body)).toEqual({ status: 'ok' });
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(String((mock.mock.calls[0] as unknown as [URL])[0])).toBe('https://private-api.example.com' + expected);
+  });
+
+  it.each([
+    ['/api/health?__fd_route=markets', undefined],
+    ['/api/health?__fd_route=health&__fd_route=health', undefined],
+    ['/api/gateway?__fd_route=health', { __fd_route: 'markets' }],
+    ['/api/health', { __fd_route: ['health', 'markets'] }],
+    ['/api/../health', undefined],
+    ['/api/research/../health', undefined],
+    ['/api/research/%2e%2e/health', undefined],
+    ['/api/research%2fdatasets', undefined],
+    ['/api//health', undefined],
+    ['/api/', undefined],
+    ['/markets', undefined],
+  ])('rejects ambiguous or malformed public route %s', async (path, query) => {
+    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
+    const mock = vi.fn(async () => Response.json({ status: 'ok' }));
+    vi.stubGlobal('fetch', mock);
+    expect((await call(await start(query), path)).status).toBe(404);
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it('keeps origin checks on preserved public mutation URLs', async () => {
+    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
+    const mock = vi.fn(async () => Response.json({ created: true }, { status: 201 }));
+    vi.stubGlobal('fetch', mock);
+    const port = await start();
+    const path = '/api/research/datasets';
+    expect((await call(port, path, 'POST', 'https://attacker.example', '{}')).status).toBe(403);
+    expect((await call(port, path, 'POST', undefined, '{}')).status).toBe(403);
+    expect(mock).not.toHaveBeenCalled();
+    expect((await call(port, path, 'POST', 'https://127.0.0.1:' + port, '{}')).status).toBe(201);
+    expect(mock).toHaveBeenCalledTimes(1);
   });
 
   it('sends only a fixed HTTPS backend request with secret and browser host', async () => {

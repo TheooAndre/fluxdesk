@@ -11,7 +11,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
  * Never send the gateway secret, backend auth or upstream cookies to browsers.
  * A misconfigured gateway fails CLOSED with a 503 instead of serving stale data.
  */
-type GatewayRequest = IncomingMessage & { body?: unknown };
+type GatewayRequest = IncomingMessage & {
+  body?: unknown;
+  query?: Record<string, string | string[]>;
+};
 const MAX_BODY_BYTES = 16_384;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
@@ -36,6 +39,30 @@ function backendOrigin(): URL | null {
       return null;
     return target;
   } catch { return null; }
+}
+
+function apiPath(req: GatewayRequest, url: URL): string | null {
+  // Validate before URL normalization can collapse dot segments. Never use
+  // forwarded headers or route metadata to select an upstream origin.
+  const rawPath = (req.url ?? '/').split('?')[0] ?? '';
+  const match = /^\/api\/([a-z0-9_-]+(?:\/[a-z0-9_-]+)*)$/i.exec(rawPath);
+  if (!match) return null;
+  const routes = url.searchParams.getAll('__fd_route');
+  const helperRoute = req.query?.__fd_route;
+  if (routes.length > 1 || (helperRoute !== undefined && typeof helperRoute !== 'string'))
+    return null;
+  if (routes.length && helperRoute !== undefined && routes[0] !== helperRoute)
+    return null;
+  const route = routes[0] ?? helperRoute;
+  if (route !== undefined && !/^[a-z0-9_-]+(?:\/[a-z0-9_-]+)*$/i.test(route))
+    return null;
+  // A Vercel rewrite can reach the function with the public /api/health URL
+  // preserved, or with /api/gateway plus destination query metadata. Support
+  // both, but reject conflicting metadata rather than silently rerouting it.
+  if (rawPath === '/api/gateway') return route ?? null;
+  const path = match[1]!;
+  if (route !== undefined && route !== path) return null;
+  return path;
 }
 
 async function requestBody(req: GatewayRequest): Promise<string | undefined> {
@@ -66,16 +93,8 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
   let publicUrl: URL;
   try { publicUrl = new URL(req.url ?? '/', `https://${host}`); }
   catch { return reply(res, 400, 'Invalid API path'); }
-  // Vite's plain Vercel Functions do not implement Next.js [...path]
-  // filenames. vercel.json rewrites /api/:path* to this single function and
-  // supplies the requested API path as a query value.
-  if (publicUrl.pathname !== '/api/gateway')
-    return reply(res, 404, 'Unknown API endpoint');
-  const requestedPaths = publicUrl.searchParams.getAll('__fd_route');
-  if (requestedPaths.length !== 1 ||
-      !/^[a-z0-9_-]+(?:\/[a-z0-9_-]+)*$/i.test(requestedPaths[0] ?? ''))
-    return reply(res, 404, 'Unknown API endpoint');
-  const requestedPath = requestedPaths[0]!;
+  const requestedPath = apiPath(req, publicUrl);
+  if (!requestedPath) return reply(res, 404, 'Unknown API endpoint');
   publicUrl.searchParams.delete('__fd_route');
   if (!['GET', 'POST', 'DELETE', 'PUT'].includes(req.method ?? ''))
     return reply(res, 405, 'Method not allowed');
