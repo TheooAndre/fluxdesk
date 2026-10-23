@@ -6,12 +6,20 @@ let running=false;
 // Polling only fires on crossings/new closed bars rather than repeatedly alerting on a static price.
 const lastPrice=new Map<string,number>();
 const seenVolumeBar=new Map<string,number>();
+export function armPriceAlert(id: string, price: number) { lastPrice.set(id, price); }
 export async function scanAlerts(){if(running)return;running=true;try{
  const rules=snapshot().alerts.filter(x=>x.enabled&&x.kind!=='liquidation');if(!rules.length)return;
  const list=await freshMarkets();
  for(const rule of rules){try{
   let message='';let boundary:'above'|'below'|undefined;const asset=list.find(x=>x.id===rule.assetId);if(!asset)continue;
-  if(rule.kind==='price'){const old=lastPrice.get(rule.id);lastPrice.set(rule.id,asset.price);if(old!==undefined&&crossedPriceLevel(old,asset.price,rule.threshold,rule.direction??'above'))message=`${asset.id} crossed ${rule.direction} ${rule.threshold}, current ${asset.price}`;}
+  if(rule.kind==='price'){
+    if (!Number.isFinite(asset.price) || asset.price <= 0) continue;
+    const old=lastPrice.get(rule.id);
+    lastPrice.set(rule.id,asset.price);
+    const direction = rule.direction ?? 'above';
+    if(old!==undefined&&crossedPriceLevel(old,asset.price,rule.threshold,direction))
+      message=`${asset.symbol}: price ${direction} ${rule.threshold} (current ${asset.price})`;
+  }
   if (rule.kind === 'price_range') {
     const previous = lastPrice.get(rule.id);
     if (!Number.isFinite(asset.price) || asset.price <= 0) continue;

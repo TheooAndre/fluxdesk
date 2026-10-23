@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePushNotifications } from '../lib/use-push-notifications.ts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellRing, X } from 'lucide-react';
+import { priceAlertDirection } from '../lib/price-alert.ts';
 import { api } from '../lib/api.ts';
 import type { Market, AlertKind } from '../types.ts';
 import { money, price, clock } from '../lib/format.ts';
@@ -14,12 +15,15 @@ function AlertsTab({ item }: { item: Market | undefined }) {
     [threshold, setThreshold] = useState('100'),
     [lowerPrice, setLowerPrice] = useState(''),
     [upperPrice, setUpperPrice] = useState(''),
-    [direction, setDirection] = useState<'above' | 'below'>('above'),
     [message, setMessage] = useState('');
   const create = useMutation({
     mutationFn: api.createAlert,
-    onSuccess: () => {
-      setMessage('Alert created. Monitoring runs on your dashboard server.');
+    onSuccess: ({ alert }) => {
+      setMessage(
+        alert.kind === 'price'
+          ? `Alert created: price ${alert.direction} ${price(alert.threshold)}. Monitoring runs on your dashboard server.`
+          : 'Alert created. Monitoring runs on your dashboard server.',
+      );
       void client.invalidateQueries({ queryKey: ['alerts'] });
     },
     onError: (e) => setMessage(e.message),
@@ -29,6 +33,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
     onSuccess: () => void client.invalidateQueries({ queryKey: ['alerts'] }),
   });
   const push = usePushNotifications();
+  const direction = priceAlertDirection(item?.price ?? NaN, Number(threshold));
   return (
     <div className="content-stack">
       <div className="section-intro">
@@ -71,13 +76,19 @@ function AlertsTab({ item }: { item: Market | undefined }) {
             </select>
           </label>
           {kind === 'price' && (
-            <label className="field">
-              Trigger when
-              <select value={direction} onChange={(e) => setDirection(e.target.value as 'above' | 'below')}>
-                <option value="above">Price ≥ level</option>
-                <option value="below">Price ≤ level</option>
-              </select>
-            </label>
+            <div className="notice" role="status">
+              <p>
+                Current {item?.priceBasis === 'mark' ? 'mark' : 'last trade'} price:{' '}
+                {item ? price(item.price) : 'Unavailable'}
+                {item ? ` · ${clock(item.asOf)}` : ''}
+              </p>
+              <p>
+                {direction
+                  ? `Price ${direction} ${price(Number(threshold))}`
+                  : 'Choose a level above or below the current price.'}
+              </p>
+              <small>Direction is verified against a live quote when saved.</small>
+            </div>
           )}
           {kind === 'price_range' ? (
             <>
@@ -128,7 +139,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                 ? 'Binance only. Stream captures at most one forced-liquidation snapshot per symbol per second. Amounts are lower-bound observations, not total liquidations.'
                 : kind === 'price_range'
                   ? 'Alerts when price reaches or crosses above the upper bound or below the lower bound. Checks about once a minute; brief moves between checks may be missed. First observation arms the rule. Re-entry rearms it, with a 5-minute cooldown per boundary.'
-                  : 'Checks latest available quote approximately once a minute.'}
+                  : 'Checks about once a minute. Reaching or crossing the chosen level triggers an alert; brief moves between checks may be missed. Same-direction repeats have a 5-minute cooldown.'}
           </p>
           <button
             className="primary full"
@@ -136,6 +147,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               !item ||
               create.isPending ||
               !navigator.onLine ||
+              (kind === 'price' && !direction) ||
               (kind === 'liquidation' && item.venue !== 'binance') ||
               (kind === 'price_range'
                 ? ![Number(lowerPrice), Number(upperPrice)].every(
@@ -148,7 +160,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               create.mutate(
                 kind === 'price_range'
                   ? { assetId: item.id, kind, lowerPrice: Number(lowerPrice), upperPrice: Number(upperPrice) }
-                  : { assetId: item.id, kind, threshold: Number(threshold), direction },
+                  : { assetId: item.id, kind, threshold: Number(threshold) },
               )
             }
           >
@@ -202,7 +214,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                       : x.kind === 'volume'
                         ? `≥ ${x.threshold}% spike`
                         : x.kind === 'price'
-                          ? `${x.direction} ${price(x.threshold)}`
+                          ? `Price ${x.direction ?? 'above'} ${price(x.threshold)}`
                           : `≥ ${money(x.threshold)} / 5m`}
                   </small>
                 </div>

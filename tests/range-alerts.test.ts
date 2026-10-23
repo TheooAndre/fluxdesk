@@ -154,3 +154,42 @@ it('requires valid positive prices and only triggers outward crossings, includin
   expect(priceRangeCrossing(NaN, 120, 90, 110)).toBeNull();
   expect(priceRangeCrossing(100, 120, 110, 90)).toBeNull();
 });
+
+it('infers both single-level directions from the server quote, ignoring client direction', async () => {
+  const below = await (
+    await create({ kind: 'price', threshold: 90, direction: 'above', referencePrice: 80 })
+  ).json();
+  expect(below.alert).toMatchObject({ direction: 'below', referencePrice: 100 });
+  await sample(90); // already armed at creation: first scheduled sample can trigger
+  expect(feed.deliver.mock.calls[0]![0].message).toContain('price below 90');
+  const above = await (await create({ kind: 'price', threshold: 110, direction: 'below' })).json();
+  expect(above.alert).toMatchObject({ direction: 'above', referencePrice: 90 });
+  await sample(110);
+  expect(feed.deliver.mock.calls[1]![0].message).toContain('price above 110');
+  await store.load();
+  expect(store.snapshot().alerts.map((a) => (a.kind === 'price' ? a.direction : ''))).toEqual([
+    'below',
+    'above',
+  ]);
+});
+it('refuses ambiguous equal levels and unavailable live quotes without creating rules', async () => {
+  expect((await create({ kind: 'price', threshold: 100 })).status).toBe(400);
+  feed.live = false;
+  expect((await create({ kind: 'price', threshold: 90 })).status).toBe(503);
+  feed.live = true;
+  feed.price = NaN;
+  expect((await create({ kind: 'price', threshold: 90 })).status).toBe(503);
+  expect(store.snapshot().alerts).toHaveLength(0);
+});
+it('preserves a saved legacy below rule and does not rearm from an old creation quote on restart', async () => {
+  await create({ kind: 'price', threshold: 90 });
+  vi.resetModules();
+  store = await import('../server/store.ts');
+  await store.load();
+  scanner = await import('../server/alerts.ts');
+  await sample(80); // restart seeds current price, no invented crossing
+  expect(feed.deliver).not.toHaveBeenCalled();
+  await sample(100);
+  await sample(90);
+  expect(feed.deliver.mock.calls[0]![0].message).toContain('price below 90');
+});

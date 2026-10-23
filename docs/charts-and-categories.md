@@ -30,3 +30,9 @@ Technical references:
 - https://www.tradingview.com/widget-docs/faq/general/
 
 Production builds render only the actual empty/loading UI into HTML, with network fetch disabled during rendering. Vite's compiled entry CSS is embedded before PWA revisions are generated, removing a render-blocking stylesheet request. Browser hydration preserves this markup, then restores a validated deep link and fetches authenticated data. No market snapshots, saved favorites, account layout URLs or environment secrets are embedded in built HTML. Dedicated production browser tests verify the styled HTML appears before the entry script loads and hydrates without replacing the heading.
+
+## Drawing tools (24 October 2026)
+
+Choose Horizontal level and tap/click once in the candle pane; choose Trend line or Rectangle and tap/click two points. Cursor or Escape cancels an unfinished drawing. Colors, individual deletion, Undo and Clear are available. Up to 50 drawings are stored on this device per exact venue contract and timeframe; storage failures are shown. Chart annotations use UTC candle times and prices and redraw with zoom, pan and resize. Both endpoints of a line/rectangle must remain in loaded history to render. They do not sync to a TradingView account or server backups.
+
+Implemented through native Lightweight Charts series primitives, with native pointer taps to avoid the library's double-click suppression dropping rapid drawing points. No paid TradingView product or account access is needed. Reference: https://tradingview.github.io/lightweight-charts/docs/plugins/series-primitives

@@ -73,3 +73,9 @@
 .category-search { min-width: 0; flex: 1; background: #0e1826; border: 1px solid #34465b; color: #e8f1ff; padding: 9px 12px; border-radius: 9px; font-size: 12px; }
 .category-results { display: grid; gap: 7px; max-height: 420px; overflow-y: auto; }.category-asset { display: flex; gap: 10px; align-items: center; text-align: left; color: #e8f1ff; background: #192638; padding: 12px; border: 1px solid #29394e; border-radius: 9px; min-width: 0; }.category-asset:hover { border-color: #47e5b4; }.category-asset b { font-size: 12px; }.category-asset small { display: block; color: #91a7bf; font-size: 10px; margin-top: 4px; overflow-wrap: anywhere; }.category-quote { text-align: right; margin-left: auto; min-width: 92px; }
 @media(max-width: 600px) { .category-chips { gap: 6px; }.category-chip { font-size: 11px; padding: 8px; }.category-asset { gap: 7px; padding: 9px; }.category-quote { min-width: 78px; } }
+
+.chart-drawings { padding: 4px 0 8px; border-bottom: 1px solid var(--border, #34465b); }
+.chart-drawings input[type="color"] { width: 32px; height: 28px; padding: 2px; }
+.drawing-list { list-style: none; padding: 0; max-height: 180px; overflow-y: auto; }
+.drawing-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; padding: 4px; }
+.chart-drawings summary { font-size: 12px; cursor: pointer; }

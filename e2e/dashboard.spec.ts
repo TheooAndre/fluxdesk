@@ -629,3 +629,78 @@ test('price range alert validates bounds, saves, reloads and removes', async ({ 
   await page.getByRole('button', { name: 'Delete alert', exact: true }).click();
   await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toBeVisible();
 });
+
+test('price level direction follows the selected level and displays the server-confirmed rule', async ({ page }) => {
+  const rules: Record<string, unknown>[] = [];
+  await page.route('**/api/alerts', async (route) => {
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      expect(input.direction).toBeUndefined();
+      const alert = { ...input, direction: input.threshold < 100000 ? 'below' : 'above', referencePrice: 100000, id: crypto.randomUUID(), createdAt: Date.now(), enabled: true };
+      rules.push(alert); await route.fulfill({ status: 201, json: { alert } });
+    } else await route.fulfill({ json: { alerts: rules, events: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Alert type', exact: true }).selectOption('price');
+  const input = page.getByRole('spinbutton', { name: 'Price level (USD)', exact: true });
+  await expect(page.getByRole('button', { name: 'Create alert', exact: true })).toBeDisabled();
+  await input.fill('90000');
+  await expect(page.getByText('Price below $90,000.00', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Create alert', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toContainText('Price below $90,000.00');
+  await input.fill('110000');
+  await expect(page.getByText('Price above $110,000.00', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Create alert', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toHaveCount(2);
+  await page.reload();
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.locator('.alert-rule').nth(1)).toContainText('Price above $110,000.00');
+});
+
+test('chart drawings support touch or mouse, undo, reload, scale changes and market isolation', async ({ page, isMobile }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  const canvas = page.getByRole('img', { name: 'BTC 1h interactive price and volume chart' });
+  await expect(canvas).toBeVisible();
+  const mark = async (x: number, y: number) => {
+    await canvas.scrollIntoViewIfNeeded();
+    const box = (await canvas.boundingBox())!;
+    const options = { position: { x: box.width * x, y: box.height * y } };
+    if (isMobile) await canvas.tap(options); else await canvas.click(options);
+  };
+  await page.getByRole('button', { name: 'Horizontal level', exact: true }).click();
+  await mark(0.4, 0.25);
+  await expect(page.getByText('1 / 50 drawings', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Trend line', exact: true }).click();
+  await mark(0.3, 0.3); await mark(0.6, 0.4);
+  await expect(page.getByText('2 / 50 drawings', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+  await mark(0.3, 0.2); await mark(0.55, 0.45);
+  await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
+  const saved = await page.evaluate(() => localStorage.getItem('fluxdesk:drawings:v1:binance:BTCUSDT:1h'));
+  expect(JSON.parse(saved!).map((d: {kind: string}) => d.kind)).toEqual(['horizontal', 'trend', 'rectangle']);
+  await page.getByRole('button', { name: 'Line', exact: true }).click();
+  await page.getByRole('button', { name: 'Zoom in chart' }).click();
+  await page.getByRole('button', { name: 'Pan chart earlier' }).click();
+  await page.getByRole('button', { name: 'Expand chart', exact: true }).click();
+  await page.getByRole('button', { name: 'Close expanded chart' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('fluxdesk:drawings:v1:binance:BTCUSDT:1h'))).toBe(saved);
+  await page.reload();
+  await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
+  await page.getByText('Manage drawings (3)', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete drawing 2', exact: true }).click();
+  await expect(page.getByText('2 / 50 drawings', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Undo drawing', exact: true }).click();
+  await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear drawings', exact: true }).click();
+  await expect(page.getByText('0 / 50 drawings', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Undo drawing', exact: true }).click();
+  await page.getByLabel('Selected asset', { exact: true }).selectOption('binance:ETHUSDT');
+  await expect(page.getByText('0 / 50 drawings', { exact: false })).toBeVisible();
+  await page.getByLabel('Selected asset', { exact: true }).selectOption('binance:BTCUSDT');
+  await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});

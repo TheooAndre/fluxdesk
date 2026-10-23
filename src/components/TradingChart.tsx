@@ -9,6 +9,7 @@ import {
   type IChartApi,
   type ISeriesApi,
 } from 'lightweight-charts';
+import ChartDrawings from './ChartDrawings.tsx';
 import type { Candle } from '../types.ts';
 import { chartEma, prepareChartData } from '../lib/chart-data.ts';
 import { price } from '../lib/format.ts';
@@ -20,6 +21,7 @@ type ChartApis = {
   volume: ISeriesApi<'Histogram'>;
   ema20: ISeriesApi<'Line'>;
   ema50: ISeriesApi<'Line'>;
+  annotations: ISeriesApi<'Line'>;
   initialized: boolean;
 };
 export default function TradingChart({
@@ -35,6 +37,7 @@ export default function TradingChart({
 }) {
   const container = useRef<HTMLDivElement>(null);
   const api = useRef<ChartApis | null>(null);
+  const [drawingApi, setDrawingApi] = useState<ChartApis | null>(null);
   const byTime = useRef(new Map<number, Candle>());
   const [mode, setMode] = useState<'candles' | 'line'>('candles');
   const [indicators, setIndicators] = useState(false);
@@ -87,6 +90,12 @@ export default function TradingChart({
       lastValueVisible: false,
       priceLineVisible: false,
     });
+    const annotations = chart.addSeries(LineSeries, {
+      color: 'transparent',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+    });
     const volume = chart.addSeries(
       HistogramSeries,
       { priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false },
@@ -94,13 +103,16 @@ export default function TradingChart({
     );
     chart.panes()[0]?.setStretchFactor(4);
     chart.panes()[1]?.setStretchFactor(1);
-    api.current = { chart, candles, line, volume, ema20, ema50, initialized: false };
+    api.current = { chart, candles, line, volume, ema20, ema50, annotations, initialized: false };
+    setDrawingApi(api.current);
     const move = (event: { time?: unknown }) =>
       setHover(typeof event.time === 'number' ? byTime.current.get(event.time) : undefined);
     chart.subscribeCrosshairMove(move);
     return () => {
       chart.unsubscribeCrosshairMove(move);
-      chart.remove();
+      // Allow child drawing subscriptions to detach before destroying the chart.
+      queueMicrotask(() => chart.remove());
+      setDrawingApi(null);
       api.current = null;
     };
   }, [assetId, interval, valid]);
@@ -117,6 +129,7 @@ export default function TradingChart({
     current.line.applyOptions({ priceFormat: format });
     current.candles.setData(points.candles);
     current.line.setData(points.line);
+    current.annotations.setData(points.line);
     current.volume.setData(points.volume);
     current.ema20.setData(chartEma(points.line, 20));
     current.ema50.setData(chartEma(points.line, 50));
@@ -189,6 +202,15 @@ export default function TradingChart({
           {expanded ? 'Close expanded chart' : 'Expand chart'}
         </button>
       </div>
+      {drawingApi && (
+        <ChartDrawings
+          key={assetId + ':' + interval}
+          chart={drawingApi.chart}
+          series={drawingApi.annotations}
+          assetId={assetId}
+          interval={interval}
+        />
+      )}
       <div className="chart-ohlc" aria-label="Candle OHLC values">
         <b>
           {base} · {interval}

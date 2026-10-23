@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { authenticateGateway, GatewayAuthError } from './gateway.ts';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
-import { marketSnapshot, candles, assetIdentity, enrichedOpenInterest, perpetualQuote } from './market.ts';
+import { marketSnapshot, freshMarkets, candles, assetIdentity, enrichedOpenInterest, perpetualQuote } from './market.ts';
+import { priceAlertDirection } from '../src/lib/price-alert.ts';
 import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
@@ -11,6 +12,7 @@ import type { AlertKind, AlertCondition, AlertRule, Market } from '../src/types.
 import { snapshot, addAlert, deleteAlert, subscribe, forgetSubscription } from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
 import { savedWatchlist, changeWatchlist } from './watchlist.ts';
+import { armPriceAlert } from './alerts.ts';
 import { calendar } from './calendar.ts';
 import { vapidKey } from './notifications.ts';
 import { ResearchRequestError, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
@@ -220,12 +222,20 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         if (kind === 'volume' && threshold > 100_000) throw Error('Volume threshold too high');
         if (o.direction !== undefined && o.direction !== 'above' && o.direction !== 'below')
           throw Error('Invalid alert direction');
-        condition = { kind, threshold, direction: o.direction === 'below' ? 'below' : 'above' };
+        if (kind === 'price') {
+          const asset = (await freshMarkets()).find((x) => x.id === assetId);
+          if (!asset || !Number.isFinite(asset.price) || asset.price <= 0)
+            throw Error('A live quote is required to create a price alert. Try again after the feed recovers.');
+          const direction = priceAlertDirection(asset.price, threshold);
+          if (!direction) throw Error('Invalid price level: choose a level above or below the current price');
+          condition = { kind, threshold, direction, referencePrice: asset.price };
+        } else condition = { kind, threshold };
       }
       const a: AlertRule = {
         id: randomUUID(), assetId, ...condition, enabled: true, createdAt: Date.now(),
       };
       await addAlert(a);
+      if (a.kind === 'price' && a.referencePrice !== undefined) armPriceAlert(a.id, a.referencePrice);
       return json(res, { alert: a }, 201);
     }
     if (path.startsWith('/api/alerts/') && req.method === 'DELETE') {

@@ -75,6 +75,18 @@ jobs:
         timeout-minutes: 5
         run: |
           set -o pipefail
+          # Azure's Ubuntu mirror repeatedly stalls on font packages (CI #332).
+          # Use the official archive over HTTPS and bound individual apt retries.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          for source in [Path('/etc/apt/sources.list'), *Path('/etc/apt/sources.list.d').glob('*.sources'), *Path('/etc/apt/sources.list.d').glob('*.list')]:
+              if source.exists():
+                  text = source.read_text()
+                  text = text.replace('http://azure.archive.ubuntu.com/ubuntu', 'https://archive.ubuntu.com/ubuntu')
+                  text = text.replace('https://azure.archive.ubuntu.com/ubuntu', 'https://archive.ubuntu.com/ubuntu')
+                  source.write_text(text)
+          Path('/etc/apt/apt.conf.d/80fluxdesk-ci').write_text('Acquire::Retries "2";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n')
+          PY
           pnpm exec playwright install-deps chromium firefox webkit 2>&1 | tee /tmp/fluxdesk-browser-deps.log
       - name: Install Playwright browsers
         timeout-minutes: 5

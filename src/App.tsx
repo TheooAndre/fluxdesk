@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { monitorPwaUpdates } from './lib/pwa-updates.ts';
 import { registerSW } from 'virtual:pwa-register';
 import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star } from 'lucide-react';
 import { api } from './lib/api.ts';
@@ -413,10 +414,26 @@ function InstallControls() {
   const [install, setInstall] = useState<BeforeInstallPromptEvent | null>(null),
     [ios, setIos] = useState(false),
     [showUpdate, setShowUpdate] = useState(false),
+    [checkUpdate, setCheckUpdate] = useState<(() => Promise<void>) | null>(null),
+    [updateStatus, setUpdateStatus] = useState(''),
     [update, setUpdate] = useState<((reloadPage?: boolean) => Promise<void>) | null>(null);
   useEffect(() => {
+    let disposed = false;
+    let monitor: ReturnType<typeof monitorPwaUpdates> | undefined;
     const sw = registerSW({
+      onRegisteredSW(_url, registration) {
+        if (disposed || !registration) return;
+        monitor = monitorPwaUpdates(registration, () => setUpdateStatus('Could not check for updates. Try again when connected.'));
+        setCheckUpdate(() => async () => {
+          if (!navigator.onLine) { setUpdateStatus('Connect to the internet to check for updates.'); return; }
+          setUpdateStatus('Checking for updates…');
+          await monitor?.check(true);
+          setUpdateStatus((status) => status === 'Checking for updates…' ? 'Update check complete. A new version will appear here when ready.' : status);
+        });
+      },
       onNeedRefresh() {
+        if (disposed) return;
+        setUpdateStatus('');
         setShowUpdate(true);
       },
       onOfflineReady() {
@@ -435,7 +452,7 @@ function InstallControls() {
           'standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
         ),
     );
-    return () => window.removeEventListener('beforeinstallprompt', listener);
+    return () => { disposed = true; monitor?.stop(); window.removeEventListener('beforeinstallprompt', listener); };
   }, []);
   return (
     <>
@@ -455,6 +472,8 @@ function InstallControls() {
           iOS: Safari → Share → <strong>Add to Home Screen</strong> to enable install and supported Web Push.
         </div>
       )}
+      {!showUpdate && checkUpdate && <button className="subtle" onClick={() => void checkUpdate()}>Check for updates</button>}
+      {updateStatus && <span className="small-label" role="status">{updateStatus}</span>}
       {showUpdate && (
         <div className="update-banner">
           <span>New version available</span>

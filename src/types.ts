@@ -97,7 +97,7 @@ export type AlertCondition =
       lastTriggeredAboveAt?: number;
       lastTriggeredBelowAt?: number;
     }
-  | { kind: Exclude<AlertKind, 'price_range'>; threshold: number; direction?: 'above' | 'below' };
+  | { kind: Exclude<AlertKind, 'price_range'>; threshold: number; direction?: 'above' | 'below'; referencePrice?: number };
 export type AlertInput = { assetId: string } & AlertCondition;
 export type AlertRule = AlertCondition & {
   id: string;
