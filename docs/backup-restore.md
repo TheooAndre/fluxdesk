@@ -55,8 +55,44 @@ a live cloud volume.
   partial backup. Larger archives require a separate streaming-volume backup.
 - Copy the encrypted `.fdbackup` file to an independent offsite destination;
   keeping it only on the same volume does not provide disaster recovery.
-- Schedule/retention and the offsite destination are not configured yet.
+- Destination selected by owner: an encrypted copy on the owner’s computer.
+  Transfer and recurring scheduling are not configured yet.
 - Local automated tests demonstrate encrypted round-trip, original dataset-ID
   preservation, wrong-password/tamper rejection, expansion limits, symlink and
   path protection, and refusal to overwrite existing data. They do not establish
   that a backup of the owner's Northflank volume has been made or restored.
+
+
+## Owner computer workflow (selected 23 October 2026)
+
+The website continues running without a downloaded backup. The computer copy
+protects against loss of the hosted volume and counts as offsite because it is
+on a separate machine. No cloud-storage subscription is needed.
+
+1. Create the encrypted archive in an authorized Northflank service shell,
+   using the real `/data` directory and the CLI included in `/app`. Use a private
+   password file outside `/data` and outside the checkout; keep its recoverable
+   password-manager copy on your computer. Never send the password in chat.
+2. Verify the encrypted archive on the host. Download the `.fdbackup` through
+   a provider-authorized secure transfer into a private folder on your computer.
+   Do not expose `/data` or add a public download route. The Vercel connection
+   does not grant access to Northflank's filesystem.
+3. Compare the archive SHA-256 on the host and your computer. On macOS use
+   `shasum -a 256 /path/to/file.fdbackup`; on Linux use `sha256sum`.
+   A matching transfer checksum does not replace archive verification.
+4. In a checkout of the matching FluxDesk revision on your computer, run the
+   `verify` and `restore` commands above, supplying your local password file and
+   a new restore directory. Compare the reported dataset IDs with Strategy Lab.
+   Do not start a second backend against the restored files.
+5. Retain the verified encrypted file and its checksum. Remove temporary host
+   archives/password files after transfer and successful local verification.
+   Keep the live `/data` files untouched.
+
+Suggested manual cadence: after important dataset/watchlist changes and before
+hosting changes; keep the latest three verified backups until a retention policy
+is chosen. This is guidance, not an installed scheduler. Terminal layout or
+TradingView preferences stored only in the browser are not in this server backup.
+
+Acceptance remains pending until an actual hosted archive has been downloaded,
+verified and restored on the owner's computer. Local fixture tests do not clear
+this gate. Provider shell/secure-export access is required for the first step.
