@@ -85,6 +85,8 @@ test('paints real production HTML before JavaScript and preserves the heading th
   });
   await page.goto('/?asset=binance%3AETHUSDT', { waitUntil: 'commit' });
   await expect(page.getByRole('heading', { name: 'Market overview' })).toBeVisible();
+  await expect(page.locator('style[data-fluxdesk-entry]')).toHaveCount(1);
+  await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(0);
   await page.evaluate(() => {
     Object.assign(window, { originalHeading: document.querySelector('h1') });
   });

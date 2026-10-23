@@ -48,5 +48,23 @@ await build({
         },
       },
     },
+    {
+      name: 'fluxdesk-inline-entry-style',
+      transformIndexHtml: {
+        order: 'post',
+        handler(html, context) {
+          // Paint the rendered shell without waiting for a second stylesheet
+          // request. Use Vite's compiled CSS before PWA revisions are generated.
+          return html.replace(/<link\b[^>]*\brel="stylesheet"[^>]*>/g, (tag) => {
+            const href = /\bhref="([^"]+)"/.exec(tag)?.[1];
+            const asset = href?.startsWith('/assets/') ? context.bundle?.[href.slice(1)] : null;
+            if (!asset || asset.type !== 'asset' || typeof asset.source !== 'string')
+              throw Error('Entry stylesheet missing from build bundle');
+            if (/<\/style/i.test(asset.source)) throw Error('Unsafe inline stylesheet');
+            return `<style data-fluxdesk-entry>${asset.source}</style>`;
+          });
+        },
+      },
+    },
   ],
 });
