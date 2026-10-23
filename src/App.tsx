@@ -5,7 +5,7 @@ import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Down
 import { api } from './lib/api.ts';
 import { useUi, type Tab } from './lib/store.ts';
 import { money, pct, price, clock } from './lib/format.ts';
-import { relativeReturn } from './engine/stats.ts';
+import { priceBasisLabel, quoteAge, relativeToBenchmark } from './lib/market-quality.ts';
 import type { Market } from './types.ts';
 import LineChart from './components/LineChart.tsx';
 import { intervalsFor } from './engine/intervals.ts';
@@ -13,6 +13,7 @@ import FeedHealth from './components/FeedHealth.tsx';
 import BenchmarkSelector from './components/BenchmarkSelector.tsx';
 import { Card, Pill, Loading, ErrorText, BadgeVenue } from './components/UiPrimitives.tsx';
 // Loaded only when research is opened, preserving overview startup performance.
+const PerpetualDetails = lazy(() => import('./components/PerpetualDetails.tsx'));
 const StrategyLab = lazy(() => import('./components/StrategyLab.tsx'));
 const SignalsTab = lazy(() => import('./components/SignalsTab.tsx'));
 const PairsTab = lazy(() => import('./components/PairsTab.tsx'));
@@ -49,11 +50,13 @@ function useDashboard() {
 function MarketTable({
   assets,
   selectedId,
-  benchmarkReturn,
+  benchmark,
+  isUsd,
 }: {
   assets: Market[];
   selectedId: string;
-  benchmarkReturn: number | null;
+  benchmark: Market | null;
+  isUsd: boolean;
 }) {
   const ui = useUi();
   const [visibleRows, setVisibleRows] = useState(50);
@@ -72,25 +75,18 @@ function MarketTable({
             if (a.oiUsd === null && b.oiUsd !== null) return 1;
             if (b.oiUsd === null && a.oiUsd !== null) return -1;
           }
-          const aval =
-            ui.sort === 'volume'
-              ? a.volumeUsd24h
-              : ui.sort === 'oi'
-                ? (a.oiUsd ?? -1)
-                : benchmarkReturn === null
-                  ? 0
-                  : relativeReturn(a.return24h, benchmarkReturn);
-          const bval =
-            ui.sort === 'volume'
-              ? b.volumeUsd24h
-              : ui.sort === 'oi'
-                ? (b.oiUsd ?? -1)
-                : benchmarkReturn === null
-                  ? 0
-                  : relativeReturn(b.return24h, benchmarkReturn);
+          if (ui.sort === 'relative') {
+            const aReturn = relativeToBenchmark(a, benchmark, isUsd);
+            const bReturn = relativeToBenchmark(b, benchmark, isUsd);
+            if (aReturn === null) return bReturn === null ? 0 : 1;
+            if (bReturn === null) return -1;
+            return (aReturn - bReturn) * (ui.descending ? -1 : 1);
+          }
+          const aval = ui.sort === 'volume' ? a.volumeUsd24h : (a.oiUsd ?? -1);
+          const bval = ui.sort === 'volume' ? b.volumeUsd24h : (b.oiUsd ?? -1);
           return (aval - bval) * (ui.descending ? -1 : 1);
         }),
-    [assets, ui.search, ui.sort, ui.venue, ui.descending, benchmarkReturn],
+    [assets, ui.search, ui.sort, ui.venue, ui.descending, benchmark, isUsd],
   );
   return (
     <Card
@@ -145,7 +141,7 @@ function MarketTable({
           </thead>
           <tbody>
             {filtered.slice(0, visibleRows).map((x) => {
-              const relative = benchmarkReturn !== null ? relativeReturn(x.return24h, benchmarkReturn) : null;
+              const relative = relativeToBenchmark(x, benchmark, isUsd);
               return (
                 <tr
                   key={x.id}
@@ -168,7 +164,7 @@ function MarketTable({
                       </span>
                     </button>
                   </td>
-                  <td className="number font-medium">{price(x.price)}</td>
+                  <td className="number font-medium">{price(x.price)}<small className="price-basis">{priceBasisLabel(x)}</small></td>
                   <td className={'number ' + (x.return24h >= 0 ? 'positive' : 'negative')}>
                     {pct(x.return24h)}
                   </td>
@@ -201,7 +197,7 @@ function MarketTable({
         )}
       </div>
       <p className="footnote">
-        24h rolling performance. Relative return = (1 + alt return) / (1 + benchmark return) − 1. Same
+        24h rolling performance. Vs benchmark is unavailable for different or unknown price bases. Relative return = (1 + alt return) / (1 + benchmark return) − 1. Same
         instrument may appear on both venues; prices are not pooled. Historical and volume data can have
         different exchange conventions.
       </p>
@@ -241,12 +237,14 @@ function Snapshot({ assets, benchmark, isUsd }: { assets: Market[]; benchmark: M
 function AssetChart({
   item,
   candles,
+  now,
 }: {
+  now: number;
   item: Market | undefined;
   candles: Awaited<ReturnType<typeof api.asset>>['candles'] | undefined;
 }) {
   return (
-    <Card title="Selected market" aside={<span className="small-label">Completed candles only</span>}>
+    <Card title="Selected market" aside={<span className="small-label">Trade candles · closed bars</span>}>
       {item ? (
         <>
           <div className="asset-chart-head">
@@ -257,12 +255,13 @@ function AssetChart({
                 <Pill>{item.venue}</Pill>
               </div>
               <div className="big-price">{price(item.price)}</div>
+              <span className="small-label">{priceBasisLabel(item)} price</span>
               <div className={item.return24h >= 0 ? 'positive' : 'negative'}>
                 {pct(item.return24h)} past 24h
               </div>
             </div>
             <Pill>
-              <Radio size={12} /> Quote · {clock(item.asOf)}
+              <Radio size={12} /> {item.timestampBasis === 'exchange' ? 'Exchange' : item.timestampBasis === 'received' ? 'Received' : 'Timestamp'} · {clock(item.asOf)} · {quoteAge(item.asOf, now)}
             </Pill>
           </div>
           {candles?.length ? <LineChart data={candles} /> : <Loading label="Fetching historical bars…" />}
@@ -594,13 +593,17 @@ function App() {
             <div className="content-stack">
               <Snapshot assets={mk.data?.assets ?? []} benchmark={benchmark} isUsd={ui.benchmark === 'USD'} />
               <div className="overview-grid">
-                <AssetChart item={selected} candles={asset.isError ? undefined : asset.data?.candles} />
+                <AssetChart item={selected} now={now} candles={asset.isError ? undefined : asset.data?.candles} />
                 <Insights item={selected} detail={asset.isError ? undefined : asset.data} />
               </div>
+              {selected && <Suspense fallback={<Loading label="Loading perpetual pricing…" />}>
+                <PerpetualDetails key={selected.id} item={selected} now={now} offline={offline} />
+              </Suspense>}
               {asset.error && <ErrorText error={asset.error} />}
               <MarketTable
                 assets={mk.data?.assets ?? []}
-                benchmarkReturn={ui.benchmark === 'USD' ? 0 : benchmark?.return24h ?? null}
+                benchmark={benchmark}
+                isUsd={ui.benchmark === 'USD'}
                 selectedId={ui.assetId}
               />
             </div>

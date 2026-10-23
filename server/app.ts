@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { authenticateGateway, GatewayAuthError } from './gateway.ts';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
-import { marketSnapshot, candles, assetIdentity, enrichedOpenInterest } from './market.ts';
+import { marketSnapshot, candles, assetIdentity, enrichedOpenInterest, perpetualQuote } from './market.ts';
 import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
@@ -106,6 +106,8 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       const benchmarks: Record<string, Market> = Object.fromEntries(list.map((market) => [market.id, market]));
       return json(res, { ...snapshot, benchmarks });
     }
+    if (path === '/api/perpetual')
+      return json(res, await perpetualQuote(validatedId(url.searchParams.get('asset') ?? '')));
     if (path === '/api/candles') {
       const asset = validatedId(url.searchParams.get('asset') ?? '');
       const tf = url.searchParams.get('tf') ?? '1h';

@@ -5,6 +5,7 @@ vi.mock('../server/market.ts', async (importOriginal) => {
   const original = await importOriginal<typeof import('../server/market.ts')>();
   return {
     ...original,
+    perpetualQuote: async (assetId: string) => ({ assetId, status: 'unavailable', fundingRate: null, intervalHours: null }),
     marketSnapshot: async () => ({
       assets: [],
       asOf: null,
@@ -57,6 +58,7 @@ it.each([
   '/api/correlations?asset=binance:BTCUSDT&minimum=NaN',
   '/api/pair?a=binance:BTCUSDT&b=hyperliquid:BTC',
   '/api/asset?asset=binance:BTCUSDT:ignored',
+  '/api/perpetual?asset=binance:BTCUSDT:ignored',
   '/api/asset?asset=binance:BTCUSDT&major=binance:BTCUSDT:ignored',
 ])('rejects invalid research request %s', async (path) => {
   const response = await fetch(origin + path);
@@ -148,4 +150,12 @@ it('accepts same-origin HTTPS browser mutations through a Host-preserving proxy'
   expect(allowed).toEqual({ status: 400, error: 'Invalid candle count' });
   const rejected = await requestWithOrigin('https://attacker.example');
   expect(rejected).toEqual({ status: 400, error: 'Cross-origin mutation blocked' });
+});
+
+it('serves read-only perpetual data without caching and rejects mutation methods', async () => {
+  const response = await fetch(origin + '/api/perpetual?asset=binance:BTCUSDT');
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(await response.json()).toMatchObject({ assetId: 'binance:BTCUSDT', status: 'unavailable', fundingRate: null, intervalHours: null });
+  expect((await fetch(origin + '/api/perpetual?asset=binance:BTCUSDT', { method: 'POST' })).status).toBe(405);
 });

@@ -16,12 +16,29 @@ export type MarketSnapshot = {
 };
 export type BenchmarkId = 'USD' | string;
 export type { CandleInterval as Interval } from './engine/intervals.ts';
+export type PerpetualQuote = {
+  assetId: string;
+  status: 'live' | 'stale' | 'unavailable';
+  markPrice: number | null;
+  referencePrice: number | null;
+  referenceKind: 'index' | 'oracle';
+  premiumPct: number | null;
+  fundingRate: number | null;
+  intervalHours: number | null;
+  nextFundingAt: number | null;
+  nextFundingSource: 'exchange' | 'hourly_schedule' | null;
+  asOf: number | null;
+  timestampBasis: 'exchange' | 'received';
+};
 export type Market = {
   id: string;
   venue: Venue;
   symbol: string;
   base: string;
   price: number;
+  // Optional for compatibility with an older independently deployed backend.
+  priceBasis?: 'last' | 'mark';
+  timestampBasis?: 'exchange' | 'received';
   previous24h: number;
   return24h: number;
   volumeUsd24h: number;

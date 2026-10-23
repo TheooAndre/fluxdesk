@@ -1,44 +1,15 @@
 # FluxDesk v0.4 Cloud Foundation (draft)
 
-## Provisioning status (22 October 2026)
+## Provisioning status (23 October 2026)
 
-- Vercel project `fluxdesk` is connected to GitHub
-  `TheooAndre/fluxdesk`; the feature branch produces automatic **preview**
-  builds. The verified preview is commit `34b8fc2`. The project has Vercel
-  Authentication enabled on **all** deployments.
-- Vercel reports `live: false`. An early deployment erroneously classified as
-  production was canceled. No production dashboard or backend is live.
-- The protected preview passed GitHub CI #227 but our automated protected-URL
-  fetch is denied with HTTP 403 due to current deployment-access permissions.
-  We have not verified live cloud API routes end to end.
-- Railway is connected but project creation returned
-  `Deploys have been paused due to an upstream issue`. Inspection confirmed
-  zero Railway projects, services and volumes provisioned. Railway's
-  21 October 2026 security disclosure reported possible unauthorized access
-  to encrypted/decrypted environment variables; **do not store gateway
-  secrets there until the incident is closed and account security is reviewed**.
-- The owner has since selected **Northflank** for staging because its
-  service interface is simpler than managing OCI. The owner approved
-  **approximately $0.90/month for a 6 GB NVMe volume only**; this is not
-  approval for a paid compute plan, plan upgrade, egress charges or other
-  billable resources. Use the existing Northflank `Default` project,
-  Single Read/Write `/data` storage, one Sandbox instance and the
-  `feat/cloud-foundation-v0.4` branch. See the
-  [Northflank staging runbook](northflank-staging-v0.4.md).
-- Oracle remains a **prepared, unused fallback**. No OCI account or VM was
-  provisioned. Its A1 Arm64 plus separate disk configuration remains
-  documented in case we need to migrate.
-- The portable VPS configuration at `deploy/vps/` supports Oracle Always
-  Free, Google Compute Engine and conventional VPS hosts (single Node API,
-  Docker volume, Caddy-managed TLS, local encrypted/offsite backup process).
-  **The OCI overlay** `deploy/oci/compose.oci.yaml` binds the archive volume
-  to a separate `/srv/fluxdesk` disk. `deploy/oci/verify-host.sh` fails
-  closed on missing mount, incorrect ownership, unsafe secrets or mismatched
-  Docker volume. Exact account, VM, firewall, disk and setup instructions:
-  [OCI staging runbook](oci-always-free-v0.4.md).
-- See [22 October hosting comparison](backend-hosting-options-2026-10.md)
-  for a verified 2026 free-tier matrix and recommended providers. No cloud
-  VM, service, private gateway token or persistent disk has been deployed yet.
+- Staging is functional: the owner verified dashboard feeds, historical Strategy Lab fetches and the faster snapshot refresh.
+- Northflank `fluxdesk-api-staging` runs in Ety's Team / existing Default project with one Sandbox instance and durable `/data` storage. The approved recurring storage allowance remains approximately $0.90/month for 6 GB; no compute upgrade is authorized.
+- The owner restarted the actual service, then verified the archive reloaded with the same dataset ID. Backup/restore remains a separate unverified gate.
+- Vercel project `fluxdesk` uses the feature branch for previews and a server-only authenticated gateway to the backend. Secret configuration is preview-scoped. Main remains v0.3; this draft is not promoted to production.
+- The owner reports the shorter address works. The exact final alias and logged-out protection at that alias have not been independently verified in this session. Vercel browser sign-in is deferred at the owner's request.
+- Prior CI #304 passed lint/types/tests/build/container persistence and all five browser projects, but failed Lighthouse LCP (2685ms, limit 2500ms). A later feature commit must pass its own full CI; no threshold is relaxed.
+- Northflank is the selected staging host. OCI and the portable VPS deployment files remain unused fallbacks; no fallback service is provisioned.
+- See [development list](development-roadmap.md) for the current feature order and acceptance evidence, and the [Northflank runbook](northflank-staging-v0.4.md) for setup details.
 
 ## Scope and release gates
 

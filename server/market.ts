@@ -1,4 +1,4 @@
-import type { Candle, Market, MarketSnapshot, FeedStatus, Venue } from '../src/types.ts';
+import type { Candle, Market, MarketSnapshot, FeedStatus, Venue, PerpetualQuote } from '../src/types.ts';
 import { assertInterval, intervalDurationMs, nextCandleStart } from '../src/engine/intervals.ts';
 import { RequestCache } from './cache.ts';
 
@@ -6,7 +6,13 @@ const BINANCE = 'https://fapi.binance.com';
 const HL = 'https://api.hyperliquid.xyz/info';
 // Quote reuse is shorter than the browser polling interval to avoid an extra
 // polling cycle on the old snapshot. Keep OI caching/freshness thresholds separate.
-export const TTL = { marketRefresh: 5_000, markets: 45_000, history: 30_000, info: 24 * 3600_000, stale: 15 * 60_000 };
+export const TTL = {
+  marketRefresh: 5_000,
+  markets: 45_000,
+  history: 30_000,
+  info: 24 * 3600_000,
+  stale: 15 * 60_000,
+};
 const cache = new RequestCache();
 export class UpstreamError extends Error {
   readonly status: number;
@@ -73,8 +79,17 @@ type BinanceInfo = {
 };
 type HyperInfo = [
   { universe: { name: string; isDelisted?: boolean }[] },
-  Array<{ markPx: string; midPx?: string; prevDayPx: string; dayNtlVlm: string; openInterest: string }>,
+  Array<{
+    markPx: string;
+    midPx?: string;
+    oraclePx?: string;
+    funding?: string;
+    prevDayPx: string;
+    dayNtlVlm: string;
+    openInterest: string;
+  }>,
 ];
+const hyperPerpetuals = new Map<string, PerpetualQuote>();
 async function binanceMarkets(): Promise<Market[]> {
   const [tickers, info] = await Promise.all([
     getJson<BinanceTicker[]>(`${BINANCE}/fapi/v1/ticker/24hr`),
@@ -106,6 +121,8 @@ async function binanceMarkets(): Promise<Market[]> {
     out.push({
       id: `binance:${t.symbol}`,
       venue: 'binance',
+      priceBasis: 'last',
+      timestampBasis: 'exchange',
       symbol: t.symbol,
       base,
       price,
@@ -121,6 +138,7 @@ async function binanceMarkets(): Promise<Market[]> {
 }
 async function hyperMarkets(): Promise<Market[]> {
   const [meta, contexts] = await hyper<HyperInfo>({ type: 'metaAndAssetCtxs' });
+  const quotes = new Map<string, PerpetualQuote>();
   const asOf = Date.now(),
     out: Market[] = [];
   meta.universe.forEach((asset, i) => {
@@ -138,9 +156,23 @@ async function hyperMarkets(): Promise<Market[]> {
       volume === null
     )
       return;
+    quotes.set(
+      `hyperliquid:${asset.name}`,
+      makePerpetualQuote(
+        `hyperliquid:${asset.name}`,
+        price,
+        ctx.oraclePx,
+        ctx.funding,
+        1,
+        (Math.floor(asOf / 3600_000) + 1) * 3600_000,
+        asOf,
+      ),
+    );
     out.push({
       id: `hyperliquid:${asset.name}`,
       venue: 'hyperliquid',
+      priceBasis: 'mark',
+      timestampBasis: 'received',
       symbol: asset.name,
       base: asset.name,
       price,
@@ -152,6 +184,9 @@ async function hyperMarkets(): Promise<Market[]> {
     });
   });
   if (!out.length) throw Error('Hyperliquid returned no valid perpetual market quotes');
+  // Keep detail fields off the high-frequency market-list response.
+  hyperPerpetuals.clear();
+  for (const [id, quote] of quotes) hyperPerpetuals.set(id, quote);
   return out;
 }
 
@@ -329,15 +364,17 @@ export async function enrichedOpenInterest(assetId: string): Promise<number | nu
     return await cache.get(`oi:${assetId}`, TTL.markets, async () => {
       const [oi, mark] = await Promise.all([
         getJson<{ openInterest: string; time: number }>(`${BINANCE}/fapi/v1/openInterest?symbol=${symbol}`),
-        getJson<{ markPrice: string; time: number }>(`${BINANCE}/fapi/v1/premiumIndex?symbol=${symbol}`),
+        binancePremium(symbol),
       ]);
       const base = nonnegative(oi.openInterest),
-        price = number(mark.markPrice);
+        price = number(mark?.markPrice);
       if (
         base === null ||
         !Number.isFinite(price) ||
         price <= 0 ||
-        ![oi.time, mark.time].every((t) => Number.isFinite(t) && Math.abs(Date.now() - t) < 120_000)
+        ![oi.time, mark?.time].every(
+          (t) => typeof t === 'number' && Number.isFinite(t) && Math.abs(Date.now() - t) < 120_000,
+        )
       )
         throw Error('Invalid or stale open interest');
       return base * price;
@@ -345,4 +382,155 @@ export async function enrichedOpenInterest(assetId: string): Promise<number | nu
   } catch {
     return null;
   }
+}
+
+type BinancePremium = {
+  markPrice: string;
+  indexPrice?: string;
+  lastFundingRate?: string;
+  nextFundingTime?: number;
+  time: number;
+};
+function positive(value: unknown): number | null {
+  const n = number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function makePerpetualQuote(
+  assetId: string,
+  mark: unknown,
+  reference: unknown,
+  funding: unknown,
+  intervalHours: number | null,
+  next: unknown,
+  asOf: number,
+): PerpetualQuote {
+  const hyperliquid = assetId.startsWith('hyperliquid:');
+  const markPrice = positive(mark),
+    referencePrice = positive(reference),
+    rate = number(funding);
+  const nextTime = positive(next);
+  const premiumPct =
+    markPrice !== null && referencePrice !== null ? (markPrice / referencePrice - 1) * 100 : NaN;
+  const validNext = nextTime !== null && Number.isSafeInteger(nextTime) && nextTime > asOf;
+  return {
+    assetId,
+    status: Date.now() - asOf > TTL.markets ? 'stale' : 'live',
+    markPrice,
+    referencePrice,
+    referenceKind: hyperliquid ? 'oracle' : 'index',
+    premiumPct: Number.isFinite(premiumPct) ? premiumPct : null,
+    fundingRate: Number.isFinite(rate) && Math.abs(rate) <= 1 ? rate : null,
+    intervalHours,
+    nextFundingAt: validNext ? nextTime : null,
+    nextFundingSource: validNext ? (hyperliquid ? 'hourly_schedule' : 'exchange') : null,
+    asOf,
+    timestampBasis: hyperliquid ? 'received' : 'exchange',
+  };
+}
+function unavailablePerpetual(assetId: string): PerpetualQuote {
+  return {
+    assetId,
+    status: 'unavailable',
+    markPrice: null,
+    referencePrice: null,
+    referenceKind: assetId.startsWith('hyperliquid:') ? 'oracle' : 'index',
+    premiumPct: null,
+    fundingRate: null,
+    intervalHours: null,
+    nextFundingAt: null,
+    nextFundingSource: null,
+    asOf: null,
+    timestampBasis: assetId.startsWith('hyperliquid:') ? 'received' : 'exchange',
+  };
+}
+// Cache failures too, so multiple views / clients cannot bypass upstream bans.
+const premiumRequests = new Map<
+  string,
+  { retryAt: number; value: BinancePremium | null; pending?: Promise<BinancePremium | null> }
+>();
+async function binancePremium(symbol: string): Promise<BinancePremium | null> {
+  let state = premiumRequests.get(symbol);
+  if (!state) {
+    if (premiumRequests.size >= 128) {
+      const evict = [...premiumRequests].find(([, value]) => !value.pending);
+      if (!evict) return null;
+      premiumRequests.delete(evict[0]);
+    }
+    state = { retryAt: 0, value: null };
+    premiumRequests.set(symbol, state);
+  }
+  if (state.pending) return state.pending;
+  if (Date.now() < state.retryAt) return state.value;
+  const current = state;
+  current.pending = (async () => {
+    try {
+      const result = await getJson<BinancePremium>(`${BINANCE}/fapi/v1/premiumIndex?symbol=${symbol}`);
+      if (
+        !positive(result.markPrice) ||
+        !Number.isSafeInteger(result.time) ||
+        Math.abs(Date.now() - result.time) > 120_000
+      )
+        throw Error('Invalid or stale mark quote');
+      current.value = result;
+      current.retryAt = Date.now() + TTL.marketRefresh;
+    } catch (error) {
+      current.value = null;
+      current.retryAt =
+        Date.now() +
+        (error instanceof UpstreamError && [418, 429, 451].includes(error.status) ? 60_000 : 15_000);
+    }
+    return current.value;
+  })().finally(() => {
+    current.pending = undefined;
+  });
+  return current.pending;
+}
+async function binanceFundingIntervals(): Promise<Map<string, number> | null> {
+  // fundingInfo lists adjustments only: absent symbols use the documented 8h
+  // default, but ONLY after a successful, validated metadata response.
+  return cache.get('funding-intervals', 60_000, async () => {
+    try {
+      const raw = await getJson<Array<{ symbol: string; fundingIntervalHours: number }>>(
+        `${BINANCE}/fapi/v1/fundingInfo`,
+      );
+      if (
+        !Array.isArray(raw) ||
+        raw.some(
+          (x) =>
+            !x ||
+            typeof x.symbol !== 'string' ||
+            !Number.isInteger(x.fundingIntervalHours) ||
+            x.fundingIntervalHours < 1 ||
+            x.fundingIntervalHours > 24,
+        )
+      )
+        return null;
+      return new Map(raw.map((x) => [x.symbol, x.fundingIntervalHours]));
+    } catch {
+      return null;
+    }
+  });
+}
+export async function perpetualQuote(assetId: string): Promise<PerpetualQuote> {
+  const { venue, symbol } = assetIdentity(assetId);
+  const snapshot = await marketSnapshot();
+  const asset = snapshot.assets.find((x) => x.id === assetId);
+  if (!asset) return unavailablePerpetual(assetId);
+  if (venue === 'hyperliquid') {
+    const quote = hyperPerpetuals.get(assetId);
+    if (!quote) return unavailablePerpetual(assetId);
+    const live = snapshot.feeds.find((x) => x.venue === venue)?.status === 'live';
+    return { ...quote, status: live ? 'live' : 'stale' };
+  }
+  const [premium, intervals] = await Promise.all([binancePremium(symbol), binanceFundingIntervals()]);
+  if (!premium) return unavailablePerpetual(assetId);
+  return makePerpetualQuote(
+    assetId,
+    premium.markPrice,
+    premium.indexPrice,
+    premium.lastFundingRate,
+    intervals === null ? null : (intervals.get(symbol) ?? 8),
+    premium.nextFundingTime,
+    premium.time,
+  );
 }

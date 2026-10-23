@@ -34,3 +34,12 @@
 /* Mobile readability: keep descriptive text comfortably legible without zoom. */
 .footnote,.app-footer,.metric small,.metric span,.small-label,.tiny-label,.feed-meta,.feed-card p{font-size:12px}
 @media(max-width:480px){.metric small,.metric span,.footnote,.app-footer{font-size:12px}}
+
+.price-basis { display: block; color: #91a7bf; font-size: 11px; font-weight: 400; margin-top: 3px; }
+.perpetual-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.perpetual-grid strong { display: block; margin-top: 6px; font-size: 18px; overflow-wrap: anywhere; }
+.perpetual-grid small { display: block; color: #91a7bf; margin-top: 4px; }
+@media (max-width: 640px) { .perpetual-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; } .perpetual-grid strong { font-size: 16px; } }
+
+.asset-chart-head { flex-wrap: wrap; gap: 12px; }
+.asset-chart-head > .pill { align-self: flex-start; }

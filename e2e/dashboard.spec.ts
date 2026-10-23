@@ -5,6 +5,8 @@ const market = (id: string, base: string, venue: 'binance' | 'hyperliquid', r: n
   venue,
   symbol: id.split(':')[1],
   price: base === 'BTC' ? 100000 : base === 'ETH' ? 4000 : 200,
+  priceBasis: venue === 'binance' ? 'last' : 'mark',
+  timestampBasis: venue === 'binance' ? 'exchange' : 'received',
   previous24h: 1,
   return24h: r,
   volumeUsd24h: vol,
@@ -53,6 +55,18 @@ test.beforeEach(async ({ page }) => {
       },
     }),
   );
+  await page.route('**/api/perpetual?**', (route) => {
+    const assetId = new URL(route.request().url()).searchParams.get('asset');
+    const hyper = assetId?.startsWith('hyperliquid:');
+    return route.fulfill({ json: {
+      assetId, status: 'live', markPrice: 100010, referencePrice: 100000,
+      referenceKind: hyper ? 'oracle' : 'index', premiumPct: 0.01,
+      fundingRate: hyper ? -0.0000125 : 0.0001, intervalHours: hyper ? 1 : 4,
+      nextFundingAt: Date.now() + 3600_000,
+      nextFundingSource: hyper ? 'hourly_schedule' : 'exchange',
+      asOf: Date.now(), timestampBasis: hyper ? 'received' : 'exchange',
+    } });
+  });
   await page.route('**/api/asset?**', (route) =>
     route.fulfill({
       json: {
@@ -338,4 +352,40 @@ test('Strategy Lab uses a saved dataset and renders a clearly labelled research-
   await expect(page.getByRole('table', { name: 'Backtest trade log' })).toBeVisible();
   await expect(page.getByText(/Holdout contains fewer than 30/)).toBeVisible();
   await expect(page.getByText(/RESEARCH REPORT/)).toBeVisible();
+});
+
+test('perpetual details label price bases and funding interval without mixed-basis comparisons', async ({ page }) => {
+  await page.goto('/');
+  const panel = page.getByRole('heading', { name: 'Perpetual pricing & funding' }).locator('..').locator('..');
+  await expect(panel.getByText('Reported funding · per 4h')).toBeVisible();
+  await expect(panel.locator('.perpetual-grid > div').filter({ hasText: 'Reported funding' }).getByText('+0.0100%', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Longs pay shorts')).toBeVisible();
+  await expect(panel.getByText('Exchange schedule', { exact: false })).toBeVisible();
+  await expect(page.getByText('Last trade price', { exact: true })).toBeVisible();
+  const hyperRow = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Inspect ETH on hyperliquid' }) });
+  await expect(hyperRow.getByRole('cell').nth(3)).toHaveText('N/A');
+  await expect(hyperRow.getByText('Mark', { exact: true })).toBeVisible();
+  await page.getByLabel('Selected asset').selectOption(ethHyper.id);
+  await expect(page.getByText('Mark price', { exact: true }).first()).toBeVisible();
+  await expect(panel.getByText('Hyperliquid supplies mark and oracle prices;', { exact: false })).toBeVisible();
+  await expect(panel.getByText('Reported funding · per 1h')).toBeVisible();
+  await expect(panel.getByText('Shorts pay longs')).toBeVisible();
+  await expect(panel.getByText('Hourly schedule estimate', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath('perpetual-pricing.png'), fullPage: true });
+});
+
+test('funding errors remain unavailable and stale cached quotes are visibly labelled', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  const panel = page.getByRole('heading', { name: 'Perpetual pricing & funding' }).locator('..').locator('..');
+  await expect(panel.getByText('Current snapshot')).toBeVisible();
+  await page.route('**/api/perpetual?**', (route) => route.fulfill({ status: 503, json: { error: 'Feed unavailable' } }));
+  await page.clock.fastForward(10_000);
+  await expect(panel.getByText('Stale · last reported')).toBeVisible();
+  await page.getByLabel('Selected asset').selectOption(eth.id);
+  await expect(panel.getByText('Unavailable', { exact: true }).first()).toBeVisible();
+  await expect(panel.getByText('Reported funding · interval unknown')).toBeVisible();
+  await expect(panel.getByText('Age unknown')).toBeVisible();
+  await expect(panel.getByText('Longs pay shorts')).toHaveCount(0);
 });

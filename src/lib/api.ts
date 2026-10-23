@@ -11,6 +11,7 @@ import type {
   PairCandidate,
   PairStats,
   PriceLevel,
+  PerpetualQuote,
 } from '../types.ts';
 import type { ResearchConfig } from '../engine/backtest.ts';
 import type { DatasetReceipt } from '../../server/research/datasets.ts';
@@ -62,6 +63,8 @@ export const api = {
     postResearch<StoredResearchReport>('/api/research/backtests', { datasetId, config }),
   markets: (signal?: AbortSignal) =>
     get<MarketSnapshot & { benchmarks: Record<string, Market | null> }>('/api/markets', signal),
+  perpetual: (id: string, signal?: AbortSignal) =>
+    get<PerpetualQuote>('/api/perpetual?asset=' + encodeURIComponent(id), signal),
   asset: (id: string, tf: string, major: string, signal?: AbortSignal) =>
     get<{
       id: string;
