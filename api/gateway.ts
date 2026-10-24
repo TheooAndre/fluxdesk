@@ -65,17 +65,17 @@ function apiPath(req: GatewayRequest, url: URL): string | null {
   return path;
 }
 
-async function requestBody(req: GatewayRequest): Promise<string | undefined> {
+async function requestBody(req: GatewayRequest, maxBytes = MAX_BODY_BYTES): Promise<string | undefined> {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method ?? '')) return undefined;
   if (req.body !== undefined) {
     const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) throw Error('Request too large');
+    if (Buffer.byteLength(body, 'utf8') > maxBytes) throw Error('Request too large');
     return body;
   }
   let text = '';
   for await (const chunk of req) {
     text += String(chunk);
-    if (Buffer.byteLength(text, 'utf8') > MAX_BODY_BYTES) throw Error('Request too large');
+    if (Buffer.byteLength(text, 'utf8') > maxBytes) throw Error('Request too large');
   }
   return text;
 }
@@ -106,7 +106,7 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
 
   const destination = new URL('/api/' + requestedPath + publicUrl.search, upstream);
   try {
-    const body = await requestBody(req);
+    const body = await requestBody(req, requestedPath === 'journal/import' ? 4*1024*1024 : requestedPath.startsWith('journal/') ? 131072 : MAX_BODY_BYTES);
     const result = await fetch(destination, {
       method: req.method,
       redirect: 'manual',

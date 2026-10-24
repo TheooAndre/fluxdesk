@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { monitorPwaUpdates } from './lib/pwa-updates.ts';
 import { registerSW } from 'virtual:pwa-register';
-import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star, BookOpen } from 'lucide-react';
 import { api } from './lib/api.ts';
 import { useWatchlist } from './lib/use-watchlist.ts';
 import { useUi, restoreAssetFromLocation, type Tab } from './lib/store.ts';
@@ -24,6 +24,8 @@ const Watchlist = lazy(() => import('./components/Watchlist.tsx'));
 const PerpetualDetails = lazy(() => import('./components/PerpetualDetails.tsx'));
 const StrategyLab = lazy(() => import('./components/StrategyLab.tsx'));
 const SignalsTab = lazy(() => import('./components/SignalsTab.tsx'));
+const StatArbScanner = lazy(() => import('./components/StatArbScanner.tsx'));
+const JournalTab = lazy(() => import('./components/JournalTab.tsx'));
 const PairsTab = lazy(() => import('./components/PairsTab.tsx'));
 const AlertsTab = lazy(() => import('./components/AlertsTab.tsx'));
 const CalendarTab = lazy(() => import('./components/CalendarTab.tsx'));
@@ -31,6 +33,8 @@ const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'overview', label: 'Markets', icon: BarChart3 },
   { id: 'signals', label: 'Entry models', icon: Zap },
   { id: 'pairs', label: 'Correlation', icon: GitCompareArrows },
+  { id: 'statarb', label: 'Stat-arb scanner', icon: GitCompareArrows },
+  { id: 'journal', label: 'Trade journal', icon: BookOpen },
   { id: 'research', label: 'Strategy Lab', icon: FlaskConical },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'calendar', label: 'Macro calendar', icon: CalendarDays },
@@ -579,7 +583,7 @@ function App() {
         </header>
         <main>
           <Intro tab={ui.tab} />
-          {ui.tab !== 'research' && <div className="selector-bar">
+          {!['research','journal','statarb'].includes(ui.tab) && <div className="selector-bar">
             <div className="selected-input">
               <span className="tiny-label">SELECTED ASSET</span>
               <select
@@ -696,6 +700,8 @@ function App() {
               <PairsTab key={ui.assetId} item={selected} assets={mk.data?.assets ?? []} />
             </Suspense>
           )}
+          {ui.tab === 'statarb' && <Suspense fallback={<Loading label="Loading stat-arb scanner…"/>}><StatArbScanner/></Suspense>}
+          {ui.tab === 'journal' && <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab/></Suspense>}
           {ui.tab === 'alerts' && (
             <Suspense fallback={<Loading label="Loading alerts…"/>}><AlertsTab item={selected}/></Suspense>
           )}
@@ -718,7 +724,7 @@ function App() {
           <button key={x.id} className={ui.tab === x.id ? 'active' : ''} onClick={() => ui.setTab(x.id)}>
             <x.icon size={20} />
             <span>
-              {x.id === 'overview'
+              {x.id === 'journal' ? 'Journal' : x.id === 'statarb' ? 'Stat-arb' : x.id === 'overview'
                 ? 'Markets'
                 : x.id === 'signals'
                   ? 'Signals'

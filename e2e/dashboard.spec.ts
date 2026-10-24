@@ -118,6 +118,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/calendar', (route) =>
     route.fulfill({ json: { configured: false, events: [], message: 'Calendar API not configured' } }),
   );
+  await page.route('**/api/statarb/scan', route => route.fulfill({json:{scan:null}}));
   await page.route('**/api/watchlist**', (route) => route.fulfill({ json: { assetIds: [] } }));
   await page.route('**/api/alerts', (route) => route.fulfill({ json: { alerts: [], events: [] } }));
 });
@@ -500,7 +501,8 @@ test('stat-arb research preserves its evidence boundary and all synthetic folds'
   await page.goto('/');
   // Both responsive navs can be in the DOM; choose the rendered control.
   await page.getByRole('button', { name: /^(Correlation|Pairs)$/ }).filter({ visible: true }).click();
-  await page.getByRole('button', { name: 'Stat-arb research', exact: true }).click();
+  await page.getByRole('group',{name:'Correlation lab views'}).getByRole('button', { name: 'Stat-arb scanner', exact: true }).click();
+  await page.getByRole('button',{name:'Show original research protocol',exact:true}).click();
   await expect(page.getByRole('heading', { name: 'Crypto stat-arb research', exact: true })).toBeVisible();
   await expect(page.getByText('No tradable edge established.', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Development walk-forward', exact: true })).toHaveCount(0);
@@ -767,5 +769,47 @@ test('funding coverage exposes observed gaps without claiming missing-payment co
  await expect(panel).toContainText('not a count of missing payments');
  await expect(panel.getByRole('table',{name:'Funding gaps for review'})).toContainText('16.00h');
  await expect(panel).toContainText('2.0000%');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});
+
+test('journal saves dated fills and daily reviews, reloads and exports with closed-trade analytics', async ({page})=>{
+ let trades:Record<string,unknown>[]=[],days:Record<string,unknown>[]=[];
+ await page.route('**/api/journal',r=>r.fulfill({json:{schemaVersion:1,trades,days}}));
+ await page.route('**/api/journal/trades',r=>{const input=r.request().postDataJSON();const trade={...input,id:input.id||'journal-test-1',revision:input.revision+1,createdAt:Date.now(),updatedAt:Date.now()};trades=[trade];return r.fulfill({status:201,json:{trade}});});
+ await page.route('**/api/journal/day',r=>{const input=r.request().postDataJSON();const day={...input,revision:input.revision+1,updatedAt:Date.now()};days=[day];return r.fulfill({json:{day}});});
+ await page.goto('/');const nav=page.getByRole('navigation',{name:'Mobile navigation'});const open=async()=>{await (await nav.isVisible()?nav.getByRole('button',{name:'Journal',exact:true}):page.getByRole('button',{name:'Trade journal',exact:true})).click();};await open();
+ await page.getByLabel('Selected journal date',{exact:true}).fill('2026-10-24');
+ await page.getByRole('button',{name:'New trade',exact:true}).click();
+ await page.getByLabel('Trade title',{exact:true}).fill('BTC disciplined trade');
+ await page.getByLabel('Planned risk (USD)',{exact:true}).fill('10');
+ await page.getByRole('button',{name:'Add entry fill · leg 1',exact:true}).click();
+ await page.getByLabel('Leg 1 fill 1 quantity',{exact:true}).fill('1');await page.getByLabel('Leg 1 fill 1 price',{exact:true}).fill('100');await page.getByLabel('Leg 1 fill 1 fee',{exact:true}).fill('1');
+ await page.getByRole('button',{name:'Add exit fill · leg 1',exact:true}).click();
+ await page.getByLabel('Leg 1 fill 2 quantity',{exact:true}).fill('1');await page.getByLabel('Leg 1 fill 2 price',{exact:true}).fill('110');await page.getByLabel('Leg 1 fill 2 fee',{exact:true}).fill('1');
+ await page.getByLabel('Funding cash flow (USD; received + / paid −)',{exact:true}).fill('-2');
+ await page.getByLabel('Post-trade review',{exact:true}).fill('Followed the stop and plan.');
+ await page.getByRole('button',{name:'Save trade',exact:true}).click();
+ await expect(page.getByText('Trade saved on your server.',{exact:true})).toBeVisible();
+ await expect(page.locator('.journal-trade')).toContainText('BTC disciplined trade');
+ await page.getByRole('textbox',{name:'Daily plan / risk rules',exact:true}).fill('One good trade only.');await page.getByRole('button',{name:'Save daily note',exact:true}).click();
+ await expect(page.getByText('Daily note saved.',{exact:true})).toBeVisible();
+ await page.reload();await open();await page.getByLabel('Selected journal date',{exact:true}).fill('2026-10-24');await expect(page.getByRole('textbox',{name:'Daily plan / risk rules',exact:true})).toHaveValue('One good trade only.');
+ await page.getByRole('button',{name:'Journal analytics',exact:true}).click();await expect(page.getByText('$6.00',{exact:true}).first()).toBeVisible();
+ await page.locator('.workspace').screenshot({path:test.info().outputPath('journal-analytics.png')});
+ await page.getByRole('button',{name:'P&L calendar',exact:true}).click();await expect(page.getByRole('button',{name:'Journal day 2026-10-24',exact:true})).toContainText('1 trades');
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export complete journal JSON',exact:true}).click();expect((await download).suggestedFilename()).toContain('fluxdesk-journal');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});
+
+test('stat-arb scanner selects venue and timeframe, shows ±2 candidates and seeds a two-leg journal draft', async ({page})=>{
+ let scan:Record<string,unknown>|null=null;
+ const pair={y:'hyperliquid:ETH',x:'hyperliquid:BTC',beta:1.2,intercept:0.2,adf:-4.1,critical1:-3.9,critical5:-3.3,critical10:-3.1,level:'1%',z:-2.5,halfLife:12,betaDrift:0.2,sample:180,lastSpread:-0.03,spreadMean:0,spreadSd:0.012,observedAt:Date.now(),signalTime:Date.now()-3600000,direction:'long_spread',longLeg:'hyperliquid:ETH',shortLeg:'hyperliquid:BTC',outsideStop:false,warnings:[]};
+ await page.route('**/api/statarb/scan',r=>{if(r.request().method()==='POST'){const config=r.request().postDataJSON();expect(config).toEqual({venue:'hyperliquid',timeframe:'15m',formationBars:180,preset:'crypto'});scan={id:'scan-test',config,status:'done',startedAt:Date.now(),finishedAt:Date.now(),universe:40,loaded:39,failed:[{asset:'hyperliquid:NEW',reason:'Insufficient history'}],tested:741,invalidPairs:1,totalPairs:741,passed:1,opportunities:1,results:[pair]};return r.fulfill({status:202,json:{scan}});}return r.fulfill({json:{scan}});});
+ await page.route('**/api/journal',r=>r.fulfill({json:{schemaVersion:1,trades:[],days:[]}}));
+ await page.goto('/');const nav=page.getByRole('navigation',{name:'Mobile navigation'});await (await nav.isVisible()?nav.getByRole('button',{name:'Stat-arb',exact:true}):page.getByRole('button',{name:'Stat-arb scanner',exact:true})).click();
+ await page.getByRole('combobox',{name:'Scanner venue',exact:true}).selectOption('hyperliquid');await page.getByRole('combobox',{name:'Scanner timeframe',exact:true}).selectOption('15m');await page.getByRole('combobox',{name:'Formation bars',exact:true}).selectOption('180');
+ await page.getByRole('button',{name:'Scan all venue assets',exact:true}).click();await expect(page.getByText('-2.50',{exact:true})).toBeVisible();await expect(page.getByText('Long ETH / short BTC',{exact:false})).toBeVisible();
+ await page.locator('.workspace').screenshot({path:test.info().outputPath('statarb-scanner.png')});
+ await page.getByRole('button',{name:'Journal pair',exact:true}).click();await expect(page.getByLabel('Trade title',{exact:true})).toHaveValue('ETH / BTC stat-arb');await expect(page.getByLabel('Leg 1 contract',{exact:true})).toHaveValue('hyperliquid:ETH');await expect(page.getByLabel('Leg 2 contract',{exact:true})).toHaveValue('hyperliquid:BTC');await expect(page.getByText('Scanner context:',{exact:false})).toContainText('z=-2.5');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });

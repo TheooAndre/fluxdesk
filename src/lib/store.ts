@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Interval, BenchmarkId, SignalModel } from '../types.ts';
 import type { CategoryFilter } from './categories.ts';
 import { intervalsFor } from '../engine/intervals.ts';
-export type Tab = 'overview' | 'signals' | 'pairs' | 'research' | 'alerts' | 'calendar';
+export type Tab = 'overview' | 'signals' | 'pairs' | 'research' | 'alerts' | 'calendar' | 'journal' | 'statarb';
 type Ui = {
   tab: Tab;
   assetId: string;

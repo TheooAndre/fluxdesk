@@ -60,6 +60,14 @@ status="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
   "http://127.0.0.1:$PORT/api/watchlist")"
 [[ "$status" == "200" ]] || { echo "Watchlist save expected 200, got $status" >&2; exit 1; }
 
+# Journal persistence uses the same authenticated API and durable volume.
+docker exec "$NAME" node --import tsx --input-type=module -e "
+  import {newTrade} from './src/journal/model.ts';
+  const trade=newTrade('2026-10-24'); trade.title='CI journal persistence proof';
+  const response=await fetch('http://127.0.0.1:8787/api/journal/trades',{method:'POST',headers:{'content-type':'application/json','x-fluxdesk-gateway-token':process.env.FLUXDESK_GATEWAY_TOKEN,'x-fluxdesk-public-host':'fluxdesk-ci.example',origin:'https://fluxdesk-ci.example'},body:JSON.stringify(trade)});
+  if(response.status!==201)throw Error('Journal save failed: '+await response.text());
+"
+
 # Exercise encrypted backup and isolated restore in the actual 256MiB image.
 # This random CI-only password is never logged and never leaves /tmp.
 docker exec "$NAME" node -e "require('node:fs').writeFileSync('/tmp/backup-password', require('node:crypto').randomBytes(32).toString('hex'), { mode: 0o600 })"
@@ -67,6 +75,8 @@ docker exec "$NAME" node --import tsx scripts/archive-cli.ts backup /data /tmp/c
 docker exec "$NAME" node --import tsx scripts/archive-cli.ts verify /tmp/ci.fdbackup --password-file /tmp/backup-password
 docker exec "$NAME" node --import tsx scripts/archive-cli.ts restore /tmp/ci.fdbackup /tmp/isolated-restore --password-file /tmp/backup-password
 docker exec "$NAME" node -e "if (JSON.parse(require('node:fs').readFileSync('/tmp/isolated-restore/watchlist.json', 'utf8')).assetIds[0] !== 'binance:BTCUSDT') process.exit(1)"
+
+docker exec "$NAME" node -e "if (JSON.parse(require('node:fs').readFileSync('/tmp/isolated-restore/journal.json', 'utf8')).trades[0].title !== 'CI journal persistence proof') process.exit(1)"
 
 # Write as the nonroot application user, rather than as the host/root.
 docker exec "$NAME" node -e "require('node:fs').writeFileSync('/data/.ci-persistence-proof', 'preserved', { mode: 0o600 })"
@@ -85,4 +95,9 @@ curl -fsS --max-time 10 \
   -H 'x-fluxdesk-public-host: fluxdesk-ci.example' \
   "http://127.0.0.1:$PORT/api/watchlist" | \
   node -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{if(JSON.parse(s).assetIds[0]!=='binance:BTCUSDT')process.exit(1)})"
-echo "PASS: encrypted backup/restore, gateway authentication, watchlist and mounted archive survived a container restart at 0.1 vCPU / 256MiB."
+curl -fsS --max-time 10 \
+  -H "x-fluxdesk-gateway-token: $SECRET" \
+  -H 'x-fluxdesk-public-host: fluxdesk-ci.example' \
+  "http://127.0.0.1:$PORT/api/journal" | \
+  node -e "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{if(JSON.parse(s).trades[0].title!=='CI journal persistence proof')process.exit(1)})"
+echo "PASS: encrypted backup/restore, gateway authentication, watchlist, journal and mounted archive survived a container restart at 0.1 vCPU / 256MiB."

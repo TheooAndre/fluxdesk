@@ -180,3 +180,5 @@ describe('private Vercel API gateway', () => {
     expect(result.body).not.toContain(SECRET);
   });
 });
+
+it('allows bounded journal payloads without widening other API request limits',async()=>{vi.stubEnv('FLUXDESK_GATEWAY_TOKEN',SECRET);vi.stubEnv('FLUXDESK_BACKEND_URL','https://private-api.example.com/');const mock=vi.fn(async()=>Response.json({ok:true}));vi.stubGlobal('fetch',mock);const port=await start(),origin='https://127.0.0.1:'+port;const medium=JSON.stringify({notes:'x'.repeat(20000)});expect((await call(port,'/api/gateway?__fd_route=journal/trades','POST',origin,medium)).status).toBe(200);expect((await call(port,'/api/gateway?__fd_route=alerts','POST',origin,medium)).status).toBe(413);const importBody=JSON.stringify({notes:'x'.repeat(150000)});expect((await call(port,'/api/gateway?__fd_route=journal/import','POST',origin,importBody)).status).toBe(200);expect((await call(port,'/api/gateway?__fd_route=journal/trades','POST',origin,importBody)).status).toBe(413);expect(mock).toHaveBeenCalledTimes(2);});

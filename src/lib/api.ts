@@ -1,3 +1,5 @@
+import type {JournalData,JournalTrade,JournalDay} from '../journal/model.ts';
+import type {ScanConfig,ScanJob} from '../../server/statarb-scanner.ts';
 import type {
   AlertEvent,
   AlertRule,
@@ -56,6 +58,14 @@ async function postResearch<T>(url: string, payload: unknown, timeoutMs = 90_000
   }
 }
 export const api = {
+  importJournal:(data:JournalData)=>postResearch<{imported:number;skipped:number}>('/api/journal/import',data),
+  journal:()=>get<JournalData>('/api/journal'),
+  saveJournalTrade:(trade:JournalTrade)=>postResearch<{trade:JournalTrade}>('/api/journal/trades',trade),
+  saveJournalDay:(day:JournalDay)=>postResearch<{day:JournalDay}>('/api/journal/day',day),
+  deleteJournalTrade:async(id:string,revision:number)=>{const r=await fetch('/api/journal/trades?'+new URLSearchParams({id,revision:String(revision)}),{method:'DELETE'});if(!r.ok)throw Error((await r.json()).error??'Delete failed');return r.json();},
+  statarbStatus:()=>get<{scan:ScanJob|null}>('/api/statarb/scan'),
+  startStatArb:(config:ScanConfig)=>postResearch<{scan:ScanJob}>('/api/statarb/scan',config),
+  cancelStatArb:async()=>{const r=await fetch('/api/statarb/scan',{method:'DELETE'});if(!r.ok)throw Error('Cancel failed');return r.json();},
   researchDatasets: (signal?: AbortSignal) =>
     get<{ datasets: DatasetReceipt[]; rejected: number }>('/api/research/datasets', signal, 30_000),
   researchFetch: (payload: { assetId: string; interval: '15m' | '1h' | '4h' | '1d'; count: number }) =>

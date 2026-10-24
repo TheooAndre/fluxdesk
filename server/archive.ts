@@ -3,6 +3,7 @@ import { lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:f
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { gzip, gunzip } from 'node:zlib';
+import {validateJournal} from '../src/journal/model.ts';
 import { datasetId, type HistoricalDataset } from './research/datasets.ts';
 import { assetIdentity } from './market.ts';
 
@@ -15,7 +16,7 @@ type ArchiveFile = { path: string; sha256: string; content: string };
 export type ArchiveManifest = { schemaVersion: 1; createdAt: number; files: ArchiveFile[] };
 const digest = (content: string) => createHash('sha256').update(content).digest('hex');
 const allowedPath = (path: string) =>
-  path === 'state.json' || path === 'watchlist.json' || /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
+  path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' || /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
 
 function validateFile(file: ArchiveFile): void {
   if (
@@ -31,6 +32,8 @@ function validateFile(file: ArchiveFile): void {
   if (file.path.startsWith('research/')) {
     if (datasetId(value as unknown as HistoricalDataset) !== file.path.slice(18, -5))
       throw Error('Backup dataset fingerprint mismatch');
+  } else if (file.path === 'journal.json') {
+    validateJournal(value);
   } else if (file.path === 'watchlist.json') {
     if (
       !value ||
@@ -57,7 +60,7 @@ function validateManifest(value: unknown): ArchiveManifest {
     data.createdAt <= 0 ||
     !Array.isArray(data.files) ||
     !data.files.length ||
-    data.files.length > 102
+    data.files.length > 103
   )
     throw Error('Invalid backup manifest');
   const seen = new Set<string>();
@@ -146,7 +149,7 @@ export async function createArchive(
     validateFile(file);
     files.push(file);
   };
-  for (const name of ['state.json', 'watchlist.json']) {
+  for (const name of ['state.json', 'watchlist.json', 'journal.json']) {
     try {
       await collect(name);
     } catch (error) {

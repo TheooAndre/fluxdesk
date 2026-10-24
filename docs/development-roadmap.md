@@ -31,6 +31,14 @@ Updated 24 October 2026. Research only; no order execution or claimed predictive
 | Push notification subscription controls | Owner accepted enable/disable and locked-phone push | Owner configured VAPID; real iPhone enable/disable, locked-phone notification receipt and tap-to-open all passed. Diagnostic push transport was tested separately from market-rule evaluation |
 | Remote iPhone PWA acceptance | Resume, offline shell and reconnect owner-passed | Installed app background/resume, airplane-mode reopen/offline indication and fresh-data recovery on reconnect passed. Locked-phone notification receipt and tap-to-open passed. Owner reports all iPhone checks passed on 24 October; no additional phone gate requested for this batch |
 
+## New requested work: scanner and trade journal
+
+| Item | State | Evidence / remaining work |
+| --- | --- | --- |
+| Venue/timeframe stat-arb scanner | Implemented; latest CI/deployment pending | All current live venue assets attempted; every aligned unordered pair tested, ±2 z-score view, permissive/selective presets, progress/cancel/failures, JSON export and journal handoff. [Method and limits](statarb-scanner.md) |
+| Persistent crypto trade journal | Implemented; latest CI/deployment pending | Dated multi-leg fills, fees/funding, plans/reviews/tags/emotions/mistakes, daily notes, calendar/analytics, conflict protection, JSON/CSV import/export and encrypted backup inclusion. [Journal guide](trade-journal.md) |
+| Grouped iPhone acceptance for new workspaces | Pending after deployment | Venue/timeframe scan and pair draft; save/reload a test trade/daily note; mobile fills/calendar/analytics and JSON download/import. Earlier accepted checks do not need repeating |
+
 ## Next work in order
 
 1. Latest terminal batch is green: CI #340, both staging deployments and grouped iPhone acceptance passed. Keep existing validation/performance gates for new changes.

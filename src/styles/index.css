@@ -79,3 +79,4 @@
 .drawing-list { list-style: none; padding: 0; max-height: 180px; overflow-y: auto; }
 .drawing-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; padding: 4px; }
 .chart-drawings summary { font-size: 12px; cursor: pointer; }
+@media(max-width:850px){.bottom-nav{overflow-x:auto;justify-content:flex-start;gap:8px}.bottom-nav button{flex:1 0 50px;min-width:50px}}

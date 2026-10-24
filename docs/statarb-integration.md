@@ -1,6 +1,6 @@
 # Crypto stat-arb in Correlation Lab
 
-The **Correlation → Stat-arb research** view incorporates the owner's 19 October 2026 research package. It preserves the preregistered cointegrated-pairs strategy, original source, validation report and paper runbook. **No tradable edge has been established.** The original package contains synthetic experiments and engineering tests, not validated crypto market results.
+The original protocol remains under **Stat-arb scanner → Show original research protocol**. The new venue-wide live discovery scanner is documented in [scanner method](statarb-scanner.md). The preserved research view incorporates the owner's 19 October 2026 research package. It preserves the preregistered cointegrated-pairs strategy, original source, validation report and paper runbook. **No tradable edge has been established.** The original package contains synthetic experiments and engineering tests, not validated crypto market results.
 
 ## Terminal behavior
 

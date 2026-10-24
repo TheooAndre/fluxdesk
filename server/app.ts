@@ -1,5 +1,7 @@
 import { type IncomingMessage, type ServerResponse } from 'node:http';
 import { gzipSync } from 'node:zlib';
+import { readJournal,importJournal,saveTrade,removeTrade,saveDay,JournalError } from './journal.ts';
+import {startScan,scanStatus,cancelScan,ScannerError} from './statarb-scanner.ts';
 import { randomUUID } from 'node:crypto';
 import { authenticateGateway, GatewayAuthError } from './gateway.ts';
 import { readFile, stat } from 'node:fs/promises';
@@ -25,11 +27,11 @@ const json = (res: ServerResponse, data: unknown, status = 200) => {
   });
   res.end(JSON.stringify(data));
 };
-async function body(req: IncomingMessage) {
+async function body(req: IncomingMessage, limit = 16_384) {
   let raw = '';
   for await (const c of req) {
     raw += c;
-    if (raw.length > 16_384) throw Error('Request too large');
+    if (Buffer.byteLength(raw) > limit) throw Error('Request too large');
   }
   try {
     const value: unknown = JSON.parse(raw || '{}');
@@ -79,7 +81,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     path = url.pathname;
     if (path.startsWith('/api/')) {
       const allowed =
-        path === '/api/watchlist'
+        path === '/api/statarb/scan' ? ['GET','POST','DELETE'] : path === '/api/journal' ? ['GET'] : path === '/api/journal/trades' ? ['POST','DELETE'] : (path === '/api/journal/day'||path === '/api/journal/import') ? ['POST'] : path === '/api/watchlist'
           ? ['GET', 'POST', 'DELETE']
           : path === '/api/research/datasets'
           ? ['GET', 'POST']
@@ -98,6 +100,18 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       }
     }
     checkOrigin(req, access.originHost, access.gatewayProtected);
+    if(path === '/api/statarb/scan'){
+      if(req.method==='GET')return json(res,{scan:scanStatus()});
+      if(req.method==='DELETE')return json(res,{scan:cancelScan()});
+      return json(res,{scan:startScan(await body(req))},202);
+    }
+    if(path === '/api/journal')return json(res,await readJournal());
+    if(path === '/api/journal/trades'){
+      if(req.method==='DELETE')return json(res,await removeTrade(url.searchParams.get('id')??'',Number(url.searchParams.get('revision'))));
+      return json(res,await saveTrade(await body(req,131072)),201);
+    }
+    if(path === '/api/journal/import')return json(res,await importJournal(await body(req,4*1024*1024)));
+    if(path === '/api/journal/day')return json(res,await saveDay(await body(req,131072)));
     if (path === '/api/watchlist') {
       if (req.method === 'GET') return json(res, await savedWatchlist());
       const id = req.method === 'POST' ? (await body(req)).assetId : url.searchParams.get('asset');
@@ -312,7 +326,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       { error: message },
       error instanceof GatewayAuthError
         ? error.status
-        : error instanceof ResearchRequestError
+        : error instanceof JournalError || error instanceof ScannerError ? error.status : error instanceof ResearchRequestError
         ? error.status
         : /Invalid|Unsupported|Choose|threshold|Too |limit|blocked|Cross-origin|requires|not available|large/i.test(
         message,
