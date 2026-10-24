@@ -59,3 +59,21 @@ it('refuses oversized HTTP-style runs before expensive signal evaluation', async
   await expect(runStoredBacktest(receipt.id, config, directory, 3000))
     .rejects.toThrow('exceeds bounded backtest candle limit');
 });
+
+it('versions optional observed funding accounting and requires archived history', async () => {
+  directory = await mkdtemp(join(tmpdir(), 'fluxdesk-v3-run-'));
+  const plain = await saveHistoricalDataset(data, directory);
+  await expect(runStoredBacktest(plain.id, {...config, historicalAccounting: true}, directory)).rejects.toThrow('enriched');
+  const enriched = await saveHistoricalDataset({...data, marketHistory: {
+    schemaVersion: 1, retrievedAt: data.capturedAt, startTime: data.candles[0]!.time, endTime: data.candles.at(-1)!.closeTime!,
+    fundingSource: 'https://fapi.binance.com/fapi/v1/fundingRate', markSource: 'https://fapi.binance.com/fapi/v1/markPriceKlines', fundingCoverage: 'observed_unverified',
+    marks: data.candles.map(b=>({time:b.time,closeTime:b.closeTime!,open:100,high:102,low:99,close:101})),
+    funding:[{time:data.candles[70]!.time,rate:0.0001,markPrice:101,rateType:'Regular'}],
+  }}, directory);
+  const report = await runStoredBacktest(enriched.id, {...config,historicalAccounting:true}, directory);
+  expect(report.engineVersion).toBe('observed-funding-mark-v3');
+  expect(report.result.accounting).toBe('observed-funding-mark-v3');
+  expect(report.dataset.id).toBe(enriched.id);
+  expect(report.result.warnings.join(' ')).toContain('unaudited');
+  expect((await runStoredBacktest(enriched.id, config, directory)).engineVersion).toBe('single-position-next-bar-v2');
+});

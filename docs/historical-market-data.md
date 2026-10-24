@@ -16,7 +16,7 @@ In Strategy Lab, select an existing Binance dataset and choose **Archive funding
 
 ## Accounting boundary
 
-Strategy Lab displays counts, first/last mark closes and the last eight observed funding payments. The existing v2 backtest continues to use trade closes and excludes funding/mark accounting, as disclosed in both archive view and reports. No performance improvement is claimed.
+Strategy Lab displays counts, first/last mark closes and the last eight observed funding payments. The default v2 backtest uses trade closes and excludes funding/mark accounting. The opt-in `observed-funding-mark-v3` engine now uses observed archived payments and mark closes. It fails on missing/misaligned history and does not assert payment completeness. No performance improvement is claimed.
 
 Next: audit actual hosted data against historical schedules, add correctly timed funding cash flows and historical mark valuation to a new engine version, and test boundary/event ordering, long/short signs, fees, splits and missing data before enabling it. Crypto stat-arb additionally requires an auditable point-in-time universe including delisted contracts, account-tier fees and a fixed research protocol before market walk-forward validation. The final holdout remains untouched. Hyperliquid historical mark/oracle data is not connected.
 
@@ -25,3 +25,11 @@ Next: audit actual hosted data against historical schedules, add correctly timed
 Synthetic mechanics tests cover multi-page requests, boundary payment types, bad/missing data, immutable fingerprints, HTTP guards and encrypted archive/restore. Desktop/mobile browser tests cover failure recovery, the new receipt, persisted selection and accounting disclosures. A direct Binance live check from the development environment timed out; actual source coverage is not claimed from fixtures.
 
 Primary source, checked 24 October 2026: https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data (Get Funding Rate History; Mark Price Kline/Candlestick Data).
+
+## Exploratory v3 event and equity conventions
+
+Enable **Use archived funding and mark prices** only on an enriched dataset. Positive rates debit longs and credit shorts using position units times the exchange funding-time mark. Cash-flow signs reverse for negative rates. Payments outside the trade are excluded. Funding exactly at entry, at a gap-open exit, or within an intrabar stop/target exit candle has unknown fill ordering: include possible debits, omit uncertain credits. Gap stops are timestamped at the opening price/time; intrabar exit times remain conservative candle-close proxies. Forced sample-end exits use known closes. This is a conservative bar model, not exact exchange settlement simulation.
+
+Bar-close equity includes paid entry fees, funding observed by that close, and open P&L at the matching mark close. Exit bars reconcile to realized trade-fill P&L less fees plus modeled funding. Subsequent sizing uses realized net equity. Funding is not reserved in the initial stop-risk estimate; funding and gaps can exceed that risk budget. No positions cross the chronological development/holdout boundary. Existing v2 output remains reproducible with the option off.
+
+Reports can be downloaded as JSON with engine version, assumptions, dataset fingerprint and all returned results. Tests use synthetic data; the agent has not run an actual market holdout for this change. Remaining work includes historical schedule/PIT audits, account-tier fee verification, Hyperliquid mark/oracle data and empirical validation.

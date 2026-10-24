@@ -57,7 +57,7 @@ export default function ResearchMarketHistory({
           <p className="lab-footnote">
             Positive funding: longs pay shorts; negative: shorts pay longs. Source: Binance historical funding
             and mark-price endpoints. Payment schedule completeness remains unaudited. These data are archived
-            for research; the current backtest still excludes funding and historical mark-price accounting.
+            for research; the optional exploratory v3 mode uses these observations; the default v2 mode excludes them.
           </p>
         </>
       ) : (

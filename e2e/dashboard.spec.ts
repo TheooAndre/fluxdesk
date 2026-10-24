@@ -737,3 +737,23 @@ test('historical funding enrichment selects a new snapshot and discloses account
   await page.reload(); await openLab();
   await expect(page.getByLabel('Historical dataset', {exact: true})).toHaveValue(enriched.id);
 });
+
+test('exploratory funding mode uses an enriched snapshot and exports its versioned report', async ({ page }) => {
+  const dataset = {id:'c'.repeat(64),assetId:btc.id,venue:'binance',interval:'1h',capturedAt:Date.now(),firstOpenTime:1,lastCloseTime:Date.now()-1,bars:100,marketHistory:{retrievedAt:Date.now(),fundingEvents:12,markBars:100,fundingCoverage:'observed_unverified',recentFunding:[],firstMarkClose:100,lastMarkClose:101}};
+  await page.route('**/api/research/datasets',r=>r.fulfill({json:{datasets:[dataset],rejected:0}}));
+  await page.route('**/api/research/backtests',r=>{
+    const input=r.request().postDataJSON(); expect(input.config.historicalAccounting).toBe(true);
+    const stats={count:0,netPnl:0,expectancyR:null};
+    return r.fulfill({json:{schemaVersion:1,engineVersion:'observed-funding-mark-v3',dataset,result:{accounting:'observed-funding-mark-v3',hypothesis:'Synthetic mechanics fixture',config:input.config,bars:100,splitIndex:75,trades:[],equityCurve:[{time:1,value:10000,position:'flat',sample:'development'}],summary:{...stats,maxDrawdownPct:0,maxOpenEquityDrawdownPct:0,winRate:null},development:stats,holdout:stats,warnings:['Payment completeness remains unaudited.']}}});
+  });
+  await page.goto('/'); const nav=page.getByRole('navigation',{name:'Mobile navigation'});
+  await (await nav.isVisible()?nav.getByRole('button',{name:'Lab',exact:true}):page.getByRole('button',{name:'Strategy Lab',exact:true})).click();
+  const option=page.getByRole('checkbox',{name:'Use archived funding and mark prices'});
+  await expect(option).not.toBeChecked();await option.check();
+  await page.getByRole('button',{name:'Run research backtest',exact:true}).click();
+  await expect(page.getByText('ENGINE: observed-funding-mark-v3',{exact:true})).toBeVisible();
+  await expect(page.getByText('Includes observed historical funding',{exact:false})).toBeVisible();
+  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Download research report (JSON)'}).click();
+  expect((await download).suggestedFilename()).toContain('observed-funding-mark-v3');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});

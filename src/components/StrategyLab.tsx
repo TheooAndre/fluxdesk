@@ -57,13 +57,18 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
         </div>
         <span className="pill">ENGINE: {report.engineVersion}</span>
       </div>
+      <button className="lab-action-secondary" onClick={() => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], {type: 'application/json'}));
+        const link = document.createElement('a'); link.href = url; link.download = `fluxdesk-${report.dataset.id.slice(0, 12)}-${report.engineVersion}.json`; link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }}>Download research report (JSON)</button>
       <p className="lab-hypothesis">{result.hypothesis}</p>
       <div className="lab-metrics">
         <Metric label="Completed trades" value={String(result.summary.count)}/>
         <Metric label="Net P&L, after costs" value={formatUsd(result.summary.netPnl)}/>
         <Metric label="Expectancy" value={result.summary.expectancyR === null ? 'N/A' : formatResult(result.summary.expectancyR) + ' R'}/>
         <Metric label="Win rate" value={result.summary.winRate === null ? 'N/A' : formatResult(result.summary.winRate * 100, 1) + '%'}/>
-        {result.summary.maxOpenEquityDrawdownPct !== undefined && <Metric label="Bar-close max drawdown" value={formatResult(result.summary.maxOpenEquityDrawdownPct) + '%'} note="Trade-price proxy; excludes intrabar risk"/>}
+        {result.summary.maxOpenEquityDrawdownPct !== undefined && <Metric label="Bar-close max drawdown" value={formatResult(result.summary.maxOpenEquityDrawdownPct) + '%'} note={result.accounting ? 'Historical mark closes; excludes intrabar risk' : 'Trade-price proxy; excludes intrabar risk'}/>}
         {result.summary.maxEntryGrossLeverage !== undefined && <Metric label="Peak entry exposure" value={formatResult(result.summary.maxEntryGrossLeverage) + '×'} note={`${result.summary.sizeCappedCount ?? 0} trade(s) limited by exposure cap`}/>}
         <Metric label="Closed-trade max drawdown" value={formatResult(result.summary.maxDrawdownPct) + '%'}/>
       </div>
@@ -85,7 +90,7 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
         <h3>{result.equityCurve ? 'Bar-close equity · open and closed trades' : 'Closed-trade equity curve'}</h3>
         {result.equityCurve || result.trades.length ? <LineChart data={equity} height={180}/> :
           <p className="lab-empty">No trades qualified. The equity curve has no realized observations.</p>}
-        <p className="lab-footnote">{result.equityCurve ? 'Includes unrealized P&L at completed trade-candle closes and paid entry fees. This is a trade-price proxy: historical mark prices, intrabar excursions and funding are excluded. Exit costs are deducted when trades close.' : 'Equity changes when a trade is closed; interim adverse excursions and mark-to-market risk are not shown.'}</p>
+        <p className="lab-footnote">{result.accounting ? 'Includes observed historical funding and unrealized P&L at archived mark closes. Payment schedule completeness remains unaudited. Ambiguous entry/exit ordering includes funding debits and omits credits. Excludes intrabar margin and liquidation.' : result.equityCurve ? 'Includes unrealized P&L at completed trade-candle closes and paid entry fees. This is a trade-price proxy: historical mark prices, intrabar excursions and funding are excluded. Exit costs are deducted when trades close.' : 'Equity changes when a trade is closed; interim adverse excursions and mark-to-market risk are not shown.'}</p>
       </section>
       <section className="lab-panel">
         <h3>Trade log</h3>
@@ -93,7 +98,7 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
           <>
             <div className="lab-table-scroller">
               <table className="lab-table" aria-label="Backtest trade log">
-                <thead><tr><th scope="col">Entry</th><th scope="col">Side</th><th scope="col">Exit reason</th><th scope="col">Sample</th><th scope="col">Net P&L</th><th scope="col">R</th><th scope="col">Entry exposure</th></tr></thead>
+                <thead><tr><th scope="col">Entry</th><th scope="col">Side</th><th scope="col">Exit reason</th><th scope="col">Sample</th><th scope="col">Net P&L</th><th scope="col">R</th><th scope="col">Entry exposure</th>{result.accounting && <th scope="col">Funding P&L</th>}</tr></thead>
                 <tbody>
                   {result.trades.slice(0, maxTrades).map((trade, index) => (
                     <tr key={trade.entryTime + '-' + index}>
@@ -104,6 +109,7 @@ function ResearchReport({ report }: { report: StoredResearchReport }) {
                       <td>{formatUsd(trade.netPnl)}</td>
                       <td>{formatResult(trade.rMultiple)}</td>
                       <td>{trade.grossLeverage === undefined ? 'N/A' : formatResult(trade.grossLeverage) + '×'}{trade.sizeCapped ? ' · capped' : ''}</td>
+                      {result.accounting && <td>{formatUsd(trade.fundingPnl ?? 0)}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -140,6 +146,7 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
   const [slippage, setSlippage] = useState(5);
   const [holdoutPct, setHoldoutPct] = useState(25);
   const [exposureCap, setExposureCap] = useState(1);
+  const [useHistorical, setUseHistorical] = useState(false);
   const [report, setReport] = useState<StoredResearchReport | null>(null);
 
   const datasetQuery = useQuery({
@@ -171,6 +178,7 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
         costs: { feeBpsPerSide: fee, slippageBpsPerSide: slippage },
         holdoutFraction: holdoutPct / 100,
         maxGrossLeverage: exposureCap,
+        ...(useHistorical && selected?.marketHistory ? {historicalAccounting: true} : {}),
       });
     },
     onSuccess: (value) => setReport(value),
@@ -284,6 +292,9 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
               <input aria-label="Maximum gross exposure" type="number" min={0.1} max={3} step={0.1}
                 value={exposureCap} onChange={(e) => { setExposureCap(Number(e.target.value)); setReport(null); }}/>
               <small className="lab-footnote">Entry notional cap, default 1×. This does not simulate exchange margin or liquidation.</small>
+            </label>
+            <label><span><input type="checkbox" aria-label="Use archived funding and mark prices" checked={useHistorical && !!selected?.marketHistory} disabled={busy || !selected?.marketHistory} onChange={(e) => {setUseHistorical(e.target.checked); setReport(null);}}/> Use archived funding and mark prices (exploratory v3)</span>
+              <small className="lab-footnote">Requires an enriched snapshot. Observed payments remain unaudited for completeness. Intrabar exit timing uses conservative funding costs.</small>
             </label>
             <label>Chronological holdout (% of candles)
               <input aria-label="Holdout percent" type="number" min={10} max={50} step={5}

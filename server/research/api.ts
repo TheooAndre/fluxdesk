@@ -59,9 +59,11 @@ export function parseResearchBacktest(input: unknown): { datasetId: string; conf
   if (!models.includes(c.model as SignalModel))
     throw new ResearchRequestError('Unsupported research strategy');
   const costs = object(c.costs);
+  if (c.historicalAccounting !== undefined && typeof c.historicalAccounting !== 'boolean') throw new ResearchRequestError('Invalid historical accounting option');
   return {
     datasetId: value.datasetId,
     config: {
+      ...(c.historicalAccounting === undefined ? {} : {historicalAccounting: c.historicalAccounting}),
       model: c.model as SignalModel,
       initialEquity: numeric(c.initialEquity, 'initial equity', 1, 10_000_000),
       riskFraction: numeric(c.riskFraction, 'risk fraction', 0.00001, 0.05),

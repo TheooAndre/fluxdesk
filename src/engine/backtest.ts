@@ -1,4 +1,5 @@
 import type { Candle, EntrySignal, SignalModel } from '../types.ts';
+import { fundingCashflow, validateAccounting, type HistoricalAccounting } from './historical-accounting.ts';
 import { detectSignals } from './signals.ts';
 
 /**
@@ -20,6 +21,7 @@ export type ResearchConfig = {
   holdoutFraction: number;
   /** Entry notional / account equity. Defaults to 1; not a liquidation model. */
   maxGrossLeverage?: number;
+  historicalAccounting?: boolean;
 };
 export type ResearchTrade = {
   signalTime: number;
@@ -40,6 +42,9 @@ export type ResearchTrade = {
   entryNotional?: number;
   grossLeverage?: number;
   sizeCapped?: boolean;
+  fundingPnl?: number;
+  exitTiming?: 'open' | 'intrabar' | 'close';
+  exitBarOpen?: number;
 };
 export type ResearchEquityPoint = {
   time: number;
@@ -67,6 +72,7 @@ export type ResearchResult = {
   };
   development: { count: number; netPnl: number; expectancyR: number | null };
   holdout: { count: number; netPnl: number; expectancyR: number | null };
+  accounting?: 'observed-funding-mark-v3';
   warnings: string[];
 };
 
@@ -117,8 +123,14 @@ export function backtest(
   bars: Candle[],
   config: ResearchConfig,
   signalAt: (history: Candle[], models: SignalModel[]) => EntrySignal[] = detectSignals,
+  history?: HistoricalAccounting,
 ): ResearchResult {
   validate(bars, config);
+  const accounting = config.historicalAccounting ? history : undefined;
+  if (config.historicalAccounting) {
+    if (!accounting) throw Error('Historical accounting requires an enriched dataset');
+    validateAccounting(bars, accounting);
+  }
   const splitIndex = Math.floor(bars.length * (1 - config.holdoutFraction));
   const trades: ResearchTrade[] = [];
   const maxGrossLeverage = config.maxGrossLeverage ?? 1;
@@ -164,16 +176,19 @@ export function backtest(
       let exit = NaN,
         exitIndex = -1;
       let exitReason: ResearchTrade['exitReason'] = 'end_of_data';
+      let exitTiming: 'open' | 'intrabar' | 'close' = 'close';
       for (let j = i + 1; j < phase.end; j++) {
         const b = bars[j]!;
         // Gaps through the stop exit at the worse opening price.
         if ((direction === 1 && b.open <= stop) || (direction === -1 && b.open >= stop)) {
+          exitTiming = 'open';
           exit = b.open;
           exitIndex = j;
           exitReason = 'stop';
           break;
         }
         if ((direction === 1 && b.low <= stop) || (direction === -1 && b.high >= stop)) {
+          exitTiming = 'intrabar';
           exit = stop;
           exitIndex = j;
           exitReason = 'stop';
@@ -181,6 +196,7 @@ export function backtest(
         }
         if ((direction === 1 && b.high >= signal.target) || (direction === -1 && b.low <= signal.target)) {
           // Favor no price improvement from favorable gaps.
+          exitTiming = 'intrabar';
           exit = signal.target;
           exitIndex = j;
           exitReason = 'target';
@@ -195,12 +211,15 @@ export function backtest(
       const exitFill = exit * (1 - (direction * config.costs.slippageBpsPerSide) / 10_000);
       const grossPnl = direction * (exitFill - entry) * size;
       const fees = ((entry + exitFill) * size * config.costs.feeBpsPerSide) / 10_000;
-      const netPnl = grossPnl - fees;
+      const exitTime = accounting && exitTiming === 'open' ? bars[exitIndex]!.time : bars[exitIndex]!.closeTime!;
+      const fundingPnl = accounting ? fundingCashflow({entryTime: next.time, exitTime, direction: signal.direction, size, exitTiming, exitBarOpen: bars[exitIndex]!.time}, accounting) : 0;
+      const netPnl = grossPnl - fees + fundingPnl;
       const riskBudget = equity * config.riskFraction;
       trades.push({
         signalTime: decision.closeTime!,
         entryTime: next.time,
-        exitTime: bars[exitIndex]!.closeTime!,
+        exitTime,
+        ...(accounting ? {fundingPnl, exitTiming, exitBarOpen: bars[exitIndex]!.time} : {}),
         direction: signal.direction,
         entry,
         exit: exitFill,
@@ -233,6 +252,7 @@ export function backtest(
     config.initialEquity,
     config.costs.feeBpsPerSide,
     splitIndex,
+    accounting,
   );
   const development = stats(trades.filter((t) => t.sample === 'development'));
   const holdout = stats(trades.filter((t) => t.sample === 'holdout'));
@@ -245,6 +265,7 @@ export function backtest(
     splitIndex,
     trades,
     equityCurve: openEquity.points,
+    ...(accounting ? {accounting: 'observed-funding-mark-v3' as const} : {}),
     summary: {
       ...overall,
       maxDrawdownPct,
@@ -256,8 +277,9 @@ export function backtest(
     development,
     holdout,
     warnings: [
+      ...(accounting ? ['Exploratory observed funding and bar-close mark accounting. Historical payment schedule completeness is unaudited; missing payments can bias results.', 'Funding near entries and intrabar exits uses conservative ordering: debits included, ambiguous credits omitted. Intrabar margin/liquidation and liquidity are not modeled.'] : [
       'Research simulation only: funding, historical mark prices, intrabar equity, exchange margin/liquidations, liquidity and market impact are not modeled.',
-      'Open-position equity uses completed trade-candle closes with entry fees deducted; exit fees and slippage are realized on exit. It can understate intrabar or mark-price drawdown.',
+      'Open-position equity uses completed trade-candle closes with entry fees deducted; exit fees and slippage are realized on exit. It can understate intrabar or mark-price drawdown.']),
       'Gross exposure is capped at entry only; price moves can change leverage, and gap losses can exceed the planned stop risk or account equity.',
       'No parameter tuning or strategy selection is permitted using holdout outcomes.',
       'Bar-level exit sequencing assumes the adverse stop triggers before the target.',
@@ -279,6 +301,7 @@ function barCloseEquity(
   initialEquity: number,
   feeBps: number,
   splitIndex: number,
+  accounting?: HistoricalAccounting,
 ): { points: ResearchEquityPoint[]; maxDrawdownPct: number } {
   let cash = initialEquity,
     index = 0,
@@ -295,8 +318,9 @@ function barCloseEquity(
     const open = trade && trade.entryTime <= time;
     const value = open
       ? cash +
-        (trade.direction === 'long' ? 1 : -1) * (bar.close - trade.entry) * trade.size -
-        (trade.entry * trade.size * feeBps) / 10_000
+        (trade.direction === 'long' ? 1 : -1) * ((accounting?.marks[i]?.close ?? bar.close) - trade.entry) * trade.size -
+        (trade.entry * trade.size * feeBps) / 10_000 +
+        (accounting ? fundingCashflow(trade, accounting, time) : 0)
       : cash;
     peak = Math.max(peak, value);
     maxDrawdownPct = Math.max(maxDrawdownPct, (100 * (peak - value)) / peak);

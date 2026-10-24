@@ -4,7 +4,7 @@ import { datasetReceipt, loadHistoricalDataset, type DatasetReceipt } from './da
 
 export type StoredResearchReport = {
   schemaVersion: 1;
-  engineVersion: 'single-position-next-bar-v1' | 'single-position-next-bar-v2';
+  engineVersion: 'single-position-next-bar-v1' | 'single-position-next-bar-v2' | 'observed-funding-mark-v3';
   dataset: DatasetReceipt;
   result: ResearchResult;
 };
@@ -20,8 +20,8 @@ export async function runStoredBacktest(
   if (dataset.candles.length > maxBars) throw Error('Research dataset exceeds bounded backtest candle limit');
   return {
     schemaVersion: 1,
-    engineVersion: 'single-position-next-bar-v2',
+    engineVersion: config.historicalAccounting ? 'observed-funding-mark-v3' : 'single-position-next-bar-v2',
     dataset: datasetReceipt(dataset),
-    result: backtest(dataset.candles, config),
+    result: backtest(dataset.candles, config, undefined, dataset.marketHistory),
   };
 }
