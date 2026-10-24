@@ -7,7 +7,7 @@
 - The owner restarted the actual service, then verified the archive reloaded with the same dataset ID. The owner also completed hosted encrypted export, matching computer download and isolated restore. That archive predates the journal; new journal data requires a fresh backup.
 - Vercel project `fluxdesk` uses the feature branch for previews and a server-only authenticated gateway to the backend. Secret configuration is preview-scoped. Main remains v0.3; this draft is not promoted to production.
 - The canonical staging alias `https://fluxdesk-terminal.vercel.app/` and its logged-out Vercel protection were verified. Authenticated final-alias shell, journal and scanner endpoints return 200; owner-reported iPhone acceptance includes the new scanner/journal workspaces.
-- CI #348 passed every gate at `6c7629d`, including functional tests, 256 MiB container journal persistence/encrypted restore, all five browser projects, production hydration, offline Python mechanics, Lighthouse and dependency audit. Subsequent application changes require their own validation.
+- CI #352 passed every gate at `b26bef5`, including functional tests, 256 MiB container journal persistence/encrypted restore, all five browser projects, production hydration, offline Python mechanics, Lighthouse and dependency audit. Owner confirmed all improvement-pass iPhone checks passed. Subsequent application changes require their own validation.
 - Northflank is the selected staging host. OCI and the portable VPS deployment files remain unused fallbacks; no fallback service is provisioned.
 - See [development list](development-roadmap.md) for the current feature order and acceptance evidence, and the [Northflank runbook](northflank-staging-v0.4.md) for setup details.
 
@@ -29,6 +29,8 @@ server-only gateway credential, and forwards to an explicitly configured HTTPS
 backend. The Node process independently authenticates that credential using
 a constant-time comparison. No API keys, bearer tokens or cloud secrets are
 bundled into client-side JavaScript.
+
+Production preflight on 24 October confirmed all-deployment authentication but Preview-only backend settings. See [production preflight](production-preflight.md). Production promotion remains blocked until that configuration is supplied and verified.
 
 ### SECURITY: No public FluxDesk until ALL checks pass
 

@@ -25,7 +25,8 @@
     "dev:api": "node --env-file-if-exists=.env --import tsx --watch server/index.ts",
     "verify:feeds": "node --env-file-if-exists=.env --import tsx scripts/verify-feeds.ts",
     "research": "node --env-file-if-exists=.env --import tsx scripts/research-cli.ts",
-    "archive": "node --import tsx scripts/archive-cli.ts"
+    "archive": "node --import tsx scripts/archive-cli.ts",
+    "release:preflight": "node --experimental-strip-types scripts/release-preflight.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.90.2",
