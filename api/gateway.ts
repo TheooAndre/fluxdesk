@@ -104,6 +104,11 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
       (typeof origin !== 'string' || origin !== `https://${host}`))
     return reply(res, 403, 'Cross-origin mutation blocked');
 
+  // The owner uses one persistent backend. Preview deployments may inspect it,
+  // but must not accidentally edit the live journal, alerts, watchlist or archive.
+  if (process.env.VERCEL_ENV === 'preview' && req.method !== 'GET')
+    return reply(res, 403, 'This development preview is read-only. Open the main FluxDesk app to save changes.');
+
   const destination = new URL('/api/' + requestedPath + publicUrl.search, upstream);
   try {
     const body = await requestBody(req, requestedPath === 'journal/import' ? 4*1024*1024 : requestedPath.startsWith('journal/') ? 131072 : MAX_BODY_BYTES);

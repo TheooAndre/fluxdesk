@@ -182,3 +182,22 @@ describe('private Vercel API gateway', () => {
 });
 
 it('allows bounded journal payloads without widening other API request limits',async()=>{vi.stubEnv('FLUXDESK_GATEWAY_TOKEN',SECRET);vi.stubEnv('FLUXDESK_BACKEND_URL','https://private-api.example.com/');const mock=vi.fn(async()=>Response.json({ok:true}));vi.stubGlobal('fetch',mock);const port=await start(),origin='https://127.0.0.1:'+port;const medium=JSON.stringify({notes:'x'.repeat(20000)});expect((await call(port,'/api/gateway?__fd_route=journal/trades','POST',origin,medium)).status).toBe(200);expect((await call(port,'/api/gateway?__fd_route=alerts','POST',origin,medium)).status).toBe(413);const importBody=JSON.stringify({notes:'x'.repeat(150000)});expect((await call(port,'/api/gateway?__fd_route=journal/import','POST',origin,importBody)).status).toBe(200);expect((await call(port,'/api/gateway?__fd_route=journal/trades','POST',origin,importBody)).status).toBe(413);expect(mock).toHaveBeenCalledTimes(2);});
+
+it('keeps previews read-only on the shared backend while production can save', async () => {
+  vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+  vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com/');
+  vi.stubEnv('VERCEL_ENV', 'preview');
+  const mock = vi.fn(async () => Response.json({ ok: true }));
+  vi.stubGlobal('fetch', mock);
+  const port = await start(), origin = 'https://127.0.0.1:' + port;
+  for (const method of ['POST', 'PUT', 'DELETE']) {
+    const result = await call(port, '/api/journal/trades', method, origin, '{}');
+    expect(result.status).toBe(403);
+    expect(result.body).toContain('read-only');
+  }
+  expect(mock).not.toHaveBeenCalled();
+  expect((await call(port, '/api/journal')).status).toBe(200);
+  vi.stubEnv('VERCEL_ENV', 'production');
+  expect((await call(port, '/api/journal/trades', 'POST', origin, '{}')).status).toBe(200);
+  expect(mock).toHaveBeenCalledTimes(2);
+});

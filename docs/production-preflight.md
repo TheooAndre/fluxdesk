@@ -10,8 +10,8 @@ Exit 0 means configuration **metadata** passed, 1 means blockers, and 2 means in
 
 ## Remaining release sequence
 
-1. Choose the production backend/data boundary. The only existing service is the staging Northflank service; a separate backend has not been provisioned or cost-approved. Do not silently share production state with ongoing preview development.
-2. Configure the production HTTPS backend origin and its matching strong gateway credential directly in the provider dashboards. Use a distinct production-only credential; never paste it into chat or a metadata file. Retain Preview settings for the accepted app.
+1. Owner decision (24 October): retain the existing Northflank service, one instance and existing /data volume for production. No second service or compute upgrade. New Vercel Preview gateways reject every non-GET request; production retains writes. This prevents accidental preview mutations, not credential-level isolation from trusted deployment authors or older immutable deployments. The backend remains on its existing deployment branch until the release branch is switched explicitly.
+2. Configure the production HTTPS backend origin and its matching strong gateway credential directly in the provider dashboards. Keep the production credential configuration production-scoped; the approved single-backend arrangement still uses that backend’s existing credential. Do not claim separate-backend credential isolation; never paste it into chat or a metadata file. Retain Preview settings for the accepted app.
 3. Repeat the metadata check, then stage a production deployment without assigning the user-facing alias. Confirm all-deployment Authentication and direct-backend rejection of unauthenticated requests.
 4. Verify the actual production gateway and durable-data path, including backup/isolated restore; do not infer this from Preview success or from the metadata check. Promote the tested production deployment only after those checks.
 

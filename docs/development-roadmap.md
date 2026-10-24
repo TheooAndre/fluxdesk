@@ -112,3 +112,8 @@ Completed a metadata-only inspection of the actual Vercel FluxDesk project/team 
 Added `pnpm release:preflight <metadata.json>`: a bounded, read-only checker of redacted project/environment metadata. It fails closed for the wrong project/team, missing protection, unsupported runtime, incomplete metadata, missing/ambiguous production settings, public or branch-scoped settings, and a cross-environment production credential. Reports never reflect credential values. It does not fetch providers, mutate environments or authorize release. See [production preflight](production-preflight.md).
 
 Actual metadata returned two blockers: missing production `FLUXDESK_BACKEND_URL` and `FLUXDESK_GATEWAY_TOKEN`. Existing Preview configuration was not changed or decrypted. Configure production backend/credential privately, with a separate production credential and an explicit backend/data-isolation decision before release. Then verify a staged production deployment through its real gateway, durable data and backup/restore before promoting. Existing preview phone acceptance does not certify a newly configured production environment.
+
+
+## Single-service release decision
+
+Owner chose to retain the existing Northflank service on 24 October. No second backend, storage migration or compute upgrade. Production configuration can reuse the existing working branch-scoped Vercel environment objects by changing targets without reading secret values. The preview gateway now rejects non-GET requests to prevent accidental changes to shared owner data. This is an application guard, not isolation from trusted deployment authors or old immutable deployments. Production build/gateway verification and canonical-alias assignment remain required before claiming release complete.
