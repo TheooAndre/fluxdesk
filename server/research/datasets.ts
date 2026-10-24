@@ -3,6 +3,8 @@ import { link, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { Candle, Venue } from '../../src/types.ts';
 import { assertInterval, nextCandleStart, type CandleInterval } from '../../src/engine/intervals.ts';
+import { validateMarketHistory, type HistoricalMarketHistory, type FundingPayment } from './market-history.ts';
+import { fundingDiagnostics, type FundingDiagnostics } from '../../src/research/funding-diagnostics.ts';
 import { assetIdentity } from '../market.ts';
 
 /**
@@ -17,6 +19,7 @@ export type HistoricalDataset = {
   interval: CandleInterval;
   capturedAt: number;
   candles: Candle[];
+  marketHistory?: HistoricalMarketHistory;
 };
 export type DatasetReceipt = {
   id: string;
@@ -27,6 +30,7 @@ export type DatasetReceipt = {
   firstOpenTime: number;
   lastCloseTime: number;
   bars: number;
+  marketHistory?: { diagnostics?: FundingDiagnostics; retrievedAt: number; fundingEvents: number; markBars: number; fundingCoverage: 'observed_unverified'; recentFunding: FundingPayment[]; firstMarkClose: number; lastMarkClose: number };
 };
 
 const integer = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x);
@@ -73,6 +77,7 @@ export function validateHistoricalDataset(dataset: HistoricalDataset): void {
       throw Error('Dataset contains candle not closed at capture time');
     previousClose = bar.closeTime;
   }
+  validateMarketHistory(dataset);
 }
 
 export function datasetId(dataset: HistoricalDataset): string {
@@ -89,6 +94,13 @@ export function datasetReceipt(dataset: HistoricalDataset): DatasetReceipt {
     firstOpenTime: dataset.candles[0]!.time,
     lastCloseTime: dataset.candles.at(-1)!.closeTime!,
     bars: dataset.candles.length,
+    ...(dataset.marketHistory ? { marketHistory: {
+      diagnostics: fundingDiagnostics({startTime:dataset.marketHistory.startTime,endTime:dataset.marketHistory.endTime,funding:dataset.marketHistory.funding,marks:dataset.marketHistory.marks,tradeCloses:dataset.candles.map(b=>b.close)}),
+      retrievedAt: dataset.marketHistory.retrievedAt, fundingEvents: dataset.marketHistory.funding.length,
+      markBars: dataset.marketHistory.marks.length, fundingCoverage: dataset.marketHistory.fundingCoverage,
+      recentFunding: dataset.marketHistory.funding.slice(-8), firstMarkClose: dataset.marketHistory.marks[0]!.close,
+      lastMarkClose: dataset.marketHistory.marks.at(-1)!.close,
+    } } : {}),
   };
 }
 

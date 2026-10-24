@@ -13,3 +13,14 @@ lighthouse-report/
 
 # Local TLS certificates and private keys for iPhone PWA testing
 .cert/
+
+# Encrypted operational backups remain outside git
+*.fdbackup
+deploy/vps/backups/
+
+# Offline stat-arb environments and private market exports
+.venv-statarb/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+reports/

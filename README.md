@@ -1,8 +1,12 @@
-# FluxDesk v0.3: Market Intelligence + Strategy Lab
+# FluxDesk v0.4: Cloud Terminal, Stat-arb Scanner + Trade Journal
 
 A **read-only**, self-hosted trading research dashboard. Native iOS app packaging is not required: it is an installable React/Vite progressive web app, with an optional server-side Web Push service. **No exchange API keys or trade execution are used.**
 
 > Scope: personal single-user research dashboard, not a validated alpha engine. The four trading models are deterministic **candidates** and must be properly backtested before relying on them. It is deliberately not a financial-advice product.
+
+## v0.4 release — 24 October 2026
+
+Protected Vercel PWA with the existing persistent Northflank service, a venue-wide cointegration discovery scanner and a dated crypto trade journal. Owner-reported iPhone acceptance covers scanner/journal, open positions, reviews and analytics. Production configuration uses the existing service and volume, without new compute. New Preview gateways are read-only; production keeps normal saves. See [production preflight](docs/production-preflight.md) and [PR #12](https://github.com/TheooAndre/fluxdesk/pull/12) for the release build, CI and canonical-alias evidence. Research-data validation remains separate from hosting readiness.
 
 ## v0.3 release — 22 October 2026
 
@@ -73,6 +77,16 @@ See `VALIDATION_REPORT.md` for measured checks and remaining release gates. The 
 
 ## Data integrity warnings
 
+Market overview snapshots poll every **10 seconds while the app is active**,
+with immediate refresh on return/reconnection and a **Refresh** button. The
+backend reuses each venue's successful quote snapshot for at most **5 seconds**
+before the next request can refresh it, and coalesces concurrent requests.
+This is a polling target, not a latency guarantee: exchange response time,
+network delays and rate-limit backoff can make data older. Existing snapshot
+timestamps and stale/unavailable labels remain authoritative; a failed fetch
+never resets the last-success time. Browser suspension pauses polling. This
+does not change historical candle caching, signal cadence or research rules.
+
 1. **Binance `!forceOrder@arr` is a sampled stream**, at most one liquidation order snapshot per symbol per second. Sum of observed snapshots **is not the true total liquidations** (events may be missed and snapshots are not a unique liquidation ledger). The app correctly labels it partial. Public Hyperliquid all-account liquidation notional is **not** implemented; per-user liquidation/fill events do not imply a complete market-wide liquidation stream.
 2. Liquidation *future levels* are not observable from OHLCV and OI alone. The app instead shows transparent support/resistance and historical observed liquidation execution prices. Forward liquidation estimates require an appropriately licensed vendor, a venue-specific on-chain reconstruction, or a documented estimation model with large uncertainty.
 3. Hyperliquid perp data is USDC-collateralized / quoted; Binance uses USDT. The UI shows USD-equivalent **approximations**, not a guaranteed stablecoin FX-adjusted notional. Funding, basis, quote conventions and contract types vary.
@@ -82,7 +96,7 @@ See `VALIDATION_REPORT.md` for measured checks and remaining release gates. The 
 
 ## Local setup
 
-Prerequisites: Node 22 LTS, pnpm 10.x. From repository root:
+Prerequisites: Node 22.12+ LTS or Node 24 LTS, pnpm 10.18.0. From repository root:
 
 ```bash
 corepack enable

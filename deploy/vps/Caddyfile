@@ -1,0 +1,13 @@
+# Caddy obtains and renews a valid TLS certificate for a public DNS hostname.
+# Vercel -> Caddy HTTPS -> local API; requests without the private gateway
+# token are rejected by server/gateway.ts even if the hostname is known.
+{$FLUXDESK_BACKEND_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy api:8787
+    header X-Content-Type-Options nosniff
+    header Referrer-Policy no-referrer
+    log {
+        output stdout
+        format json
+    }
+}

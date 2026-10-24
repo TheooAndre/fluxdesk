@@ -10,6 +10,26 @@ export function snapshot():Store{return JSON.parse(JSON.stringify(data)) as Stor
 async function save(){const state=JSON.stringify(data);pending=pending.then(async()=>{await mkdir(dirname(FILE),{recursive:true});const tmp=FILE+'.'+randomUUID()+'.tmp';await writeFile(tmp,state,{mode:0o600});await rename(tmp,FILE);});await pending;}
 export async function addAlert(alert:AlertRule){if(data.alerts.length>=250)throw Error('Alert limit reached');data.alerts.push(alert);await save();}
 export async function deleteAlert(id:string){data.alerts=data.alerts.filter(x=>x.id!==id);await save();}
-export async function triggered(rule:AlertRule,message:string){const original=data.alerts.find(x=>x.id===rule.id);if(!original)return null;const now=Date.now();if(original.lastTriggeredAt&&now-original.lastTriggeredAt<300_000)return null;original.lastTriggeredAt=now;const e:AlertEvent={id:randomUUID(),assetId:rule.assetId,kind:rule.kind,time:now,message};data.events.unshift(e);data.events=data.events.slice(0,150);await save();return e;}
+export async function triggered(rule: AlertRule, message: string, boundary?: 'above' | 'below') {
+  const original = data.alerts.find((x) => x.id === rule.id);
+  if (!original) return null;
+  const now = Date.now();
+  let last = original.lastTriggeredAt;
+  if (original.kind === 'price_range') {
+    if (!boundary) throw Error('Range alerts require a crossed boundary');
+    last = boundary === 'above' ? original.lastTriggeredAboveAt : original.lastTriggeredBelowAt;
+  }
+  if (last !== undefined && now - last < 300_000) return null;
+  if (original.kind === 'price_range') {
+    if (boundary === 'above') original.lastTriggeredAboveAt = now;
+    else original.lastTriggeredBelowAt = now;
+  }
+  original.lastTriggeredAt = now;
+  const event: AlertEvent = { id: randomUUID(), assetId: rule.assetId, kind: rule.kind, time: now, message };
+  data.events.unshift(event);
+  data.events = data.events.slice(0, 150);
+  await save();
+  return event;
+}
 export async function subscribe(record:PushSubscriptionRecord){if(!data.subscriptions.some(x=>x.endpoint===record.endpoint)){data.subscriptions.push(record);await save();}}
 export async function forgetSubscription(endpoint:string){data.subscriptions=data.subscriptions.filter(x=>x.endpoint!==endpoint);await save();}
