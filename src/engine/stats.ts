@@ -137,3 +137,12 @@ export function crossedPriceLevel(
     ? previous < threshold && current >= threshold
     : previous > threshold && current <= threshold;
 }
+
+
+/** Outward crossings of a range; touching a bound counts, staying outside does not. */
+export function priceRangeCrossing(previous: number, current: number, lower: number, upper: number): 'above' | 'below' | null {
+  if (![previous, current, lower, upper].every((value) => Number.isFinite(value) && value > 0) || lower >= upper) return null;
+  if (crossedPriceLevel(previous, current, upper, 'above')) return 'above';
+  if (crossedPriceLevel(previous, current, lower, 'below')) return 'below';
+  return null;
+}

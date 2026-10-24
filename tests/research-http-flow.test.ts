@@ -79,7 +79,7 @@ it('fetches, archives and executes a versioned research report through the HTTP 
     schemaVersion: number; engineVersion: string; dataset: { id: string };
     result: { bars: number; trades: unknown[]; summary: { expectancyR: number | null } };
   };
-  expect(report.engineVersion).toBe('single-position-next-bar-v1');
+  expect(report.engineVersion).toBe('single-position-next-bar-v2');
   expect(report.dataset.id).toBe(created.dataset.id);
   expect(report.result.bars).toBe(90);
   expect(report.result.trades).toEqual([]);

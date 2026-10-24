@@ -1,0 +1,19 @@
+node_modules
+dist
+.git
+.github
+.env
+.env.*
+.cert
+data
+coverage
+lighthouse-report
+.lighthouseci
+playwright-report
+test-results
+*.log
+
+# Offline Python research is not part of the hosted Node runtime
+research
+.venv-statarb
+reports

@@ -45,10 +45,13 @@ describe('research API request constraints', () => {
   };
   it('accepts a valid fixed research configuration', () => {
     const output = parseResearchBacktest({ datasetId: 'a'.repeat(64), config });
-    expect(output.config).toEqual(config);
+    expect(output.config).toEqual({ ...config, maxGrossLeverage: 1 });
   });
   it.each([
     { datasetId: '../state.json', config },
+    { datasetId: 'a'.repeat(64), config: { ...config, maxGrossLeverage: 0 } },
+    { datasetId: 'a'.repeat(64), config: { ...config, maxGrossLeverage: 4 } },
+    { datasetId: 'a'.repeat(64), config: { ...config, maxGrossLeverage: '2' } },
     { datasetId: 'a'.repeat(64), config: { ...config, riskFraction: 0.1 } },
     { datasetId: 'a'.repeat(64), config: { ...config, riskFraction: '0.01' } },
     { datasetId: 'a'.repeat(64), config: { ...config, model: 'magic' } },

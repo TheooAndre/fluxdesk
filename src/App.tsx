@@ -1,20 +1,31 @@
 import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { monitorPwaUpdates } from './lib/pwa-updates.ts';
 import { registerSW } from 'virtual:pwa-register';
-import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star, BookOpen } from 'lucide-react';
 import { api } from './lib/api.ts';
-import { useUi, type Tab } from './lib/store.ts';
+import { useWatchlist } from './lib/use-watchlist.ts';
+import { useUi, restoreAssetFromLocation, type Tab } from './lib/store.ts';
 import { money, pct, price, clock } from './lib/format.ts';
-import { relativeReturn } from './engine/stats.ts';
+import { CATEGORIES, categoryLabel, marketCategories, matchesCategory } from './lib/categories.ts';
+import type { CategoryFilter } from './lib/categories.ts';
+import { priceBasisLabel, quoteAge, relativeToBenchmark } from './lib/market-quality.ts';
 import type { Market } from './types.ts';
-import LineChart from './components/LineChart.tsx';
 import { intervalsFor } from './engine/intervals.ts';
 import FeedHealth from './components/FeedHealth.tsx';
 import BenchmarkSelector from './components/BenchmarkSelector.tsx';
+import TradingViewAccount from './components/TradingViewAccount.tsx';
+import TerminalLayouts from './components/TerminalLayouts.tsx';
 import { Card, Pill, Loading, ErrorText, BadgeVenue } from './components/UiPrimitives.tsx';
-// Loaded only when research is opened, preserving overview startup performance.
+// Load each workspace module only when its view or data is needed.
+const CategoryBrowser = lazy(() => import('./components/CategoryBrowser.tsx'));
+const TradingChart = lazy(() => import('./components/TradingChart.tsx'));
+const Watchlist = lazy(() => import('./components/Watchlist.tsx'));
+const PerpetualDetails = lazy(() => import('./components/PerpetualDetails.tsx'));
 const StrategyLab = lazy(() => import('./components/StrategyLab.tsx'));
 const SignalsTab = lazy(() => import('./components/SignalsTab.tsx'));
+const StatArbScanner = lazy(() => import('./components/StatArbScanner.tsx'));
+const JournalTab = lazy(() => import('./components/JournalTab.tsx'));
 const PairsTab = lazy(() => import('./components/PairsTab.tsx'));
 const AlertsTab = lazy(() => import('./components/AlertsTab.tsx'));
 const CalendarTab = lazy(() => import('./components/CalendarTab.tsx'));
@@ -22,22 +33,29 @@ const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'overview', label: 'Markets', icon: BarChart3 },
   { id: 'signals', label: 'Entry models', icon: Zap },
   { id: 'pairs', label: 'Correlation', icon: GitCompareArrows },
+  { id: 'statarb', label: 'Stat-arb scanner', icon: GitCompareArrows },
+  { id: 'journal', label: 'Trade journal', icon: BookOpen },
   { id: 'research', label: 'Strategy Lab', icon: FlaskConical },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'calendar', label: 'Macro calendar', icon: CalendarDays },
 ];
-function useDashboard() {
+function useDashboard(enabled: boolean) {
   const ui = useUi();
   const mk = useQuery({
     queryKey: ['markets'],
+    enabled,
     queryFn: ({ signal }) => api.markets(signal),
-    refetchInterval: 45_000,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+    staleTime: 5_000,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
     retry: 1,
   });
   const asset = useQuery({
     queryKey: ['asset', ui.assetId, ui.tf, ui.benchmark],
     queryFn: ({ signal }) => api.asset(ui.assetId, ui.tf, ui.benchmark, signal),
-    enabled: !!ui.assetId,
+    enabled: enabled && !!ui.assetId,
     refetchInterval: 60_000,
   });
   return { ui, mk, asset, selected: mk.data?.assets.find((a) => a.id === ui.assetId) };
@@ -45,21 +63,30 @@ function useDashboard() {
 function MarketTable({
   assets,
   selectedId,
-  benchmarkReturn,
+  benchmark,
+  isUsd,
+  watchlistIds,
+  watchlistDisabled,
+  onToggleWatchlist,
 }: {
+  watchlistIds: string[];
+  watchlistDisabled: boolean;
+  onToggleWatchlist: (id: string) => void;
   assets: Market[];
   selectedId: string;
-  benchmarkReturn: number | null;
+  benchmark: Market | null;
+  isUsd: boolean;
 }) {
   const ui = useUi();
   const [visibleRows, setVisibleRows] = useState(50);
-  useEffect(() => setVisibleRows(50), [ui.search, ui.venue]);
+  useEffect(() => setVisibleRows(50), [ui.search, ui.venue, ui.category]);
   const filtered = useMemo(
     () =>
       assets
         .filter(
           (x) =>
             (ui.venue === 'all' || x.venue === ui.venue) &&
+            matchesCategory(x, ui.category) &&
             (x.base.toLowerCase().includes(ui.search.toLowerCase()) ||
               x.symbol.toLowerCase().includes(ui.search.toLowerCase())),
         )
@@ -68,25 +95,18 @@ function MarketTable({
             if (a.oiUsd === null && b.oiUsd !== null) return 1;
             if (b.oiUsd === null && a.oiUsd !== null) return -1;
           }
-          const aval =
-            ui.sort === 'volume'
-              ? a.volumeUsd24h
-              : ui.sort === 'oi'
-                ? (a.oiUsd ?? -1)
-                : benchmarkReturn === null
-                  ? 0
-                  : relativeReturn(a.return24h, benchmarkReturn);
-          const bval =
-            ui.sort === 'volume'
-              ? b.volumeUsd24h
-              : ui.sort === 'oi'
-                ? (b.oiUsd ?? -1)
-                : benchmarkReturn === null
-                  ? 0
-                  : relativeReturn(b.return24h, benchmarkReturn);
+          if (ui.sort === 'relative') {
+            const aReturn = relativeToBenchmark(a, benchmark, isUsd);
+            const bReturn = relativeToBenchmark(b, benchmark, isUsd);
+            if (aReturn === null) return bReturn === null ? 0 : 1;
+            if (bReturn === null) return -1;
+            return (aReturn - bReturn) * (ui.descending ? -1 : 1);
+          }
+          const aval = ui.sort === 'volume' ? a.volumeUsd24h : (a.oiUsd ?? -1);
+          const bval = ui.sort === 'volume' ? b.volumeUsd24h : (b.oiUsd ?? -1);
           return (aval - bval) * (ui.descending ? -1 : 1);
         }),
-    [assets, ui.search, ui.sort, ui.venue, ui.descending, benchmarkReturn],
+    [assets, ui.search, ui.sort, ui.venue, ui.category, ui.descending, benchmark, isUsd],
   );
   return (
     <Card
@@ -116,6 +136,9 @@ function MarketTable({
           <option value="binance">Binance</option>
           <option value="hyperliquid">Hyperliquid</option>
         </select>
+        <select aria-label="Market category" value={ui.category} onChange={(event) => ui.setCategory(event.target.value as CategoryFilter)}>
+          <option value="all">All sectors</option>{CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}<option value="uncategorized">Uncategorized</option>
+        </select>
         <select
           aria-label="Sort by"
           value={ui.sort}
@@ -141,7 +164,7 @@ function MarketTable({
           </thead>
           <tbody>
             {filtered.slice(0, visibleRows).map((x) => {
-              const relative = benchmarkReturn !== null ? relativeReturn(x.return24h, benchmarkReturn) : null;
+              const relative = relativeToBenchmark(x, benchmark, isUsd);
               return (
                 <tr
                   key={x.id}
@@ -149,6 +172,11 @@ function MarketTable({
                   onClick={() => ui.setAsset(x.id)}
                 >
                   <td>
+                    <div className="market-identity">
+                    <button className="watchlist-star" aria-label={`${watchlistIds.includes(x.id) ? 'Remove' : 'Save'} ${x.base} on ${x.venue} ${watchlistIds.includes(x.id) ? 'from' : 'to'} watchlist`} aria-pressed={watchlistIds.includes(x.id)} disabled={watchlistDisabled}
+                      onClick={(event) => { event.stopPropagation(); onToggleWatchlist(x.id); }}>
+                      <Star size={16} aria-hidden="true" fill={watchlistIds.includes(x.id) ? 'currentColor' : 'none'} />
+                    </button>
                     <button
                       className="asset-name asset-button"
                       aria-label={`Inspect ${x.base} on ${x.venue}`}
@@ -163,8 +191,9 @@ function MarketTable({
                         <small>{x.venue === 'binance' ? 'Binance perp' : 'Hyperliquid perp'}</small>
                       </span>
                     </button>
+                    </div>
                   </td>
-                  <td className="number font-medium">{price(x.price)}</td>
+                  <td className="number font-medium">{price(x.price)}<small className="price-basis">{priceBasisLabel(x)}</small></td>
                   <td className={'number ' + (x.return24h >= 0 ? 'positive' : 'negative')}>
                     {pct(x.return24h)}
                   </td>
@@ -197,7 +226,7 @@ function MarketTable({
         )}
       </div>
       <p className="footnote">
-        24h rolling performance. Relative return = (1 + alt return) / (1 + benchmark return) − 1. Same
+        24h rolling performance. Vs benchmark is unavailable for different or unknown price bases. Relative return = (1 + alt return) / (1 + benchmark return) − 1. Same
         instrument may appear on both venues; prices are not pooled. Historical and volume data can have
         different exchange conventions.
       </p>
@@ -237,12 +266,15 @@ function Snapshot({ assets, benchmark, isUsd }: { assets: Market[]; benchmark: M
 function AssetChart({
   item,
   candles,
+  now,
 }: {
+  now: number;
   item: Market | undefined;
   candles: Awaited<ReturnType<typeof api.asset>>['candles'] | undefined;
 }) {
+  const ui = useUi();
   return (
-    <Card title="Selected market" aside={<span className="small-label">Completed candles only</span>}>
+    <Card title="Selected market" aside={<span className="small-label">Trade candles · closed bars</span>}>
       {item ? (
         <>
           <div className="asset-chart-head">
@@ -253,15 +285,18 @@ function AssetChart({
                 <Pill>{item.venue}</Pill>
               </div>
               <div className="big-price">{price(item.price)}</div>
+              <span className="small-label">{priceBasisLabel(item)} price</span>
               <div className={item.return24h >= 0 ? 'positive' : 'negative'}>
                 {pct(item.return24h)} past 24h
               </div>
             </div>
             <Pill>
-              <Radio size={12} /> Quote · {clock(item.asOf)}
+              <Radio size={12} /> {item.timestampBasis === 'exchange' ? 'Exchange' : item.timestampBasis === 'received' ? 'Received' : 'Timestamp'} · {clock(item.asOf)} · {quoteAge(item.asOf, now)}
             </Pill>
           </div>
-          {candles?.length ? <LineChart data={candles} /> : <Loading label="Fetching historical bars…" />}
+          <div className="selected-categories">{marketCategories(item).length ? marketCategories(item).map((category) => <Pill key={category}>{categoryLabel(category)}</Pill>) : <Pill>Uncategorized</Pill>}</div>
+          <TradingViewAccount assetId={item.id} interval={ui.tf} />
+          {candles?.length ? <Suspense fallback={<Loading label="Loading interactive chart…" />}><TradingChart key={item.id + ':' + ui.tf} data={candles} assetId={item.id} base={item.base} interval={ui.tf} /></Suspense> : <Loading label="Fetching historical bars…" />}
         </>
       ) : (
         <p className="empty">Select an asset to inspect</p>
@@ -383,10 +418,26 @@ function InstallControls() {
   const [install, setInstall] = useState<BeforeInstallPromptEvent | null>(null),
     [ios, setIos] = useState(false),
     [showUpdate, setShowUpdate] = useState(false),
+    [checkUpdate, setCheckUpdate] = useState<(() => Promise<void>) | null>(null),
+    [updateStatus, setUpdateStatus] = useState(''),
     [update, setUpdate] = useState<((reloadPage?: boolean) => Promise<void>) | null>(null);
   useEffect(() => {
+    let disposed = false;
+    let monitor: ReturnType<typeof monitorPwaUpdates> | undefined;
     const sw = registerSW({
+      onRegisteredSW(_url, registration) {
+        if (disposed || !registration) return;
+        monitor = monitorPwaUpdates(registration, () => setUpdateStatus('Could not check for updates. Try again when connected.'));
+        setCheckUpdate(() => async () => {
+          if (!navigator.onLine) { setUpdateStatus('Connect to the internet to check for updates.'); return; }
+          setUpdateStatus('Checking for updates…');
+          await monitor?.check(true);
+          setUpdateStatus((status) => status === 'Checking for updates…' ? 'Update check complete. A new version will appear here when ready.' : status);
+        });
+      },
       onNeedRefresh() {
+        if (disposed) return;
+        setUpdateStatus('');
         setShowUpdate(true);
       },
       onOfflineReady() {
@@ -405,7 +456,7 @@ function InstallControls() {
           'standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
         ),
     );
-    return () => window.removeEventListener('beforeinstallprompt', listener);
+    return () => { disposed = true; monitor?.stop(); window.removeEventListener('beforeinstallprompt', listener); };
   }, []);
   return (
     <>
@@ -425,6 +476,8 @@ function InstallControls() {
           iOS: Safari → Share → <strong>Add to Home Screen</strong> to enable install and supported Web Push.
         </div>
       )}
+      {!showUpdate && checkUpdate && <button className="subtle" onClick={() => void checkUpdate()}>Check for updates</button>}
+      {updateStatus && <span className="small-label" role="status">{updateStatus}</span>}
       {showUpdate && (
         <div className="update-banner">
           <span>New version available</span>
@@ -438,15 +491,23 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 function App() {
-  const { ui, mk, asset, selected } = useDashboard();
+  const [overviewPanel, setOverviewPanel] = useState<'chart' | 'categories'>('chart');
+  const [booted, setBooted] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const { ui, mk, asset, selected } = useDashboard(booted);
+  const watchlist = useWatchlist(booted && ui.tab === 'overview');
+  useEffect(() => {
+    restoreAssetFromLocation();
+    setBooted(true);
+  }, []);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    const timer = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(timer);
   }, []);
   const degraded =
     mk.isError ||
-    !navigator.onLine ||
+    offline ||
     !mk.data ||
     !mk.data.feeds ||
     mk.data.feeds.some(
@@ -454,9 +515,9 @@ function App() {
     );
   const benchmark = ui.benchmark === 'USD' ? null : mk.data?.benchmarks?.[ui.benchmark] ?? null;
   const [menu, setMenu] = useState(false);
-  const [offline, setOffline] = useState(!navigator.onLine);
   useEffect(() => {
     const update = () => setOffline(!navigator.onLine);
+    update();
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
     return () => {
@@ -465,7 +526,7 @@ function App() {
     };
   }, []);
   return (
-    <div className="layout">
+    <div className="layout" aria-busy={!booted}>
       <aside className={'sidebar ' + (menu ? 'side-open' : '')}>
         <a className="logo" href="/">
           <span className="logo-icon">
@@ -515,14 +576,14 @@ function App() {
           <div className="top-actions">
             <span className="top-status">
               <span className={'live-dot ' + (degraded ? 'error-dot' : '')} />
-              {degraded ? 'Feeds need attention' : 'Feeds · ~45s'}
+              {degraded ? 'Feeds need attention' : 'Feeds · ~10s'}
             </span>
             <InstallControls />
           </div>
         </header>
         <main>
           <Intro tab={ui.tab} />
-          {ui.tab !== 'research' && <div className="selector-bar">
+          {!['research','journal','statarb'].includes(ui.tab) && <div className="selector-bar">
             <div className="selected-input">
               <span className="tiny-label">SELECTED ASSET</span>
               <select
@@ -563,7 +624,18 @@ function App() {
               require connectivity to the dashboard server.
             </div>
           )}
-          {mk.isError && <ErrorText error={mk.error} />} {mk.isLoading && <Loading />}
+          <div className="row-between mb-2">
+            <span className="tiny-label">EXCHANGE FEEDS</span>
+            <button
+              className="subtle"
+              aria-label="Refresh markets"
+              disabled={mk.isFetching || offline}
+              onClick={() => void mk.refetch()}
+            >
+              <RefreshCw size={14} aria-hidden="true" /> {mk.isFetching ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+          {mk.isError && <ErrorText error={mk.error} />} {(!booted || mk.isLoading) && <Loading />}
           {mk.data && (
             <FeedHealth feeds={mk.data.feeds ?? []} now={now} disconnected={offline || mk.isError} />
           )}
@@ -577,16 +649,38 @@ function App() {
           ) : null}
           {ui.tab === 'overview' && (
             <div className="content-stack">
+              <TerminalLayouts />
+              <Suspense fallback={<Loading label="Loading saved markets…" />}>
+                <Watchlist assets={mk.data?.assets ?? []} ids={watchlist.assetIds} now={now}
+                  loading={watchlist.query.isPending} error={watchlist.change.error ?? watchlist.query.error}
+                  disabled={offline || watchlist.change.isPending} onSelect={ui.setAsset}
+                  onRemove={(id) => watchlist.change.mutate({ id, add: false })} />
+              </Suspense>
               <Snapshot assets={mk.data?.assets ?? []} benchmark={benchmark} isUsd={ui.benchmark === 'USD'} />
-              <div className="overview-grid">
-                <AssetChart item={selected} candles={asset.isError ? undefined : asset.data?.candles} />
-                <Insights item={selected} detail={asset.isError ? undefined : asset.data} />
+              <div className="overview-tabs" role="group" aria-label="Market workspace view">
+                <button className={overviewPanel === 'chart' ? 'active' : ''} aria-pressed={overviewPanel === 'chart'} onClick={() => setOverviewPanel('chart')}>Chart</button>
+                <button className={overviewPanel === 'categories' ? 'active' : ''} aria-pressed={overviewPanel === 'categories'} onClick={() => setOverviewPanel('categories')}>Categories</button>
               </div>
+              {overviewPanel === 'categories' ? <Suspense fallback={<Loading label="Loading categories…" />}>
+                <CategoryBrowser assets={mk.data?.assets ?? []} selected={ui.category} venue={ui.venue} search={ui.search}
+                  onCategory={ui.setCategory} onVenue={ui.setVenue} onSearch={ui.setSearch}
+                  onSelect={(id) => { ui.setAsset(id); setOverviewPanel('chart'); }} />
+              </Suspense> : <div className="overview-grid">
+                <AssetChart item={selected} now={now} candles={asset.isError ? undefined : asset.data?.candles} />
+                <Insights item={selected} detail={asset.isError ? undefined : asset.data} />
+              </div>}
+              {selected && <Suspense fallback={<Loading label="Loading perpetual pricing…" />}>
+                <PerpetualDetails key={selected.id} item={selected} now={now} offline={offline} />
+              </Suspense>}
               {asset.error && <ErrorText error={asset.error} />}
               <MarketTable
                 assets={mk.data?.assets ?? []}
-                benchmarkReturn={ui.benchmark === 'USD' ? 0 : benchmark?.return24h ?? null}
+                benchmark={benchmark}
+                isUsd={ui.benchmark === 'USD'}
                 selectedId={ui.assetId}
+                watchlistIds={watchlist.assetIds}
+                watchlistDisabled={offline || watchlist.query.isPending || watchlist.query.isError || watchlist.change.isPending}
+                onToggleWatchlist={(id) => watchlist.change.mutate({ id, add: !watchlist.assetIds.includes(id) })}
               />
             </div>
           )}
@@ -606,6 +700,8 @@ function App() {
               <PairsTab key={ui.assetId} item={selected} assets={mk.data?.assets ?? []} />
             </Suspense>
           )}
+          {ui.tab === 'statarb' && <Suspense fallback={<Loading label="Loading stat-arb scanner…"/>}><StatArbScanner/></Suspense>}
+          {ui.tab === 'journal' && <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab/></Suspense>}
           {ui.tab === 'alerts' && (
             <Suspense fallback={<Loading label="Loading alerts…"/>}><AlertsTab item={selected}/></Suspense>
           )}
@@ -628,7 +724,7 @@ function App() {
           <button key={x.id} className={ui.tab === x.id ? 'active' : ''} onClick={() => ui.setTab(x.id)}>
             <x.icon size={20} />
             <span>
-              {x.id === 'overview'
+              {x.id === 'journal' ? 'Journal' : x.id === 'statarb' ? 'Stat-arb' : x.id === 'overview'
                 ? 'Markets'
                 : x.id === 'signals'
                   ? 'Signals'

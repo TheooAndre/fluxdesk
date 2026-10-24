@@ -124,7 +124,8 @@ inclusive and must equal the next candle open time minus one millisecond.
     "feeBpsPerSide": 4,
     "slippageBpsPerSide": 5
   },
-  "holdoutFraction": 0.25
+  "holdoutFraction": 0.25,
+  "maxGrossLeverage": 1
 }
 ```
 
@@ -138,7 +139,9 @@ realistic execution conditions. Results change when assumptions change.
   candle's open, adjusted adversely by entry slippage.
 - A trade is rejected if a gap makes its preselected stop or target nonsensical.
 - Position size uses the chosen equity-risk budget and includes a conservative
-  round-trip transaction-cost buffer.
+  round-trip transaction-cost buffer. Engine v2 additionally caps entry notional
+  to 1× equity by default (configurable to at most 3×) and reserves the entry fee.
+  The cap limits entry size; it does not model exchange margin or liquidation.
 - A trade whose intrabar high/low touches both stop and target is stopped first.
   A gap through the stop receives its worse opening price. Exit slippage and
   fees are deducted.
@@ -149,8 +152,15 @@ realistic execution conditions. Results change when assumptions change.
   not represented as an actual exchange fill.
 - Exit timestamps for stop/target are candle-close timestamps, not exact
   intrabar executions.
-- Results include expectancy in risk units, net P&L, win rate and closed-trade
-  equity drawdown, not an intratrade drawdown measure.
+- Engine v2 reports expectancy, net P&L, win rate, realized drawdown and a
+  separate bar-close open-position equity curve/drawdown. The curve values
+  positions at completed trade-candle closes, deducts entry fees while open
+  and realizes exit costs only on closing. It is a trade-price proxy, not
+  historical mark-price or intrabar drawdown. Engine v1 reports remain
+  explicitly labelled closed-trade-only.
+- Each new trade logs entry notional, entry exposure as a fraction of equity,
+  and whether the exposure cap reduced its risk-based size. Gaps can still
+  exceed planned stop risk or equity; nonpositive equity stops new entries.
 
 ## Limitations / further gates
 
@@ -160,7 +170,7 @@ realistic execution conditions. Results change when assumptions change.
   Hyperliquid `volumeUsd` is estimated from base volume and OHLC midpoint,
   not an exchange-reported historical quote notional.
 - No independent walk-forward folds or parameter-search embargo yet.
-- No funding, financing, leverage limits, partial fills, latency, exchange
+- No historical funding, financing, exchange-specific margin tiers, partial fills, latency, exchange
   minimum quantities, market impact, or liquidation simulation.
 - Conservative OHLC bar sequencing is a simplification, not tick-by-tick replay.
 - The tool does not establish out-of-sample statistical significance merely

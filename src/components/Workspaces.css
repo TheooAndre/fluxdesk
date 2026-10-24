@@ -1,0 +1,152 @@
+.workspace {
+  min-width: 0;
+}
+.workspace-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 12px 0;
+}
+.workspace label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #b2c4d8;
+  min-width: 0;
+}
+.workspace input:not([type='checkbox']),
+.workspace select,
+.workspace textarea {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #34465b;
+  border-radius: 7px;
+  background: #0d1726;
+  color: #edf5ff;
+  padding: 9px;
+  font: inherit;
+  box-sizing: border-box;
+}
+.workspace input[type='checkbox'] {
+  width: auto;
+}
+.workspace textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.workspace button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.workspace td {
+  white-space: normal;
+  min-width: 90px;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+.workspace .market-table {
+  min-width: 800px;
+}
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.workspace-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin: 15px 0;
+}
+.workspace-metrics div {
+  background: #101b2b;
+  border: 1px solid #2b3d52;
+  border-radius: 9px;
+  padding: 13px;
+}
+.workspace-metrics strong {
+  display: block;
+  font-size: 20px;
+  margin-top: 6px;
+}
+.workspace-scroll {
+  max-height: 240px;
+  overflow: auto;
+}
+.journal-leg {
+  border: 1px solid #34465b;
+  padding: 14px;
+  border-radius: 10px;
+  margin: 12px 0;
+}
+.journal-trade {
+  border-bottom: 1px solid #2a3c50;
+  padding: 12px 0;
+}
+.journal-trade header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.journal-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.journal-calendar button {
+  background: #101c2b;
+  color: #c6d6e6;
+  border: 1px solid #34465b;
+  border-radius: 6px;
+  min-height: 62px;
+  font-size: 11px;
+  min-width: 0;
+  padding: 4px;
+}
+.journal-calendar button[aria-pressed='true'] {
+  outline: 2px solid #47e5b4;
+}
+.journal-calendar small {
+  display: block;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+.workspace dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.workspace dd {
+  margin: 0;
+}
+@media (max-width: 650px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .workspace-controls > * {
+    flex: 1 1 130px;
+  }
+  .workspace-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 850px) {
+  .bottom-nav {
+    overflow-x: auto;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .bottom-nav button {
+    flex: 1 0 50px;
+    min-width: 50px;
+  }
+}
+
+.workspace,.workspace section,.workspace fieldset,.workspace-grid>* { min-width:0; min-inline-size:0; }
+.workspace .market-scroller { max-width:100%; overflow-x:auto; }
+.workspace table input { min-width:95px; }
+
+.workspace-controls button[aria-pressed] { border:1px solid #34465b; border-radius:7px; padding:9px 13px; background:#101b2b;color:#a7bbce; }
+.workspace-controls button[aria-pressed=true] { background:#173a31; color:#65ecc0; border-color:#379c7e; }

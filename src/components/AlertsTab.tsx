@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { usePushNotifications } from '../lib/use-push-notifications.ts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellRing, X } from 'lucide-react';
+import { priceAlertDirection } from '../lib/price-alert.ts';
 import { api } from '../lib/api.ts';
 import type { Market, AlertKind } from '../types.ts';
 import { money, price, clock } from '../lib/format.ts';
@@ -11,12 +13,17 @@ function AlertsTab({ item }: { item: Market | undefined }) {
   const rules = useQuery({ queryKey: ['alerts'], queryFn: api.alerts, refetchInterval: 15_000 });
   const [kind, setKind] = useState<AlertKind>('volume'),
     [threshold, setThreshold] = useState('100'),
-    [direction, setDirection] = useState<'above' | 'below'>('above'),
+    [lowerPrice, setLowerPrice] = useState(''),
+    [upperPrice, setUpperPrice] = useState(''),
     [message, setMessage] = useState('');
   const create = useMutation({
     mutationFn: api.createAlert,
-    onSuccess: () => {
-      setMessage('Alert created. Monitoring runs on your dashboard server.');
+    onSuccess: ({ alert }) => {
+      setMessage(
+        alert.kind === 'price'
+          ? `Alert created: price ${alert.direction} ${price(alert.threshold)}. Monitoring runs on your dashboard server.`
+          : 'Alert created. Monitoring runs on your dashboard server.',
+      );
       void client.invalidateQueries({ queryKey: ['alerts'] });
     },
     onError: (e) => setMessage(e.message),
@@ -25,31 +32,15 @@ function AlertsTab({ item }: { item: Market | undefined }) {
     mutationFn: api.deleteAlert,
     onSuccess: () => void client.invalidateQueries({ queryKey: ['alerts'] }),
   });
-  async function enablePush() {
-    try {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window))
-        throw Error('Push unsupported in this browser');
-      const p = await Notification.requestPermission();
-      if (p !== 'granted') throw Error('Notification permission was not granted');
-      const { key } = await api.vapidKey();
-      if (!key) throw Error('Configure VAPID keys on the server first');
-      const registration = await navigator.serviceWorker.ready;
-      const bytes = Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-      const sub = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: bytes as BufferSource,
-      });
-      await api.subscribe(sub);
-      setMessage('Push notifications enabled for this device.');
-    } catch (e) {
-      setMessage((e as Error).message);
-    }
-  }
+  const push = usePushNotifications();
+  const direction = priceAlertDirection(item?.price ?? NaN, Number(threshold));
   return (
     <div className="content-stack">
       <div className="section-intro">
         <h2>Market alerts</h2>
-        <p>Price levels, 5-minute notional volume spikes, and exchange-observed liquidation events.</p>
+        <p>
+          Price levels and ranges, 5-minute notional volume spikes, and exchange-observed liquidation events.
+        </p>
       </div>
       <div className="cols-2">
         <Card title="Create alert">
@@ -63,6 +54,10 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               value={kind}
               onChange={(e) => {
                 setKind(e.target.value as AlertKind);
+                if (e.target.value === 'price_range') {
+                  setLowerPrice(item ? String(Number((item.price * 0.99).toPrecision(8))) : '');
+                  setUpperPrice(item ? String(Number((item.price * 1.01).toPrecision(8))) : '');
+                }
                 setThreshold(
                   e.target.value === 'liquidation'
                     ? '5000000'
@@ -74,40 +69,77 @@ function AlertsTab({ item }: { item: Market | undefined }) {
             >
               <option value="volume">5m volume spike (%)</option>
               <option value="price">Price level (USD)</option>
+              <option value="price_range">Price range (USD)</option>
               <option value="liquidation" disabled={item?.venue !== 'binance'}>
                 Liquidations in 5m (USD) · Binance
               </option>
             </select>
           </label>
           {kind === 'price' && (
+            <div className="notice" role="status">
+              <p>
+                Current {item?.priceBasis === 'mark' ? 'mark' : 'last trade'} price:{' '}
+                {item ? price(item.price) : 'Unavailable'}
+                {item ? ` · ${clock(item.asOf)}` : ''}
+              </p>
+              <p>
+                {direction
+                  ? `Price ${direction} ${price(Number(threshold))}`
+                  : 'Choose a level above or below the current price.'}
+              </p>
+              <small>Direction is verified against a live quote when saved.</small>
+            </div>
+          )}
+          {kind === 'price_range' ? (
+            <>
+              <label className="field">
+                Lower price (USD)
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={lowerPrice}
+                  onChange={(event) => setLowerPrice(event.target.value)}
+                />
+              </label>
+              <label className="field">
+                Upper price (USD)
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={upperPrice}
+                  onChange={(event) => setUpperPrice(event.target.value)}
+                />
+              </label>
+              {lowerPrice && upperPrice && Number(lowerPrice) >= Number(upperPrice) && (
+                <p role="status">Lower price must be less than upper price.</p>
+              )}
+            </>
+          ) : (
             <label className="field">
-              Trigger when
-              <select value={direction} onChange={(e) => setDirection(e.target.value as 'above' | 'below')}>
-                <option value="above">Price ≥ level</option>
-                <option value="below">Price ≤ level</option>
-              </select>
+              {kind === 'volume'
+                ? 'Volume above baseline (%)'
+                : kind === 'price'
+                  ? 'Price level (USD)'
+                  : 'Observed liquidations (USD)'}
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+              />
             </label>
           )}
-          <label className="field">
-            {kind === 'volume'
-              ? 'Volume above baseline (%)'
-              : kind === 'price'
-                ? 'Price level (USD)'
-                : 'Observed liquidations (USD)'}
-            <input
-              type="number"
-              min="0"
-              step="any"
-              value={threshold}
-              onChange={(e) => setThreshold(e.target.value)}
-            />
-          </label>
           <p className="footnote">
             {kind === 'volume'
               ? 'Compares the latest fully closed 5m candle to the previous 20 closed 5m bars.'
               : kind === 'liquidation'
                 ? 'Binance only. Stream captures at most one forced-liquidation snapshot per symbol per second. Amounts are lower-bound observations, not total liquidations.'
-                : 'Checks latest available quote approximately once a minute.'}
+                : kind === 'price_range'
+                  ? 'Alerts when price reaches or crosses above the upper bound or below the lower bound. Checks about once a minute; brief moves between checks may be missed. First observation arms the rule. Re-entry rearms it, with a 5-minute cooldown per boundary.'
+                  : 'Checks about once a minute. Reaching or crossing the chosen level triggers an alert; brief moves between checks may be missed. Same-direction repeats have a 5-minute cooldown.'}
           </p>
           <button
             className="primary full"
@@ -115,19 +147,48 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               !item ||
               create.isPending ||
               !navigator.onLine ||
+              (kind === 'price' && !direction) ||
               (kind === 'liquidation' && item.venue !== 'binance') ||
-              !Number.isFinite(Number(threshold)) ||
-              Number(threshold) <= 0
+              (kind === 'price_range'
+                ? ![Number(lowerPrice), Number(upperPrice)].every(
+                    (value) => Number.isFinite(value) && value > 0 && value <= 1e15,
+                  ) || Number(lowerPrice) >= Number(upperPrice)
+                : !Number.isFinite(Number(threshold)) || Number(threshold) <= 0)
             }
             onClick={() =>
-              item && create.mutate({ assetId: item.id, kind, threshold: Number(threshold), direction })
+              item &&
+              create.mutate(
+                kind === 'price_range'
+                  ? { assetId: item.id, kind, lowerPrice: Number(lowerPrice), upperPrice: Number(upperPrice) }
+                  : { assetId: item.id, kind, threshold: Number(threshold) },
+              )
             }
           >
             <BellRing size={16} /> Create alert
           </button>
-          <button className="secondary full mt-3" onClick={() => void enablePush()}>
-            <Bell size={16} /> Enable iPhone push notifications
+          <button
+            className="secondary full mt-3"
+            disabled={push.busy || push.state === 'checking' || push.state === 'unsupported'}
+            onClick={() => void (push.state === 'error' ? push.refresh() : push.toggle())}
+          >
+            <Bell size={16} />{' '}
+            {push.busy
+              ? 'Updating notifications…'
+              : push.state === 'checking'
+                ? 'Checking notifications…'
+                : push.state === 'enabled'
+                  ? 'Disable iPhone push notifications'
+                  : push.state === 'unsupported'
+                    ? 'Push notifications unavailable'
+                    : push.state === 'error'
+                      ? 'Retry notification status'
+                      : 'Enable iPhone push notifications'}
           </button>
+          {push.message && (
+            <div role="status" className="notice mt-3">
+              {push.message}
+            </div>
+          )}
           {message && (
             <div role="status" className="notice mt-3">
               {message}
@@ -144,14 +205,17 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               <div className="alert-rule" key={x.id}>
                 <div>
                   <b>
-                    {x.assetId.split(':')[1]} · {x.kind.toUpperCase()}
+                    {x.assetId.split(':')[1]} ·{' '}
+                    {x.kind === 'price_range' ? 'PRICE RANGE' : x.kind.toUpperCase()}
                   </b>
                   <small>
-                    {x.kind === 'volume'
-                      ? `≥ ${x.threshold}% spike`
-                      : x.kind === 'price'
-                        ? `${x.direction} ${price(x.threshold)}`
-                        : `≥ ${money(x.threshold)} / 5m`}
+                    {x.kind === 'price_range'
+                      ? `Below ${price(x.lowerPrice)} or above ${price(x.upperPrice)}`
+                      : x.kind === 'volume'
+                        ? `≥ ${x.threshold}% spike`
+                        : x.kind === 'price'
+                          ? `Price ${x.direction ?? 'above'} ${price(x.threshold)}`
+                          : `≥ ${money(x.threshold)} / 5m`}
                   </small>
                 </div>
                 <button aria-label="Delete alert" className="icon-btn" onClick={() => remove.mutate(x.id)}>

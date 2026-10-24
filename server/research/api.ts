@@ -4,6 +4,7 @@ import type { ResearchConfig } from '../../src/engine/backtest.ts';
 import type { SignalModel } from '../../src/types.ts';
 import { assetIdentity } from '../market.ts';
 import { datasetReceipt, loadHistoricalDataset, saveHistoricalDataset, type DatasetReceipt } from './datasets.ts';
+import { fetchHistoricalMarketHistory } from './market-history.ts';
 import { fetchHistoricalDataset } from './fetch.ts';
 import { runStoredBacktest, type StoredResearchReport } from './runner.ts';
 
@@ -58,13 +59,16 @@ export function parseResearchBacktest(input: unknown): { datasetId: string; conf
   if (!models.includes(c.model as SignalModel))
     throw new ResearchRequestError('Unsupported research strategy');
   const costs = object(c.costs);
+  if (c.historicalAccounting !== undefined && typeof c.historicalAccounting !== 'boolean') throw new ResearchRequestError('Invalid historical accounting option');
   return {
     datasetId: value.datasetId,
     config: {
+      ...(c.historicalAccounting === undefined ? {} : {historicalAccounting: c.historicalAccounting}),
       model: c.model as SignalModel,
       initialEquity: numeric(c.initialEquity, 'initial equity', 1, 10_000_000),
       riskFraction: numeric(c.riskFraction, 'risk fraction', 0.00001, 0.05),
       holdoutFraction: numeric(c.holdoutFraction, 'holdout fraction', 0.1, 0.5),
+      maxGrossLeverage: c.maxGrossLeverage === undefined ? 1 : numeric(c.maxGrossLeverage, 'gross exposure cap', 0.1, 3),
       costs: {
         feeBpsPerSide: numeric(costs.feeBpsPerSide, 'fee rate', 0, 100),
         slippageBpsPerSide: numeric(costs.slippageBpsPerSide, 'slippage', 0, 100),
@@ -114,4 +118,20 @@ export async function executeResearchBacktest(input: unknown): Promise<StoredRes
   // The CLI can replay deeper archives, but HTTP must never block the API
   // event loop with unbounded quadratic signal-history evaluation.
   return exclusive(async () => runStoredBacktest(args.datasetId, args.config, undefined, 3_000));
+}
+
+export async function enrichResearchDataset(input: unknown): Promise<DatasetReceipt> {
+  const value = object(input);
+  if (typeof value.datasetId !== 'string' || !hashPattern.test(value.datasetId)) throw new ResearchRequestError('Invalid dataset ID');
+  const id = value.datasetId;
+  return exclusive(async () => {
+    const dataset = await loadHistoricalDataset(id);
+    if (dataset.marketHistory) return datasetReceipt(dataset);
+    if (dataset.venue !== 'binance' || dataset.candles.length > 1000 || dataset.candles.at(-1)!.closeTime! - dataset.candles[0]!.time >= 90 * 86400000)
+      throw new ResearchRequestError('Choose a Binance dataset of at most 1000 bars and 90 days');
+    const current = await listResearchDatasets();
+    if (current.datasets.length + current.rejected >= 100) throw new ResearchRequestError('Research archive is full (100 datasets)', 409);
+    const marketHistory = await fetchHistoricalMarketHistory(dataset);
+    return saveHistoricalDataset({...dataset, marketHistory});
+  });
 }

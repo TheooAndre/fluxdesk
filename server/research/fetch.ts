@@ -15,8 +15,8 @@ export async function fetchHistoricalDataset(
   now = Date.now(),
 ): Promise<HistoricalDataset> {
   const { venue, symbol } = assetIdentity(assetId);
-  if (!(['15m', '1h', '4h', '1d'] as string[]).includes(interval))
-    throw Error('Research ingestion supports 15m, 1h, 4h and 1d intervals');
+  if (!(['1m','3m','5m','15m','30m','1h','2h','4h','6h','8h','12h','1d'] as string[]).includes(interval))
+    throw Error('Research ingestion supports fixed intraday and daily intervals');
   if (!Number.isSafeInteger(count) || count < 80 || count > 3_000)
     throw Error('Research history requires 80 to 3000 completed bars');
   if (!Number.isSafeInteger(now) || now <= 0) throw Error('Invalid research capture time');

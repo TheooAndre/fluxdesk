@@ -1,6 +1,9 @@
+import type {JournalData,JournalTrade,JournalDay} from '../journal/model.ts';
+import type {ScanConfig,ScanJob} from '../../server/statarb-scanner.ts';
 import type {
   AlertEvent,
   AlertRule,
+  AlertInput,
   Candle,
   EconomicEvent,
   EntrySignal,
@@ -11,6 +14,7 @@ import type {
   PairCandidate,
   PairStats,
   PriceLevel,
+  PerpetualQuote,
 } from '../types.ts';
 import type { ResearchConfig } from '../engine/backtest.ts';
 import type { DatasetReceipt } from '../../server/research/datasets.ts';
@@ -54,14 +58,41 @@ async function postResearch<T>(url: string, payload: unknown, timeoutMs = 90_000
   }
 }
 export const api = {
+  importJournal:(data:JournalData)=>postResearch<{imported:number;skipped:number}>('/api/journal/import',data),
+  journal:()=>get<JournalData>('/api/journal'),
+  saveJournalTrade:(trade:JournalTrade)=>postResearch<{trade:JournalTrade}>('/api/journal/trades',trade),
+  saveJournalDay:(day:JournalDay)=>postResearch<{day:JournalDay}>('/api/journal/day',day),
+  deleteJournalTrade:async(id:string,revision:number)=>{const r=await fetch('/api/journal/trades?'+new URLSearchParams({id,revision:String(revision)}),{method:'DELETE'});if(!r.ok)throw Error((await r.json()).error??'Delete failed');return r.json();},
+  statarbStatus:()=>get<{scan:ScanJob|null}>('/api/statarb/scan'),
+  startStatArb:(config:ScanConfig)=>postResearch<{scan:ScanJob}>('/api/statarb/scan',config),
+  cancelStatArb:async()=>{const r=await fetch('/api/statarb/scan',{method:'DELETE'});if(!r.ok)throw Error('Cancel failed');return r.json();},
   researchDatasets: (signal?: AbortSignal) =>
     get<{ datasets: DatasetReceipt[]; rejected: number }>('/api/research/datasets', signal, 30_000),
   researchFetch: (payload: { assetId: string; interval: '15m' | '1h' | '4h' | '1d'; count: number }) =>
     postResearch<{ dataset: DatasetReceipt }>('/api/research/datasets', payload),
+  researchMarketHistory: (datasetId: string) => postResearch<{ dataset: DatasetReceipt }>('/api/research/market-history', { datasetId }),
   researchBacktest: (datasetId: string, config: ResearchConfig) =>
     postResearch<StoredResearchReport>('/api/research/backtests', { datasetId, config }),
+  watchlist: (signal?: AbortSignal) => get<{ assetIds: string[] }>('/api/watchlist', signal),
+  changeWatchlist: async (id: string, add: boolean): Promise<{ assetIds: string[] }> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const response = await fetch(add ? '/api/watchlist' : '/api/watchlist?asset=' + encodeURIComponent(id), {
+        method: add ? 'POST' : 'DELETE', signal: controller.signal, cache: 'no-store',
+        ...(add ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: id }) } : {}),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ error: 'Watchlist update failed' })) as { error?: string };
+        throw Error(data.error ?? 'Watchlist update failed');
+      }
+      return await response.json() as { assetIds: string[] };
+    } finally { clearTimeout(timer); }
+  },
   markets: (signal?: AbortSignal) =>
     get<MarketSnapshot & { benchmarks: Record<string, Market | null> }>('/api/markets', signal),
+  perpetual: (id: string, signal?: AbortSignal) =>
+    get<PerpetualQuote>('/api/perpetual?asset=' + encodeURIComponent(id), signal),
   asset: (id: string, tf: string, major: string, signal?: AbortSignal) =>
     get<{
       id: string;
@@ -124,7 +155,7 @@ export const api = {
       events: LiquidationEvent[];
       coverage: string;
     }>(`/api/liquidations?asset=${encodeURIComponent(asset)}&minutes=5`),
-  createAlert: async (data: { assetId: string; kind: string; threshold: number; direction?: string }) => {
+  createAlert: async (data: AlertInput) => {
     const res = await fetch('/api/alerts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -136,6 +167,14 @@ export const api = {
   deleteAlert: async (id: string) => {
     const res = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
     if (!res.ok) throw Error('Could not remove alert');
+  },
+  unsubscribe: async (endpoint: string) => {
+    const res = await fetch('/api/push/subscribe', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    });
+    if (!res.ok) throw Error('Could not disable push notifications. Please retry.');
   },
   vapidKey: () => get<{ key: string }>('/api/push/key'),
   subscribe: async (data: PushSubscription) => {

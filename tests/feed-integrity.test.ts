@@ -166,6 +166,49 @@ describe('venue snapshots', () => {
     expect(expired.feeds[0]!.status).toBe('unavailable');
     expect(expired.assets.some((x) => x.venue === 'binance')).toBe(false);
   });
+  it('refreshes quotes on the next 10-second poll while coalescing concurrent requests', async () => {
+    const { market, fetchMock } = await fixture();
+    const initial = await market.marketSnapshot();
+    expect(initial.feeds.every((feed) => feed.lastSuccessAt === now)).toBe(true);
+    const calls = fetchMock.mock.calls.length;
+    vi.setSystemTime(now + 4_999);
+    expect((await market.marketSnapshot()).feeds[0]!.lastSuccessAt).toBe(now);
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+    vi.setSystemTime(now + 10_000);
+    const snapshots = await Promise.all(Array.from({ length: 8 }, () => market.marketSnapshot()));
+    expect(snapshots.every((snapshot) => snapshot.feeds.every((feed) => feed.lastSuccessAt === now + 10_000))).toBe(true);
+    // One request per venue, with exchange metadata still cached across polls.
+    expect(fetchMock).toHaveBeenCalledTimes(calls + 2);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('exchangeInfo'))).toHaveLength(1);
+  });
+  it('does not let faster polling bypass upstream rate-limit backoff or reset snapshot age', async () => {
+    const { market, fetchMock } = await fixture();
+    await market.marketSnapshot();
+    const fetchDefault = fetchMock.getMockImplementation()!;
+    let limited = true;
+    fetchMock.mockImplementation(async (input) =>
+      String(input).includes('binance') && limited
+        ? Response.json({ msg: 'rate limited' }, { status: 429 })
+        : fetchDefault(input),
+    );
+    vi.setSystemTime(now + 10_000);
+    const failed = await market.marketSnapshot();
+    expect(failed.feeds[0]).toMatchObject({ status: 'stale', lastSuccessAt: now, ageMs: 10_000 });
+    const binanceCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('binance')).length;
+    const attempts = binanceCalls();
+    for (let seconds = 20; seconds < 70; seconds += 10) {
+      vi.setSystemTime(now + seconds * 1000);
+      const snapshot = await market.marketSnapshot();
+      expect(snapshot.feeds[0]!.lastSuccessAt).toBe(now);
+      expect(snapshot.feeds[0]!.status).toBe('stale');
+    }
+    expect(binanceCalls()).toBe(attempts);
+    limited = false;
+    vi.setSystemTime(now + 70_000);
+    const recovered = await market.marketSnapshot();
+    expect(recovered.feeds[0]).toMatchObject({ status: 'live', lastSuccessAt: now + 70_000 });
+    expect(binanceCalls()).toBe(attempts + 1);
+  });
   it('keeps a fresh 451 failure visible even when the other venue works', async () => {
     const { market, fail } = await fixture();
     fail();

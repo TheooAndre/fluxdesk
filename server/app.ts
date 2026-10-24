@@ -1,17 +1,24 @@
 import { type IncomingMessage, type ServerResponse } from 'node:http';
+import { gzipSync } from 'node:zlib';
+import { readJournal,importJournal,saveTrade,removeTrade,saveDay,JournalError } from './journal.ts';
+import {startScan,scanStatus,cancelScan,ScannerError} from './statarb-scanner.ts';
 import { randomUUID } from 'node:crypto';
+import { authenticateGateway, GatewayAuthError } from './gateway.ts';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
-import { marketSnapshot, candles, assetIdentity, enrichedOpenInterest } from './market.ts';
+import { marketSnapshot, freshMarkets, candles, assetIdentity, enrichedOpenInterest, perpetualQuote } from './market.ts';
+import { priceAlertDirection } from '../src/lib/price-alert.ts';
 import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
-import type { AlertKind, AlertRule, Market } from '../src/types.ts';
-import { snapshot, addAlert, deleteAlert, subscribe } from './store.ts';
+import type { AlertKind, AlertCondition, AlertRule, Market } from '../src/types.ts';
+import { snapshot, addAlert, deleteAlert, subscribe, forgetSubscription } from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
+import { savedWatchlist, changeWatchlist } from './watchlist.ts';
+import { armPriceAlert } from './alerts.ts';
 import { calendar } from './calendar.ts';
 import { vapidKey } from './notifications.ts';
-import { ResearchRequestError, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
+import { ResearchRequestError, enrichResearchDataset, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
 const json = (res: ServerResponse, data: unknown, status = 200) => {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -20,11 +27,11 @@ const json = (res: ServerResponse, data: unknown, status = 200) => {
   });
   res.end(JSON.stringify(data));
 };
-async function body(req: IncomingMessage) {
+async function body(req: IncomingMessage, limit = 16_384) {
   let raw = '';
   for await (const c of req) {
     raw += c;
-    if (raw.length > 16_384) throw Error('Request too large');
+    if (Buffer.byteLength(raw) > limit) throw Error('Request too large');
   }
   try {
     const value: unknown = JSON.parse(raw || '{}');
@@ -53,44 +60,70 @@ function writeSecurityHeaders(res: ServerResponse) {
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   );
 }
-function checkOrigin(req: IncomingMessage) {
-  if (!['POST', 'DELETE', 'PUT'].includes(req.method ?? '')) return;
+function checkOrigin(req: IncomingMessage, expectedHost: string, gatewayProtected: boolean) {
+  if (!['POST', 'DELETE', 'PUT', 'PATCH'].includes(req.method ?? '')) return;
   const o = req.headers.origin;
+  // For gateway-protected remote APIs, browser mutations MUST come from the
+  // Vercel HTTPS origin. Local CLI / LAN clients retain the v0.3 behavior.
+  if (gatewayProtected && !o) throw Error('Cross-origin mutation blocked');
   if (o) {
     const parsed = new URL(o);
-    const expectedHost = req.headers.host ?? '';
-    if (parsed.host !== expectedHost) throw Error('Cross-origin mutation blocked');
+    if (parsed.host !== expectedHost || (gatewayProtected && parsed.protocol !== 'https:'))
+      throw Error('Cross-origin mutation blocked');
   }
 }
 export async function handler(req: IncomingMessage, res: ServerResponse) {
   writeSecurityHeaders(res);
   let path = '';
   try {
+    const access = authenticateGateway(req);
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     path = url.pathname;
     if (path.startsWith('/api/')) {
       const allowed =
-        path === '/api/research/datasets'
+        path === '/api/statarb/scan' ? ['GET','POST','DELETE'] : path === '/api/journal' ? ['GET'] : path === '/api/journal/trades' ? ['POST','DELETE'] : (path === '/api/journal/day'||path === '/api/journal/import') ? ['POST'] : path === '/api/watchlist'
+          ? ['GET', 'POST', 'DELETE']
+          : path === '/api/research/datasets'
           ? ['GET', 'POST']
-          : path === '/api/research/backtests'
+          : (path === '/api/research/backtests' || path === '/api/research/market-history')
             ? ['POST']
             : path === '/api/alerts'
               ? ['GET', 'POST']
           : path.startsWith('/api/alerts/')
             ? ['DELETE']
             : path === '/api/push/subscribe'
-              ? ['POST']
+              ? ['POST', 'DELETE']
               : ['GET'];
       if (!allowed.includes(req.method ?? '')) {
         res.setHeader('allow', allowed.join(', '));
         return json(res, { error: 'Method not allowed' }, 405);
       }
     }
-    checkOrigin(req);
+    checkOrigin(req, access.originHost, access.gatewayProtected);
+    if(path === '/api/statarb/scan'){
+      if(req.method==='GET')return json(res,{scan:scanStatus()});
+      if(req.method==='DELETE')return json(res,{scan:cancelScan()});
+      return json(res,{scan:startScan(await body(req))},202);
+    }
+    if(path === '/api/journal')return json(res,await readJournal());
+    if(path === '/api/journal/trades'){
+      if(req.method==='DELETE')return json(res,await removeTrade(url.searchParams.get('id')??'',Number(url.searchParams.get('revision'))));
+      return json(res,await saveTrade(await body(req,131072)),201);
+    }
+    if(path === '/api/journal/import')return json(res,await importJournal(await body(req,4*1024*1024)));
+    if(path === '/api/journal/day')return json(res,await saveDay(await body(req,131072)));
+    if (path === '/api/watchlist') {
+      if (req.method === 'GET') return json(res, await savedWatchlist());
+      const id = req.method === 'POST' ? (await body(req)).assetId : url.searchParams.get('asset');
+      if (typeof id !== 'string') throw Error('Invalid asset identifier');
+      return json(res, await changeWatchlist(validatedId(id), req.method === 'POST'));
+    }
     if (path === '/api/research/datasets' && req.method === 'GET')
       return json(res, await listResearchDatasets());
     if (path === '/api/research/datasets' && req.method === 'POST')
       return json(res, { dataset: await fetchAndSaveResearchDataset(await body(req)) }, 201);
+    if (path === '/api/research/market-history' && req.method === 'POST')
+      return json(res, { dataset: await enrichResearchDataset(await body(req)) }, 201);
     if (path === '/api/research/backtests' && req.method === 'POST')
       return json(res, await executeResearchBacktest(await body(req)));
     if (path === '/api/health')
@@ -101,6 +134,8 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       const benchmarks: Record<string, Market> = Object.fromEntries(list.map((market) => [market.id, market]));
       return json(res, { ...snapshot, benchmarks });
     }
+    if (path === '/api/perpetual')
+      return json(res, await perpetualQuote(validatedId(url.searchParams.get('asset') ?? '')));
     if (path === '/api/candles') {
       const asset = validatedId(url.searchParams.get('asset') ?? '');
       const tf = url.searchParams.get('tf') ?? '1h';
@@ -188,25 +223,36 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === '/api/alerts' && req.method === 'POST') {
       const o = await body(req),
         kind = o.kind as AlertKind;
-      if (!['price', 'volume', 'liquidation'].includes(kind)) throw Error('Invalid alert type');
+      if (!['price', 'price_range', 'volume', 'liquidation'].includes(kind)) throw Error('Invalid alert type');
       const assetId = validatedId(String(o.assetId ?? ''));
       if (kind === 'liquidation' && !assetId.startsWith('binance:'))
         throw Error('Public market-wide Hyperliquid liquidations are not available from this connector');
-      const threshold = positiveNumber(o.threshold);
-      if (kind === 'volume' && threshold > 100_000) throw Error('Volume threshold too high');
-      if (o.direction !== undefined && o.direction !== 'above' && o.direction !== 'below')
-        throw Error('Invalid alert direction');
-      const direction = o.direction === 'below' ? 'below' : 'above';
+      let condition: AlertCondition;
+      if (kind === 'price_range') {
+        if (typeof o.lowerPrice !== 'number' || typeof o.upperPrice !== 'number')
+          throw Error('Invalid price range: both bounds must be numbers');
+        const lowerPrice = positiveNumber(o.lowerPrice), upperPrice = positiveNumber(o.upperPrice);
+        if (lowerPrice >= upperPrice) throw Error('Invalid price range: lower price must be less than upper price');
+        condition = { kind, lowerPrice, upperPrice };
+      } else {
+        const threshold = positiveNumber(o.threshold);
+        if (kind === 'volume' && threshold > 100_000) throw Error('Volume threshold too high');
+        if (o.direction !== undefined && o.direction !== 'above' && o.direction !== 'below')
+          throw Error('Invalid alert direction');
+        if (kind === 'price') {
+          const asset = (await freshMarkets()).find((x) => x.id === assetId);
+          if (!asset || !Number.isFinite(asset.price) || asset.price <= 0)
+            throw Error('A live quote is required to create a price alert. Try again after the feed recovers.');
+          const direction = priceAlertDirection(asset.price, threshold);
+          if (!direction) throw Error('Invalid price level: choose a level above or below the current price');
+          condition = { kind, threshold, direction, referencePrice: asset.price };
+        } else condition = { kind, threshold };
+      }
       const a: AlertRule = {
-        id: randomUUID(),
-        assetId,
-        kind,
-        threshold,
-        direction,
-        enabled: true,
-        createdAt: Date.now(),
+        id: randomUUID(), assetId, ...condition, enabled: true, createdAt: Date.now(),
       };
       await addAlert(a);
+      if (a.kind === 'price' && a.referencePrice !== undefined) armPriceAlert(a.id, a.referencePrice);
       return json(res, { alert: a }, 201);
     }
     if (path.startsWith('/api/alerts/') && req.method === 'DELETE') {
@@ -216,6 +262,13 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       return json(res, { ok: true });
     }
     if (path === '/api/push/key') return json(res, { key: vapidKey() });
+    if (path === '/api/push/subscribe' && req.method === 'DELETE') {
+      const { endpoint } = await body(req);
+      if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || endpoint.length > 2048)
+        throw Error('Invalid PushSubscription');
+      await forgetSubscription(endpoint);
+      return json(res, { ok: true });
+    }
     if (path === '/api/push/subscribe' && req.method === 'POST') {
       if (!vapidKey()) throw Error('VAPID is not configured');
       const data = await body(req);
@@ -259,14 +312,21 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       'cache-control',
       file.includes('/assets/') ? 'public,max-age=31536000,immutable' : 'no-cache',
     );
-    res.end(await readFile(file));
+    const bytes = await readFile(file);
+    res.setHeader('vary', 'Accept-Encoding');
+    if (/\bgzip\b/.test(req.headers['accept-encoding'] ?? '') && /\.(html|js|css|json|svg|webmanifest)$/.test(file)) {
+      res.setHeader('content-encoding', 'gzip');
+      res.end(gzipSync(bytes));
+    } else res.end(bytes);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Request failed', req.method, path, message);
     return json(
       res,
       { error: message },
-      error instanceof ResearchRequestError
+      error instanceof GatewayAuthError
+        ? error.status
+        : error instanceof JournalError || error instanceof ScannerError ? error.status : error instanceof ResearchRequestError
         ? error.status
         : /Invalid|Unsupported|Choose|threshold|Too |limit|blocked|Cross-origin|requires|not available|large/i.test(
         message,

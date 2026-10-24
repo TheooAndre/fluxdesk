@@ -16,3 +16,14 @@ it('switches venues without a runtime crash and resets only unsupported interval
   expect(useUi.getState().tf).toBe('4h');
   expect(replaceState).toHaveBeenLastCalledWith(null, '', '/?asset=binance%3AETHUSDT');
 });
+
+it('restores a valid deep link after initial UI creation and ignores malformed links', async () => {
+  const { useUi, restoreAssetFromLocation } = await import('../src/lib/store.ts');
+  vi.stubGlobal('window', { location: { search: '?asset=hyperliquid%3AETH' } });
+  vi.stubGlobal('history', { replaceState: vi.fn() });
+  restoreAssetFromLocation();
+  expect(useUi.getState().assetId).toBe('hyperliquid:ETH');
+  vi.stubGlobal('window', { location: { search: '?asset=binance%3ABTCUSDT%3Aextra' } });
+  restoreAssetFromLocation();
+  expect(useUi.getState().assetId).toBe('hyperliquid:ETH');
+});

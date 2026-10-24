@@ -34,3 +34,49 @@
 /* Mobile readability: keep descriptive text comfortably legible without zoom. */
 .footnote,.app-footer,.metric small,.metric span,.small-label,.tiny-label,.feed-meta,.feed-card p{font-size:12px}
 @media(max-width:480px){.metric small,.metric span,.footnote,.app-footer{font-size:12px}}
+
+.price-basis { display: block; color: #91a7bf; font-size: 11px; font-weight: 400; margin-top: 3px; }
+.perpetual-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.perpetual-grid strong { display: block; margin-top: 6px; font-size: 18px; overflow-wrap: anywhere; }
+.perpetual-grid small { display: block; color: #91a7bf; margin-top: 4px; }
+@media (max-width: 640px) { .perpetual-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; } .perpetual-grid strong { font-size: 16px; } }
+
+.asset-chart-head { flex-wrap: wrap; gap: 12px; }
+.asset-chart-head > .pill { align-self: flex-start; }
+
+.market-identity { display: flex; align-items: center; gap: 9px; }
+.watchlist-star { display: inline-flex; padding: 6px; border: 0; background: transparent; color: #91a7bf; }
+.watchlist-star[aria-pressed="true"] { color: #ffc856; }
+.watchlist-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); gap: 10px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
+.watchlist-market { display: flex; align-items: center; gap: 6px; border: 1px solid #29394e; background: #192638; border-radius: 9px; padding: 10px; min-width: 0; }
+.watchlist-inspect { flex: 1; display: flex; gap: 9px; align-items: center; text-align: left; color: #e8f1ff; background: transparent; border: 0; padding: 0; min-width: 0; }
+.watchlist-inspect b { font-size: 12px; }.watchlist-inspect small { display: block; font-size: 10px; color: #91a7bf; margin-top: 4px; overflow-wrap: anywhere; }
+.watchlist-empty { display: flex; gap: 9px; align-items: center; color: #91a7bf; font-size: 12px; margin-bottom: 0; }
+@media(max-width: 480px) { .watchlist-grid { grid-template-columns: 1fr; } }
+
+.trading-chart { min-width: 0; }.trading-chart-canvas { height: 340px; width: 100%; min-width: 0; }
+.tradingview-account { margin: 12px 0; font-size: 12px; color: #b0c1d0; }.tradingview-account summary { cursor: pointer; padding: 8px 0; }.tradingview-account .controls { flex-wrap: wrap; margin: 10px 0; }.tradingview-account input { flex: 1; min-width: 0; width: 100%; background: #0e1826; border: 1px solid #34465b; color: #e8f1ff; padding: 9px; border-radius: 8px; font-size: 12px; }.tradingview-account a { display: inline-block; font-size: 11px; }
+.chart-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid #29394e; }
+.chart-toolbar .subtle { font-size: 11px; min-height: 30px; padding: 4px; }.chart-toolbar [aria-pressed="true"] { color: #47e5b4; }
+.chart-toolbar label { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #b0c1d0; }
+.chart-ohlc { display: flex; gap: 5px 11px; flex-wrap: wrap; font-size: 10px; color: #a0b6cb; min-height: 30px; padding: 7px 0; }.chart-ohlc b { color: #e8f1ff; }
+.chart-caption,.chart-attribution { color: #91a7bf; font-size: 10px; line-height: 1.6; margin: 9px 0 0; }.chart-attribution a { color: #b0cddd; text-decoration: underline; }
+.chart-data-table { color: #a0b6cb; font-size: 10px; }.chart-data-table table { min-width: 480px; width: 100%; font-size: 10px; }.chart-data-table td,.chart-data-table th { padding: 5px; text-align: right; }
+.chart-expanded { position: fixed; z-index: 100; inset: 10px; background: #121c2b; padding: 18px; border: 1px solid #34465b; border-radius: 12px; overflow: auto; box-shadow: 0 0 0 30px #090e19cc; }
+.chart-expanded .trading-chart-canvas { height: min(68vh, 760px); }
+@media(max-width: 600px) { .trading-chart-canvas { height: 310px; }.chart-expanded { inset: 5px; padding: 10px; } }
+
+.overview-tabs { display: flex; gap: 5px; padding: 4px; border: 1px solid #29394e; background: #0e1826; border-radius: 10px; width: fit-content; }
+.overview-tabs button { border: 0; background: transparent; color: #9aafc6; padding: 9px 18px; border-radius: 7px; font-size: 12px; }.overview-tabs .active { color: #65efc0; background: #1b3039; }
+.selected-categories { display: flex; gap: 5px; flex-wrap: wrap; margin: 10px 0; }
+.category-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }.category-chip { color: #b0c1d0; background: #192638; border: 1px solid #34465b; border-radius: 8px; padding: 9px 12px; font-size: 12px; }.category-chip span { color: #91a7bf; margin-left: 8px; font-size: 10px; }.category-chip.active { border-color: #47e5b4; color: #65efc0; background: #1b3039; }
+.category-search { min-width: 0; flex: 1; background: #0e1826; border: 1px solid #34465b; color: #e8f1ff; padding: 9px 12px; border-radius: 9px; font-size: 12px; }
+.category-results { display: grid; gap: 7px; max-height: 420px; overflow-y: auto; }.category-asset { display: flex; gap: 10px; align-items: center; text-align: left; color: #e8f1ff; background: #192638; padding: 12px; border: 1px solid #29394e; border-radius: 9px; min-width: 0; }.category-asset:hover { border-color: #47e5b4; }.category-asset b { font-size: 12px; }.category-asset small { display: block; color: #91a7bf; font-size: 10px; margin-top: 4px; overflow-wrap: anywhere; }.category-quote { text-align: right; margin-left: auto; min-width: 92px; }
+@media(max-width: 600px) { .category-chips { gap: 6px; }.category-chip { font-size: 11px; padding: 8px; }.category-asset { gap: 7px; padding: 9px; }.category-quote { min-width: 78px; } }
+
+.chart-drawings { padding: 4px 0 8px; border-bottom: 1px solid var(--border, #34465b); }
+.chart-drawings input[type="color"] { width: 32px; height: 28px; padding: 2px; }
+.drawing-list { list-style: none; padding: 0; max-height: 180px; overflow-y: auto; }
+.drawing-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; padding: 4px; }
+.chart-drawings summary { font-size: 12px; cursor: pointer; }
+@media(max-width:850px){.bottom-nav{overflow-x:auto;justify-content:flex-start;gap:8px}.bottom-nav button{flex:1 0 50px;min-width:50px}}
