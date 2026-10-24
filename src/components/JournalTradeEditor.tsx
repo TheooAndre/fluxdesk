@@ -1,3 +1,4 @@
+import JournalNumberInput from './JournalNumberInput.tsx';
 import type { JournalTrade, JournalLeg, JournalFill } from '../journal/model.ts';
 import { tradeMetrics } from '../journal/model.ts';
 import { money } from '../lib/format.ts';
@@ -50,7 +51,7 @@ export default function JournalTradeEditor({
       <div className="workspace-grid">
         <label>
           Recorded MFE (USD; optional)
-          <input
+          <JournalNumberInput
             type="number"
             min="0"
             step="any"
@@ -60,7 +61,7 @@ export default function JournalTradeEditor({
         </label>
         <label>
           Recorded MAE (USD; optional)
-          <input
+          <JournalNumberInput
             type="number"
             min="0"
             step="any"
@@ -94,7 +95,7 @@ export default function JournalTradeEditor({
         </label>
         <label>
           Planned risk (USD)
-          <input
+          <JournalNumberInput
             type="number"
             min="0"
             step="any"
@@ -104,7 +105,7 @@ export default function JournalTradeEditor({
         </label>
         <label>
           Account equity at entry (USD)
-          <input
+          <JournalNumberInput
             type="number"
             min="0"
             step="any"
@@ -114,7 +115,7 @@ export default function JournalTradeEditor({
         </label>
         <label>
           Funding cash flow (USD; received + / paid −)
-          <input
+          <JournalNumberInput
             type="number"
             step="any"
             value={trade.fundingUsd}
@@ -123,7 +124,7 @@ export default function JournalTradeEditor({
         </label>
         <label>
           Other costs (USD)
-          <input
+          <JournalNumberInput
             type="number"
             min="0"
             step="any"
@@ -133,18 +134,7 @@ export default function JournalTradeEditor({
         </label>
         <label>
           Tags (comma separated)
-          <input
-            value={trade.tags.join(',')}
-            onChange={(e) =>
-              set(
-                'tags',
-                e.target.value
-                  .split(',')
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-              )
-            }
-          />
+          <input value={trade.tags.join(',')} onChange={(e) => set('tags', e.target.value.split(','))} />
         </label>
       </div>
       {trade.legs.map((leg, i) => (
@@ -189,7 +179,7 @@ export default function JournalTradeEditor({
             </label>
             <label>
               Leverage (metadata)
-              <input
+              <JournalNumberInput
                 type="number"
                 min="1"
                 max="200"
@@ -199,7 +189,7 @@ export default function JournalTradeEditor({
             </label>
             <label>
               Initial stop
-              <input
+              <JournalNumberInput
                 type="number"
                 step="any"
                 min="0"
@@ -209,7 +199,7 @@ export default function JournalTradeEditor({
             </label>
             <label>
               Initial target
-              <input
+              <JournalNumberInput
                 type="number"
                 step="any"
                 min="0"
@@ -271,7 +261,7 @@ export default function JournalTradeEditor({
                       />
                     </td>
                     <td>
-                      <input
+                      <JournalNumberInput
                         type="number"
                         step="any"
                         min="0"
@@ -281,7 +271,7 @@ export default function JournalTradeEditor({
                       />
                     </td>
                     <td>
-                      <input
+                      <JournalNumberInput
                         type="number"
                         step="any"
                         min="0"
@@ -291,7 +281,7 @@ export default function JournalTradeEditor({
                       />
                     </td>
                     <td>
-                      <input
+                      <JournalNumberInput
                         type="number"
                         step="any"
                         aria-label={`Leg ${i + 1} fill ${j + 1} fee`}
@@ -382,35 +372,19 @@ export default function JournalTradeEditor({
           Mistakes (comma separated)
           <input
             value={trade.mistakes.join(',')}
-            onChange={(e) =>
-              set(
-                'mistakes',
-                e.target.value
-                  .split(',')
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-              )
-            }
+            onChange={(e) => set('mistakes', e.target.value.split(','))}
           />
         </label>
         <label>
           Emotions (comma separated)
           <input
             value={trade.emotions.join(',')}
-            onChange={(e) =>
-              set(
-                'emotions',
-                e.target.value
-                  .split(',')
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-              )
-            }
+            onChange={(e) => set('emotions', e.target.value.split(','))}
           />
         </label>
         <label>
           Entry confidence (0–5)
-          <input
+          <JournalNumberInput
             type="number"
             min="0"
             max="5"
@@ -420,7 +394,7 @@ export default function JournalTradeEditor({
         </label>
         <label>
           Execution rating (0–5)
-          <input
+          <JournalNumberInput
             type="number"
             min="0"
             max="5"
@@ -442,15 +416,7 @@ export default function JournalTradeEditor({
           Screenshot/chart HTTPS links (one per line)
           <textarea
             value={trade.screenshotUrls.join('\n')}
-            onChange={(e) =>
-              set(
-                'screenshotUrls',
-                e.target.value
-                  .split('\n')
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              )
-            }
+            onChange={(e) => set('screenshotUrls', e.target.value.split('\n'))}
           />
         </label>
       </div>

@@ -269,14 +269,22 @@ export default function JournalTab() {
       )}
       {draft && (
         <JournalTradeEditor
+          key={`${draft.id}:${draft.revision}`}
           trade={draft}
           setTrade={setDraft}
           busy={busy || query.isError || query.isPending}
           onCancel={() => setDraft(null)}
           onSave={() => {
             try {
-              validateTrade(draft);
-              save.mutate(draft);
+              const clean = {
+                ...draft,
+                tags: draft.tags.map((s) => s.trim()).filter(Boolean),
+                mistakes: draft.mistakes.map((s) => s.trim()).filter(Boolean),
+                emotions: draft.emotions.map((s) => s.trim()).filter(Boolean),
+                screenshotUrls: draft.screenshotUrls.map((s) => s.trim()).filter(Boolean),
+              };
+              validateTrade(clean);
+              save.mutate(clean);
             } catch (e) {
               setMessage((e as Error).message);
             }
