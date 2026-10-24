@@ -679,6 +679,7 @@ test('chart drawings support touch or mouse, undo, reload, scale changes and mar
   await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
   await mark(0.3, 0.2); await mark(0.55, 0.45);
   await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
+  await page.locator('.trading-chart').screenshot({path: test.info().outputPath('chart-drawings.png')});
   const saved = await page.evaluate(() => localStorage.getItem('fluxdesk:drawings:v1:binance:BTCUSDT:1h'));
   expect(JSON.parse(saved!).map((d: {kind: string}) => d.kind)).toEqual(['horizontal', 'trend', 'rectangle']);
   await page.getByRole('button', { name: 'Line', exact: true }).click();
@@ -703,4 +704,36 @@ test('chart drawings support touch or mouse, undo, reload, scale changes and mar
   await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test('historical funding enrichment selects a new snapshot and discloses accounting limits', async ({ page }) => {
+  const original = { id: 'a'.repeat(64), assetId: btc.id, venue: 'binance', interval: '1h', capturedAt: Date.now(), firstOpenTime: Date.now() - 80 * 3600000, lastCloseTime: Date.now() - 1, bars: 80 };
+  const enriched = { ...original, id: 'b'.repeat(64), marketHistory: { retrievedAt: Date.now(), fundingEvents: 10, markBars: 80, fundingCoverage: 'observed_unverified', firstMarkClose: 99000, lastMarkClose: 100000, recentFunding: [{time: Date.now() - 8 * 3600000, rate: -0.0001, markPrice: 100000, rateType: 'Regular'}] } };
+  let snapshots = [original]; let reject = true;
+  await page.route('**/api/research/datasets', (route) => route.fulfill({json: {datasets: snapshots, rejected: 0}}));
+  await page.route('**/api/research/market-history', (route) => {
+    expect(route.request().postDataJSON()).toEqual({datasetId: original.id});
+    if (reject) return route.fulfill({status: 503, json: {error: 'Historical source unavailable'}});
+    snapshots = [enriched, original]; return route.fulfill({status: 201, json: {dataset: enriched}});
+  });
+  await page.goto('/');
+  const openLab = async () => {
+    const mobile = page.getByRole('navigation', {name: 'Mobile navigation'});
+    await (await mobile.isVisible() ? mobile.getByRole('button', {name: 'Lab', exact: true}) : page.getByRole('button', {name: 'Strategy Lab', exact: true})).click();
+  };
+  await openLab();
+  await page.getByRole('button', {name: 'Archive funding & mark history', exact: true}).click();
+  await expect(page.getByRole('alert')).toContainText('Historical source unavailable');
+  await expect(page.getByLabel('Historical dataset', {exact: true})).toHaveValue(original.id);
+  reject = false;
+  await page.getByRole('button', {name: 'Archive funding & mark history', exact: true}).click();
+  await expect(page.getByLabel('Historical dataset', {exact: true})).toHaveValue(enriched.id);
+  await expect(page.getByText('10 observed funding payments', {exact: false})).toBeVisible();
+  await page.getByText('Latest archived payments · UTC', {exact: true}).click();
+  await expect(page.getByRole('table', {name: 'Archived funding payments'})).toContainText('-0.010000%');
+  await expect(page.getByText('Payment schedule completeness remains unaudited.', {exact: false})).toBeVisible();
+  await expect(page.getByText('No research report yet.', {exact: false})).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.reload(); await openLab();
+  await expect(page.getByLabel('Historical dataset', {exact: true})).toHaveValue(enriched.id);
 });

@@ -4,6 +4,7 @@ import type { ResearchConfig } from '../../src/engine/backtest.ts';
 import type { SignalModel } from '../../src/types.ts';
 import { assetIdentity } from '../market.ts';
 import { datasetReceipt, loadHistoricalDataset, saveHistoricalDataset, type DatasetReceipt } from './datasets.ts';
+import { fetchHistoricalMarketHistory } from './market-history.ts';
 import { fetchHistoricalDataset } from './fetch.ts';
 import { runStoredBacktest, type StoredResearchReport } from './runner.ts';
 
@@ -115,4 +116,20 @@ export async function executeResearchBacktest(input: unknown): Promise<StoredRes
   // The CLI can replay deeper archives, but HTTP must never block the API
   // event loop with unbounded quadratic signal-history evaluation.
   return exclusive(async () => runStoredBacktest(args.datasetId, args.config, undefined, 3_000));
+}
+
+export async function enrichResearchDataset(input: unknown): Promise<DatasetReceipt> {
+  const value = object(input);
+  if (typeof value.datasetId !== 'string' || !hashPattern.test(value.datasetId)) throw new ResearchRequestError('Invalid dataset ID');
+  const id = value.datasetId;
+  return exclusive(async () => {
+    const dataset = await loadHistoricalDataset(id);
+    if (dataset.marketHistory) return datasetReceipt(dataset);
+    if (dataset.venue !== 'binance' || dataset.candles.length > 1000 || dataset.candles.at(-1)!.closeTime! - dataset.candles[0]!.time >= 90 * 86400000)
+      throw new ResearchRequestError('Choose a Binance dataset of at most 1000 bars and 90 days');
+    const current = await listResearchDatasets();
+    if (current.datasets.length + current.rejected >= 100) throw new ResearchRequestError('Research archive is full (100 datasets)', 409);
+    const marketHistory = await fetchHistoricalMarketHistory(dataset);
+    return saveHistoricalDataset({...dataset, marketHistory});
+  });
 }

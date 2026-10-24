@@ -1,6 +1,7 @@
 // Deterministic production-build Lighthouse harness. This is NOT a live feed.
 // It serves the compiled PWA and explicitly unavailable market-data fixtures,
 // avoiding misleading fabricated quotes and missing-API console errors.
+import { gzipSync } from 'node:zlib';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
@@ -49,7 +50,12 @@ const server = createServer(async (req, res) => {
     const info = await stat(target);
     if (!info.isFile()) throw new Error('Not a file');
     res.setHeader('content-type', contentTypes[extname(target)] ?? 'application/octet-stream');
-    res.end(await readFile(target));
+    const bytes = await readFile(target);
+    res.setHeader('vary', 'Accept-Encoding');
+    if (/\bgzip\b/.test(req.headers['accept-encoding'] ?? '') && /\.(html|js|css|json|svg|webmanifest)$/.test(target)) {
+      res.setHeader('content-encoding', 'gzip');
+      res.end(gzipSync(bytes));
+    } else res.end(bytes);
   } catch {
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Not found');

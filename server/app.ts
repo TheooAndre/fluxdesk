@@ -1,4 +1,5 @@
 import { type IncomingMessage, type ServerResponse } from 'node:http';
+import { gzipSync } from 'node:zlib';
 import { randomUUID } from 'node:crypto';
 import { authenticateGateway, GatewayAuthError } from './gateway.ts';
 import { readFile, stat } from 'node:fs/promises';
@@ -15,7 +16,7 @@ import { savedWatchlist, changeWatchlist } from './watchlist.ts';
 import { armPriceAlert } from './alerts.ts';
 import { calendar } from './calendar.ts';
 import { vapidKey } from './notifications.ts';
-import { ResearchRequestError, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
+import { ResearchRequestError, enrichResearchDataset, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
 const json = (res: ServerResponse, data: unknown, status = 200) => {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -82,7 +83,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
           ? ['GET', 'POST', 'DELETE']
           : path === '/api/research/datasets'
           ? ['GET', 'POST']
-          : path === '/api/research/backtests'
+          : (path === '/api/research/backtests' || path === '/api/research/market-history')
             ? ['POST']
             : path === '/api/alerts'
               ? ['GET', 'POST']
@@ -107,6 +108,8 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       return json(res, await listResearchDatasets());
     if (path === '/api/research/datasets' && req.method === 'POST')
       return json(res, { dataset: await fetchAndSaveResearchDataset(await body(req)) }, 201);
+    if (path === '/api/research/market-history' && req.method === 'POST')
+      return json(res, { dataset: await enrichResearchDataset(await body(req)) }, 201);
     if (path === '/api/research/backtests' && req.method === 'POST')
       return json(res, await executeResearchBacktest(await body(req)));
     if (path === '/api/health')
@@ -295,7 +298,12 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       'cache-control',
       file.includes('/assets/') ? 'public,max-age=31536000,immutable' : 'no-cache',
     );
-    res.end(await readFile(file));
+    const bytes = await readFile(file);
+    res.setHeader('vary', 'Accept-Encoding');
+    if (/\bgzip\b/.test(req.headers['accept-encoding'] ?? '') && /\.(html|js|css|json|svg|webmanifest)$/.test(file)) {
+      res.setHeader('content-encoding', 'gzip');
+      res.end(gzipSync(bytes));
+    } else res.end(bytes);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Request failed', req.method, path, message);

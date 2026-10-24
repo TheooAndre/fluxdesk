@@ -60,6 +60,7 @@ export const api = {
     get<{ datasets: DatasetReceipt[]; rejected: number }>('/api/research/datasets', signal, 30_000),
   researchFetch: (payload: { assetId: string; interval: '15m' | '1h' | '4h' | '1d'; count: number }) =>
     postResearch<{ dataset: DatasetReceipt }>('/api/research/datasets', payload),
+  researchMarketHistory: (datasetId: string) => postResearch<{ dataset: DatasetReceipt }>('/api/research/market-history', { datasetId }),
   researchBacktest: (datasetId: string, config: ResearchConfig) =>
     postResearch<StoredResearchReport>('/api/research/backtests', { datasetId, config }),
   watchlist: (signal?: AbortSignal) => get<{ assetIds: string[] }>('/api/watchlist', signal),

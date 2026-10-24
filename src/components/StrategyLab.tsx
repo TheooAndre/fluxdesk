@@ -4,6 +4,7 @@ import { Database, FlaskConical, Play, RefreshCw, ShieldAlert } from 'lucide-rea
 import type { ResearchConfig } from '../engine/backtest.ts';
 import type { StoredResearchReport } from '../../server/research/runner.ts';
 import { api } from '../lib/api.ts';
+import ResearchMarketHistory from './ResearchMarketHistory.tsx';
 import LineChart from './LineChart.tsx';
 import './StrategyLab.css';
 
@@ -174,7 +175,14 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
     },
     onSuccess: (value) => setReport(value),
   });
-  const busy = fetchMutation.isPending || runMutation.isPending;
+  const historyMutation = useMutation({
+    mutationFn: () => api.researchMarketHistory(effectiveId),
+    onSuccess: ({dataset}) => {
+      setSelectedId(dataset.id); setReport(null); runMutation.reset();
+      void qc.invalidateQueries({ queryKey: ['research', 'datasets'] });
+    },
+  });
+  const busy = fetchMutation.isPending || runMutation.isPending || historyMutation.isPending;
   const unavailable = offline || busy;
 
   return (
@@ -232,6 +240,8 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
                   </p>}
                 </>
               ) : <p className="lab-empty">No datasets stored. Fetch historical candles to begin.</p>}
+            {selected && <ResearchMarketHistory dataset={selected} busy={unavailable} pending={historyMutation.isPending} onFetch={() => historyMutation.mutate()} />}
+            {historyMutation.isError && <p className="lab-error" role="alert">{errorText(historyMutation.error)}</p>}
             {!!datasetQuery.data?.rejected &&
               <p className="lab-error" role="alert">{datasetQuery.data.rejected} corrupted archive file(s) were excluded.</p>}
           </div>
