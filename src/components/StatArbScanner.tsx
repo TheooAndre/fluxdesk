@@ -45,6 +45,11 @@ export default function StatArbScanner() {
   );
   const seed = (r: ScanPair) => {
     try {
+      if (
+        localStorage.getItem('fluxdesk.journal.draft.v1') &&
+        !window.confirm('Replace your saved device trade draft with this pair?')
+      )
+        return;
       sessionStorage.setItem(
         'fluxdesk.journal.pair',
         JSON.stringify({ ...r, timeframe: scan!.config.timeframe }),
@@ -136,8 +141,9 @@ export default function StatArbScanner() {
           </button>
         </div>
         <p className="footnote">
-          Every current live venue asset is attempted, then all unordered pairs with complete matching
-          history. No volume, OI or correlation cutoff. Requests are paced to reserve venue rate-limit
+          Every supported live venue asset is attempted: Binance USDT perpetuals or Hyperliquid’s native
+          perpetual universe, matching the terminal feed. All unordered pairs with complete matching history
+          are tested. No volume, OI or correlation cutoff. Requests are paced to reserve venue rate-limit
           capacity. History is pinned to the scan start; a venue-wide scan can take several minutes. One scan
           at a time; results stay in server memory until restart or the next scan.
         </p>

@@ -1,6 +1,6 @@
 # Venue-wide stat-arb discovery scanner
 
-The terminal's Stat-arb scanner and Correlation → Stat-arb scanner now run an on-demand job over the selected venue's entire **current live perpetual universe**. Original offline research/protocol/report tools remain under “Show original research protocol.” No exchange orders are placed.
+The terminal's Stat-arb scanner and Correlation → Stat-arb scanner now run an on-demand job over the selected venue's entire **supported current live perpetual universe** (Binance USDT perpetuals or Hyperliquid’s native perpetual universe, matching the terminal feed). Original offline research/protocol/report tools remain under “Show original research protocol.” No exchange orders are placed.
 
 ## Fixed setup and explicit variants
 

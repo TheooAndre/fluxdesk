@@ -16,7 +16,7 @@ This implementation does not claim full parity with either service. Exchange API
 - One to four legs per trade, linear USD/USDT/USDC perps or long spot, with up to 100 timestamped entry/exit fills per leg. Stop/target/leverage are recorded metadata. Inverse/coin-settled contract P&L is unsupported and must not be entered as if it were linear.
 - Base quantities and USD-equivalent prices/costs. Chronological weighted average cost supports scale-ins, partial exits and subsequent additions. Exit quantities cannot exceed the open position. Leverage never multiplies P&L.
 - Per-fill signed USD fees (negative means rebate), total signed funding (received positive / paid negative), other costs, planned risk and entry equity, optional **manually observed** MFE/MAE. Unrecorded fees/funding/excursions are not fabricated.
-- Up to six HTTPS screenshot/chart references. Images are not fetched by the server or uploaded. Scanner candidates can seed unsaved pair drafts with direction, method context and hedge ratio; size/risk remain manual.
+- Up to six HTTPS screenshot/chart references. Images are not fetched by the server or uploaded. Scanner candidates can seed unsaved pair drafts with direction, method context and hedge ratio; size/risk remain manual. Replacing an existing device draft requires explicit confirmation; declining preserves it.
 - Device-local trade/daily drafts survive navigation and failed saves. Explicit reload-saved controls handle conflicts without silently rebasing or overwriting another device's changes. Closing the trade editor retains its device draft; discard is explicit. Successful saves clear corresponding device drafts.
 
 ## Accounting and analytics
