@@ -69,6 +69,22 @@ historical_export/
 - Startup manifest and snapshot accuracy are **not** independently verified by this library. An inaccurate manifest can still bias results. Independent audits remain required.
 - Short sale borrow costs of spot are irrelevant to linear perps, but trading fees, impact, and funding are modeled.
 
+## Read-only input preflight
+
+Before running research, inspect the supplied folder without evaluating a strategy:
+
+```bash
+python research/statarb/audit_inputs.py /path/to/historical_export
+```
+
+This standalone Python 3.11+ tool uses only the standard library and emits JSON on stdout. Exit 2 means blocked; exit 0 means structural checks only, not independently verified data or trading readiness. It does not write into the dataset, run selection/backtests, create report folders or open holdout. Redirection to a new file is optional; avoid overwriting an existing audit record.
+
+Checks include 4h OHLCV continuity and timestamp/price validity; missing, empty or misordered funding; PIT membership duplicates, explicit booleans, historical OI/volume, stale snapshots and missing histories for historically active markets. It reports whether the union spans two years and whether any pair of histories overlaps 180 days. These checks cannot prove vendor completeness or that all delisted instruments were supplied. Observed funding gaps over 8h are review flags, not inferred missing payments or a certified schedule.
+
+The manifest needs documented `fee_evidence` for the preflight to clear its structural fee gate: `source`, `account_tier`, UTC `observed_at_utc`, and numeric `maker_bps`/`taker_bps` (0–100). Supply actual evidence; do not invent an account tier. This metadata does not automatically change the research engine's costs or establish historical fee validity. Existing engine loader assertions remain separate.
+
+Limits: up to 200 price histories, 50 MiB per input, 512 MiB read in total, and 100 displayed issues with aggregate issue counts retained. Symlinked inputs are rejected. The audit SHA-256 hashes the sorted mapping of relative filenames to content hashes, including the manifest; it is separate from the original engine's CSV digest. No prices or statistics from a strategy/holdout evaluation appear in the report.
+
 ## Exact execution convention
 
 1. At close of 4h candle *t*, update the rolling statistic and, on schedule, beta using data known no later than *t*.
