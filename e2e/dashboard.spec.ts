@@ -757,3 +757,15 @@ test('exploratory funding mode uses an enriched snapshot and exports its version
   expect((await download).suggestedFilename()).toContain('observed-funding-mark-v3');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
+
+test('funding coverage exposes observed gaps without claiming missing-payment counts', async ({page})=>{
+ const dataset={id:'d'.repeat(64),assetId:btc.id,venue:'binance',interval:'1h',capturedAt:Date.now(),firstOpenTime:1,lastCloseTime:Date.now()-1,bars:100,marketHistory:{retrievedAt:Date.now(),fundingEvents:3,markBars:100,fundingCoverage:'observed_unverified',firstMarkClose:100,lastMarkClose:101,recentFunding:[],diagnostics:{status:'review_required',regularOrUnspecifiedPayments:3,specialPayments:0,unspecifiedTypes:1,positiveRates:2,negativeRates:1,zeroRates:0,firstPaymentAt:3600000,lastPaymentAt:72000000,leadingGapHours:1,trailingGapHours:10,spacingHours:[{hours:4,count:1},{hours:16,count:1}],spacingVariantCount:2,gapsOver8h:[{from:14400000,to:72000000,hours:16}],gapCountOver8h:1,largestMarkTradeCloseDifferencePct:2}}};
+ await page.route('**/api/research/datasets',r=>r.fulfill({json:{datasets:[dataset],rejected:0}}));
+ await page.goto('/');const nav=page.getByRole('navigation',{name:'Mobile navigation'});await (await nav.isVisible()?nav.getByRole('button',{name:'Lab',exact:true}):page.getByRole('button',{name:'Strategy Lab',exact:true})).click();
+ await page.getByText('Funding coverage · review required',{exact:true}).click();
+ const panel=page.getByLabel('Funding coverage diagnostics',{exact:true});
+ await expect(panel).toContainText('not a count of missing payments');
+ await expect(panel.getByRole('table',{name:'Funding gaps for review'})).toContainText('16.00h');
+ await expect(panel).toContainText('2.0000%');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});

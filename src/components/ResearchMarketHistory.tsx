@@ -1,4 +1,5 @@
 import type { DatasetReceipt } from '../../server/research/datasets.ts';
+import FundingCoverage from './FundingCoverage.tsx';
 import { price } from '../lib/format.ts';
 
 export default function ResearchMarketHistory({
@@ -29,6 +30,7 @@ export default function ResearchMarketHistory({
             Retrieved {new Date(history.retrievedAt).toLocaleString()}. First / last mark close:{' '}
             {price(history.firstMarkClose)} / {price(history.lastMarkClose)}.
           </p>
+          {history.diagnostics && <FundingCoverage data={history.diagnostics} />}
           <details>
             <summary>Latest archived payments · UTC</summary>
             <div className="lab-table-scroller">

@@ -33,3 +33,9 @@ Enable **Use archived funding and mark prices** only on an enriched dataset. Pos
 Bar-close equity includes paid entry fees, funding observed by that close, and open P&L at the matching mark close. Exit bars reconcile to realized trade-fill P&L less fees plus modeled funding. Subsequent sizing uses realized net equity. Funding is not reserved in the initial stop-risk estimate; funding and gaps can exceed that risk budget. No positions cross the chronological development/holdout boundary. Existing v2 output remains reproducible with the option off.
 
 Reports can be downloaded as JSON with engine version, assumptions, dataset fingerprint and all returned results. Tests use synthetic data; the agent has not run an actual market holdout for this change. Remaining work includes historical schedule/PIT audits, account-tier fee verification, Hyperliquid mark/oracle data and empirical validation.
+
+## Derived coverage diagnostics
+
+The saved archive is unchanged. Receipts and exported reports derive descriptive diagnostics from validated contents: ordinary payment spacing histogram (first 16 unique spacings), leading/trailing window gaps, gaps over 8h (first eight listed, full count retained), signed-rate/type counts and maximum absolute mark/trade close difference. Special payments are excluded from spacing; same-time ordinary types share one spacing timestamp. No ordinary observations means no schedule can be described.
+
+Eight hours is an explicit review threshold, not an asserted historical schedule or inferred missing-payment count. Even regular spacing cannot prove exchange completeness, and shorter missing intervals can escape this flag. Diagnostics always retain `review_required` status. v3 reports add warnings about observed long gaps and uncovered boundaries. No holdout or backtest runs automatically.

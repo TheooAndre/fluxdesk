@@ -77,3 +77,13 @@ it('versions optional observed funding accounting and requires archived history'
   expect(report.result.warnings.join(' ')).toContain('unaudited');
   expect((await runStoredBacktest(enriched.id, config, directory)).engineVersion).toBe('single-position-next-bar-v2');
 });
+
+it('exports funding diagnostics and coverage warnings without changing the stored fingerprint', async () => {
+  directory = await mkdtemp(join(tmpdir(), 'fluxdesk-coverage-run-'));
+  const receipt=await saveHistoricalDataset({...data, marketHistory:{schemaVersion:1,retrievedAt:data.capturedAt,startTime:data.candles[0]!.time,endTime:data.candles.at(-1)!.closeTime!,fundingSource:'https://fapi.binance.com/fapi/v1/fundingRate',markSource:'https://fapi.binance.com/fapi/v1/markPriceKlines',fundingCoverage:'observed_unverified',marks:data.candles.map(b=>({time:b.time,closeTime:b.closeTime!,open:100,high:102,low:99,close:101})),funding:[{time:data.candles[10]!.time,rate:0.001,markPrice:100,rateType:'unspecified'},{time:data.candles[40]!.time,rate:0.001,markPrice:100,rateType:'Regular'}]}},directory);
+  const report=await runStoredBacktest(receipt.id,{...config,historicalAccounting:true},directory);
+  expect(report.dataset.id).toBe(receipt.id);
+  expect(report.dataset.marketHistory?.diagnostics).toMatchObject({status:'review_required',gapCountOver8h:1,unspecifiedTypes:1});
+  expect(report.result.warnings.join(' ')).toContain('1 observed gaps over 8h');
+  expect(report.result.warnings.join(' ')).toContain('dataset boundary');
+});
