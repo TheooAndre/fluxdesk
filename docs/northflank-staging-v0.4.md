@@ -1,8 +1,8 @@
 # FluxDesk v0.4: Northflank staging deployment
 
-**Status (23 October 2026):** `fluxdesk-api-staging` is functional in the existing Default project. The owner verified remote dashboard / Strategy Lab data, faster refresh and archive persistence with the same dataset ID after a real service restart. The approved configuration remains one Sandbox instance (0.1 vCPU, 256 MB) plus a 6 GB `/data` volume, approximately $0.90/month for storage only.
+**Status (24 October 2026):** `fluxdesk-api-staging` is functional in the existing Default project. The owner verified remote dashboard / Strategy Lab data, faster refresh and archive persistence with the same dataset ID after a real service restart. The approved configuration remains one Sandbox instance (0.1 vCPU, 256 MB) plus a 6 GB `/data` volume, approximately $0.90/month for storage only.
 
-The numbered instructions below are the setup runbook, not unfinished provisioning tasks. Offsite backup/restore and final cloud release checks remain open; see the [development list](development-roadmap.md). No production promotion or paid compute upgrade has been authorized by this status update.
+The numbered instructions below are the setup runbook, not unfinished provisioning tasks. The owner completed encrypted export, matching computer download and isolated restore, and confirmed the scanner/journal workspaces working on iPhone. Final production-environment preflight/promotion remains separate; see the [development list](development-roadmap.md). No production promotion or paid compute upgrade has been authorized by this status update.
 
 ## 0. Billing gate: approval is for storage, not a paid-plan upgrade
 

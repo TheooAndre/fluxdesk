@@ -1,13 +1,13 @@
 # FluxDesk v0.4 Cloud Foundation (draft)
 
-## Provisioning status (23 October 2026)
+## Provisioning status (24 October 2026)
 
 - Staging is functional: the owner verified dashboard feeds, historical Strategy Lab fetches and the faster snapshot refresh.
 - Northflank `fluxdesk-api-staging` runs in Ety's Team / existing Default project with one Sandbox instance and durable `/data` storage. The approved recurring storage allowance remains approximately $0.90/month for 6 GB; no compute upgrade is authorized.
-- The owner restarted the actual service, then verified the archive reloaded with the same dataset ID. Backup/restore remains a separate unverified gate.
+- The owner restarted the actual service, then verified the archive reloaded with the same dataset ID. The owner also completed hosted encrypted export, matching computer download and isolated restore. That archive predates the journal; new journal data requires a fresh backup.
 - Vercel project `fluxdesk` uses the feature branch for previews and a server-only authenticated gateway to the backend. Secret configuration is preview-scoped. Main remains v0.3; this draft is not promoted to production.
-- The owner reports the shorter address works. The exact final alias and logged-out protection at that alias have not been independently verified in this session. Vercel browser sign-in is deferred at the owner's request.
-- CI #306 passed every gate at `57de5b7`: functional tests, container persistence, all five browser projects, Lighthouse and dependency audit. This clears the earlier intermittent LCP failure without relaxing thresholds. Subsequent feature commits require their own full CI.
+- The canonical staging alias `https://fluxdesk-terminal.vercel.app/` and its logged-out Vercel protection were verified. Authenticated final-alias shell, journal and scanner endpoints return 200; owner-reported iPhone acceptance includes the new scanner/journal workspaces.
+- CI #348 passed every gate at `6c7629d`, including functional tests, 256 MiB container journal persistence/encrypted restore, all five browser projects, production hydration, offline Python mechanics, Lighthouse and dependency audit. Subsequent application changes require their own validation.
 - Northflank is the selected staging host. OCI and the portable VPS deployment files remain unused fallbacks; no fallback service is provisioned.
 - See [development list](development-roadmap.md) for the current feature order and acceptance evidence, and the [Northflank runbook](northflank-staging-v0.4.md) for setup details.
 
