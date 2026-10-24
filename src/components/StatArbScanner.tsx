@@ -1,23 +1,67 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api.ts';
 import { useUi } from '../lib/store.ts';
 import { downloadJson } from '../journal/files.ts';
 import type { ScanConfig, ScanPair } from '../../server/statarb-scanner.ts';
+import {
+  SCANNER_TIMEFRAMES,
+  SCAN_PREFERENCES_KEY,
+  readScanPreferences,
+  scanCandleAge,
+  type ScanPreferences,
+} from '../engine/statarb-settings.ts';
 import { Card } from './UiPrimitives.tsx';
 import './Workspaces.css';
 const Research = lazy(() => import('./StatArbResearch.tsx'));
 export default function StatArbScanner() {
   const qc = useQueryClient();
-  const [venue, setVenue] = useState<ScanConfig['venue']>('binance'),
-    [timeframe, setTimeframe] = useState<ScanConfig['timeframe']>('4h'),
-    [formationBars, setBars] = useState<ScanConfig['formationBars']>(300),
-    [preset, setPreset] = useState<ScanConfig['preset']>('crypto'),
-    [onlySignals, setOnly] = useState(true),
+  const [saved] = useState(() => {
+    try {
+      return readScanPreferences(localStorage.getItem(SCAN_PREFERENCES_KEY));
+    } catch {
+      return readScanPreferences(null);
+    }
+  });
+  const [venue, setVenue] = useState<ScanConfig['venue']>(saved.config.venue),
+    [timeframe, setTimeframe] = useState<ScanConfig['timeframe']>(saved.config.timeframe),
+    [formationBars, setBars] = useState<ScanConfig['formationBars']>(saved.config.formationBars),
+    [preset, setPreset] = useState<ScanConfig['preset']>(saved.config.preset),
+    [onlySignals, setOnly] = useState(saved.onlySignals),
+    [sort, setSort] = useState<ScanPreferences['sort']>(saved.sort),
+    [direction, setDirection] = useState<ScanPreferences['direction']>(saved.direction),
+    [now, setNow] = useState(Date.now),
     [search, setSearch] = useState(''),
     [page, setPage] = useState(0),
     [notes, setNotes] = useState(false),
     [message, setMessage] = useState('');
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SCAN_PREFERENCES_KEY,
+        JSON.stringify({
+          version: 1,
+          config: { venue, timeframe, formationBars, preset },
+          onlySignals,
+          sort,
+          direction,
+        }),
+      );
+    } catch {
+      setMessage('Scanner settings could not be saved on this device.');
+    }
+  }, [venue, timeframe, formationBars, preset, onlySignals, sort, direction]);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const timer = window.setInterval(tick, 30_000);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, []);
   const status = useQuery({
     queryKey: ['statarb-scan'],
     queryFn: api.statarbStatus,
@@ -38,11 +82,22 @@ export default function StatArbScanner() {
   });
   const scan = status.data?.scan,
     active = !!scan && ['fetching', 'testing'].includes(scan.status);
-  const rows = (scan?.results ?? []).filter(
-    (r) =>
-      (!onlySignals || Math.abs(r.z) >= 2) &&
-      (!search || (r.y + ' ' + r.x).toLowerCase().includes(search.toLowerCase())),
-  );
+  const rows = (scan?.results ?? [])
+    .filter(
+      (r) =>
+        (!onlySignals || Math.abs(r.z) >= 2) &&
+        (direction === 'all' || r.direction === direction) &&
+        (!search || (r.y + ' ' + r.x).toLowerCase().includes(search.toLowerCase())),
+    )
+    .sort((a, b) => {
+      const ranked =
+        sort === 'deviation'
+          ? Math.abs(b.z) - Math.abs(a.z)
+          : sort === 'halfLife'
+            ? (a.halfLife ?? Infinity) - (b.halfLife ?? Infinity)
+            : a.adf - b.adf;
+      return ranked || a.y.localeCompare(b.y) || a.x.localeCompare(b.x);
+    });
   const seed = (r: ScanPair) => {
     try {
       if (
@@ -83,20 +138,7 @@ export default function StatArbScanner() {
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value as ScanConfig['timeframe'])}
             >
-              {[
-                '1m',
-                '3m',
-                '5m',
-                '15m',
-                '30m',
-                '1h',
-                '2h',
-                '4h',
-                ...(venue === 'binance' ? ['6h'] : []),
-                '8h',
-                '12h',
-                '1d',
-              ].map((tf) => (
+              {SCANNER_TIMEFRAMES.filter((tf) => venue === 'binance' || tf !== '6h').map((tf) => (
                 <option key={tf}>{tf}</option>
               ))}
             </select>
@@ -176,6 +218,13 @@ export default function StatArbScanner() {
                 Scan started {new Date(scan.startedAt).toLocaleString()}. Showing up to 500 highest-ranked
                 candidates; counts include all tested pairs.
               </small>
+              {active && (
+                <progress
+                  aria-label={scan.status === 'fetching' ? 'Venue history progress' : 'Pair testing progress'}
+                  max={(scan.status === 'fetching' ? scan.universe : scan.totalPairs) || 1}
+                  value={scan.status === 'fetching' ? scan.loaded + scan.failed.length : scan.tested}
+                />
+              )}
               {scan.error && <p>{scan.error}</p>}
             </div>
           </div>
@@ -218,6 +267,35 @@ export default function StatArbScanner() {
               }}
             />
           </label>
+          <label>
+            Rank candidates
+            <select
+              value={sort}
+              onChange={(e) => {
+                setSort(e.target.value as ScanPreferences['sort']);
+                setPage(0);
+              }}
+            >
+              <option value="strength">Cointegration strength</option>
+              <option value="deviation">Largest |z-score|</option>
+              <option value="halfLife">Shortest finite half-life</option>
+            </select>
+          </label>
+          <label>
+            Spread direction
+            <select
+              value={direction}
+              onChange={(e) => {
+                setDirection(e.target.value as ScanPreferences['direction']);
+                setPage(0);
+              }}
+            >
+              <option value="all">All directions</option>
+              <option value="long_spread">Long spread</option>
+              <option value="short_spread">Short spread</option>
+              <option value="watch">Watch only</option>
+            </select>
+          </label>
           <button
             className="secondary"
             disabled={!scan}
@@ -245,6 +323,17 @@ export default function StatArbScanner() {
                 <tr key={r.y + r.x}>
                   <td>
                     {r.y.split(':')[1]} / {r.x.split(':')[1]}
+                    <small className="small-label">
+                      Signal candle closed{' '}
+                      {new Date(
+                        scanCandleAge(r.signalTime, scan!.config.timeframe, now).closedAt,
+                      ).toLocaleString()}
+                    </small>
+                    <small className="small-label">
+                      {scanCandleAge(r.signalTime, scan!.config.timeframe, now).barsBehind
+                        ? `Snapshot ${scanCandleAge(r.signalTime, scan!.config.timeframe, now).barsBehind} candle(s) behind · rescan to refresh`
+                        : 'Latest completed interval at scan time'}
+                    </small>
                   </td>
                   <td className={r.z >= 2 ? 'negative' : r.z <= -2 ? 'positive' : ''}>
                     {r.z.toFixed(2)}
@@ -296,7 +385,8 @@ export default function StatArbScanner() {
         <p className="footnote">
           Directions refer to y − βx in log prices. Notional weights, not equal coin quantities. Latest
           completed candle is the signal observation; quoted fills, funding, liquidity and future convergence
-          are not assumed.
+          are not assumed. Settings and view preferences save on this device; rankings apply to the retained
+          candidates. Candle age updates as time passes; results remain a scan snapshot.
         </p>
       </Card>
       <button className="secondary" onClick={() => setNotes(!notes)}>

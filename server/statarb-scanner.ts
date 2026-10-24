@@ -2,15 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { setImmediate as yieldLoop, setTimeout as delay } from 'node:timers/promises';
 import { freshMarkets } from './market.ts';
 import { fetchHistoricalDataset } from './research/fetch.ts';
-import { cointegration, type CointegrationResult } from '../src/engine/cointegration.ts';
-import { assertInterval, type CandleInterval } from '../src/engine/intervals.ts';
-import type { Market, Venue } from '../src/types.ts';
-export type ScanConfig = {
-  venue: Venue;
-  timeframe: CandleInterval;
-  formationBars: 180 | 300 | 500 | 1080;
-  preset: 'crypto' | 'selective';
-};
+import { cointegrationFromLogs, type CointegrationResult } from '../src/engine/cointegration.ts';
+import { validateScanConfig, type ScanConfig } from '../src/engine/statarb-settings.ts';
+import type { Market } from '../src/types.ts';
+export type { ScanConfig } from '../src/engine/statarb-settings.ts';
 export type ScanPair = CointegrationResult & {
   y: string;
   x: string;
@@ -49,18 +44,11 @@ export class ScannerError extends Error {
   }
 }
 export function parseScan(input: unknown): ScanConfig {
-  const o = input as ScanConfig;
-  if (
-    !o ||
-    !['binance', 'hyperliquid'].includes(o.venue) ||
-    !['crypto', 'selective'].includes(o.preset) ||
-    ![180, 300, 500, 1080].includes(o.formationBars)
-  )
-    throw new ScannerError('Invalid scanner settings');
-  assertInterval(o.venue, o.timeframe);
-  if (!['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d'].includes(o.timeframe))
-    throw new ScannerError('Choose a fixed intraday or daily scanner timeframe');
-  return { venue: o.venue, preset: o.preset, formationBars: o.formationBars, timeframe: o.timeframe };
+  try {
+    return validateScanConfig(input);
+  } catch (e) {
+    throw new ScannerError(e instanceof Error ? e.message : 'Invalid scanner settings');
+  }
 }
 type Deps = {
   markets: () => Promise<Market[]>;
@@ -84,6 +72,20 @@ export function historyPaceMs(config: ScanConfig) {
   return Math.ceil((1000 * 2 * weight) / 20);
 }
 let job: ScanJob | null = null;
+/** Keep a bounded ranked result set without re-sorting 500 rows on every passing pair. */
+export function retainScanPair(rows: ScanPair[], pair: ScanPair) {
+  const compare = (a: ScanPair, b: ScanPair) =>
+    Number(Math.abs(b.z) >= 2) - Number(Math.abs(a.z) >= 2) || a.adf - b.adf;
+  let low = 0,
+    high = rows.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (compare(pair, rows[middle]!) < 0) high = middle;
+    else low = middle + 1;
+  }
+  if (low < 500) rows.splice(low, 0, pair);
+  if (rows.length > 500) rows.length = 500;
+}
 export function scanStatus() {
   return job ? structuredClone(job) : null;
 }
@@ -130,7 +132,7 @@ export async function run(current: ScanJob, deps: Deps = defaults) {
     if (assets.length > 1200)
       throw Error('Venue exceeds the 1200-market runtime bound; no partial universe was scanned');
     current.universe = assets.length;
-    const series: { id: string; closes: number[]; times: number[] }[] = [];
+    const series: { id: string; logs: number[]; times: number[] }[] = [];
     // Two requests at once. Every available venue asset is attempted; no volume/OI gate.
     for (let i = 0; i < assets.length; i += 2) {
       if (current.status === 'cancelled') return;
@@ -143,7 +145,11 @@ export async function run(current: ScanJob, deps: Deps = defaults) {
             current.config.formationBars + 1,
             current.startedAt,
           );
-          return { id: a.id, closes: d.candles.map((b) => b.close), times: d.candles.map((b) => b.time) };
+          return {
+            id: a.id,
+            logs: d.candles.map((b) => Math.log(b.close)),
+            times: d.candles.map((b) => b.time),
+          };
         }),
       );
       outcomes.forEach((r, k) => {
@@ -176,7 +182,7 @@ export async function run(current: ScanJob, deps: Deps = defaults) {
             y.times.some((t, k) => t !== x.times[k])
           )
             throw Error('Mismatched complete candle grid');
-          const r = cointegration(y.closes, x.closes);
+          const r = cointegrationFromLogs(y.logs, x.logs);
           const eligible =
             current.config.preset === 'crypto'
               ? r.level !== 'none'
@@ -207,11 +213,7 @@ export async function run(current: ScanJob, deps: Deps = defaults) {
                 ...(r.level === '10%' ? ['Weak 10% cointegration screen'] : []),
               ],
             };
-            current.results.push(result);
-            current.results.sort(
-              (a, b) => Number(Math.abs(b.z) >= 2) - Number(Math.abs(a.z) >= 2) || a.adf - b.adf,
-            );
-            if (current.results.length > 500) current.results.length = 500;
+            retainScanPair(current.results, result);
           }
         } catch {
           current.invalidPairs++;

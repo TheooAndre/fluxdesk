@@ -1,6 +1,13 @@
 import { it, expect, vi } from 'vitest';
 import reference from './fixtures/cointegration-reference.json';
-import { run, parseScan, historyPaceMs, type ScanJob } from '../server/statarb-scanner.ts';
+import {
+  run,
+  parseScan,
+  historyPaceMs,
+  retainScanPair,
+  type ScanPair,
+  type ScanJob,
+} from '../server/statarb-scanner.ts';
 import type { Market } from '../src/types.ts';
 const config = {
   venue: 'binance' as const,
@@ -155,4 +162,17 @@ it('coalesces active jobs, cancels without a stale completion, and enforces star
   } finally {
     clock.mockRestore();
   }
+});
+
+it('retains the best 500 with stable ties and opportunity priority across large universes', () => {
+  const input = Array.from(
+    { length: 2500 },
+    (_, i) => ({ y: String(i), z: (i % 7) - 3, adf: -(i % 97) / 10 }) as ScanPair,
+  );
+  const expected = [...input]
+    .sort((a, b) => Number(Math.abs(b.z) >= 2) - Number(Math.abs(a.z) >= 2) || a.adf - b.adf)
+    .slice(0, 500);
+  const rows: ScanPair[] = [];
+  for (const pair of input) retainScanPair(rows, pair);
+  expect(rows).toEqual(expected);
 });

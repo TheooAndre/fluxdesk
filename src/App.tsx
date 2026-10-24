@@ -701,7 +701,7 @@ function App() {
             </Suspense>
           )}
           {ui.tab === 'statarb' && <Suspense fallback={<Loading label="Loading stat-arb scanner…"/>}><StatArbScanner/></Suspense>}
-          {ui.tab === 'journal' && <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab/></Suspense>}
+          {ui.tab === 'journal' && <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab snapshot={mk.data}/></Suspense>}
           {ui.tab === 'alerts' && (
             <Suspense fallback={<Loading label="Loading alerts…"/>}><AlertsTab item={selected}/></Suspense>
           )}

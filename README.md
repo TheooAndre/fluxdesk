@@ -92,7 +92,7 @@ does not change historical candle caching, signal cadence or research rules.
 
 ## Local setup
 
-Prerequisites: Node 22 LTS, pnpm 10.x. From repository root:
+Prerequisites: Node 22.12+ LTS or Node 24 LTS, pnpm 10.18.0. From repository root:
 
 ```bash
 corepack enable

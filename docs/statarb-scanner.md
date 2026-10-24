@@ -33,3 +33,11 @@ Results retain the 500 strongest candidates, prioritizing |z|≥2 and then lower
 Endpoints: GET/POST/DELETE `/api/statarb/scan`, existing gateway and mutation-origin guard. GET only reads status; no automatic scan is started on page load. JSON export includes method, settings, timestamps, progress, failures and candidates. “Journal pair” opens a dated, unsaved two-leg draft with scanner context; quantities and risk require the user's input. No market holdout is opened by this scanner.
 
 Rate-limit reference: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits (checked 24 October 2026).
+
+## Saved views and freshness
+
+Venue, timeframe, formation length, preset, signal-only filter, direction and ranking persist in versioned device storage. Invalid/corrupt or venue-incompatible settings fall back to supported defaults. Search and page reset when filters change. Device preferences are not part of server backups.
+
+Candidates can be ranked by EG strength, absolute z-score or half-life and filtered by spread direction. These controls operate on the retained 500 rows; they do not claim to globally rerank every passing pair. Each row shows its signal candle close time and completed candles elapsed since then, refreshed while the view is open and when foregrounded. A fresh-looking timestamp does not establish an executable opportunity; rescan explicitly to obtain another snapshot.
+
+History and pair testing have separate progress bars. The server precomputes each asset's log prices once and uses bounded binary insertion to retain its ranked candidates. Reference statistical fixtures and a 2,500-candidate retention comparison cover equivalent numerical/ranking behavior. The original formation, selection and statistical rules are unchanged.

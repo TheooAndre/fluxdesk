@@ -46,6 +46,17 @@ jobs:
       - name: Build backend container and verify missing-volume startup fails closed
         run: |
           docker build --pull -t fluxdesk-api:ci .
+          docker run --rm --entrypoint node fluxdesk-api:ci -e '
+            require.resolve("tsx");
+            for (const name of ["vite", "vitest", "eslint", "@lhci/cli", "@playwright/test"]) {
+              let found = false;
+              try { require.resolve(name); found = true; } catch (error) {
+                if (error.code !== "MODULE_NOT_FOUND") throw error;
+              }
+              if (found) throw new Error("Build-only dependency in runtime image: " + name);
+            }
+          '
+
           set +e
           timeout 25s docker run --rm \
             -e FLUXDESK_GATEWAY_TOKEN=ci-only-strong-gateway-secret-1234567890 \
@@ -132,3 +143,15 @@ jobs:
           retention-days: 7
       - name: Audit runtime dependencies
         run: pnpm audit --prod --audit-level high
+
+      - name: Report full development dependency audit
+        if: always()
+        continue-on-error: true
+        run: pnpm audit --json > development-dependency-audit.json
+      - name: Preserve development dependency audit
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: development-dependency-audit
+          path: development-dependency-audit.json
+          if-no-files-found: warn

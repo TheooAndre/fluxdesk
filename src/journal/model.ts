@@ -108,6 +108,7 @@ export function legMetrics(leg: JournalLeg) {
     fees,
     entries,
     exits,
+    remainingAverage: quantity > 0 ? basis / quantity : null,
     entryAverage: entries ? entryNotional / entries : null,
     exitAverage: exits ? exitNotional / exits : null,
   };

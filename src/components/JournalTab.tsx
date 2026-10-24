@@ -22,6 +22,9 @@ import { Card } from './UiPrimitives.tsx';
 import JournalTradeEditor from './JournalTradeEditor.tsx';
 import LineChart from './LineChart.tsx';
 import './Workspaces.css';
+import JournalInsights from './JournalInsights.tsx';
+import { processAnalytics } from '../journal/insights.ts';
+import type { MarketSnapshot } from '../types.ts';
 const DRAFT = 'fluxdesk.journal.draft.v1';
 function initialDraft() {
   try {
@@ -60,7 +63,7 @@ const emptyDay = (date: string): JournalDay => ({
   lessons: '',
   updatedAt: 0,
 });
-export default function JournalTab() {
+export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) {
   const qc = useQueryClient(),
     query = useQuery({ queryKey: ['journal'], queryFn: api.journal, retry: 0, refetchOnWindowFocus: true });
   const [date, setDate] = useState(localDate()),
@@ -74,7 +77,7 @@ export default function JournalTab() {
     [to, setTo] = useState(''),
     [strategy, setStrategy] = useState('all'),
     [onlyDate, setOnlyDate] = useState(false),
-    [view, setView] = useState<'trades' | 'analytics' | 'calendar'>('trades'),
+    [view, setView] = useState<'trades' | 'analytics' | 'calendar' | 'positions' | 'review'>('trades'),
     [limit, setLimit] = useState(30);
   const data = query.data,
     trades = data?.trades ?? [],
@@ -165,6 +168,7 @@ export default function JournalTab() {
     [trades, onlyDate, date, from, to, account, strategy, status, search],
   );
   const stats = useMemo(() => journalAnalytics(filtered), [filtered]);
+  const process = useMemo(() => processAnalytics(filtered), [filtered]);
   const busy =
     save.isPending || saveDaily.isPending || remove.isPending || importing.isPending || !navigator.onLine;
   const edit = (t: JournalTrade) => {
@@ -233,6 +237,12 @@ export default function JournalTab() {
           </button>
           <button onClick={() => setView('analytics')} aria-pressed={view === 'analytics'}>
             Journal analytics
+          </button>
+          <button onClick={() => setView('positions')} aria-pressed={view === 'positions'}>
+            Open positions
+          </button>
+          <button onClick={() => setView('review')} aria-pressed={view === 'review'}>
+            Review queue
           </button>
           <button onClick={() => setView('calendar')} aria-pressed={view === 'calendar'}>
             P&L calendar
@@ -384,6 +394,9 @@ export default function JournalTab() {
           </label>
         </div>
       </Card>
+      {(view === 'positions' || view === 'review') && (
+        <JournalInsights key={view} trades={filtered} snapshot={snapshot} mode={view} onEdit={edit} />
+      )}
       {view === 'trades' && (
         <Card title={`Trade log · ${filtered.length}`}>
           {filtered.slice(0, limit).map((t) => {
@@ -489,6 +502,12 @@ export default function JournalTab() {
           <div className="workspace-metrics">
             {Object.entries({
               'Closed trades': String(stats.count),
+              'Reviews completed': `${process.reviewed} / ${process.count}`,
+              'Average holding time':
+                process.averageHoldingMs === null
+                  ? 'N/A'
+                  : (process.averageHoldingMs / 3600000).toFixed(2) + ' hours',
+              'Longest win / loss streak': `${process.maxWins} / ${process.maxLosses}`,
               'Net P&L': money(stats.net, false),
               'Win rate': stats.winRate === null ? 'N/A' : (stats.winRate * 100).toFixed(1) + '%',
               'Profit factor': stats.profitFactor?.toFixed(2) ?? 'N/A (no losses)',
@@ -513,15 +532,22 @@ export default function JournalTab() {
             ))}
           </div>
           <h4>Cumulative closed-trade net P&L</h4>
-          <LineChart data={[{ value: 0 }, ...stats.curve]} height={180} />
+          <LineChart
+            data={[{ value: 0 }, ...stats.curve]}
+            height={180}
+            ariaLabel="Cumulative closed-trade net P&L"
+          />
           <p className="footnote">
             Closed trades only, ordered by final exit time. P&L curve and USD drawdown are not account
             equity/returns: deposits, withdrawals and open-position marks are excluded. Calendar buckets use
             your chosen journal date. Filters apply to these statistics. Tags/mistakes/emotions can overlap,
             so those rows are not additive. MFE/MAE are optional manual observations, not inferred from fills.
+            Holding time spans first entry to final exit across all legs; breakeven trades reset streaks. A
+            completed review has a review, lesson and execution rating.
           </p>
           <div className="workspace-grid">
             {Object.entries({
+              'By holding time': process.buckets,
               'By strategy': stats.byStrategy,
               'By instruments': stats.byInstruments,
               'By tag': stats.byTags,

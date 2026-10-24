@@ -67,9 +67,13 @@ export function cointegration(yPrices: number[], xPrices: number[]): Cointegrati
     ![...yPrices, ...xPrices].every((p) => Number.isFinite(p) && p > 0)
   )
     throw Error('At least 180 formation bars plus one signal bar required');
-  const y = yPrices.map(Math.log),
-    x = xPrices.map(Math.log),
-    fy = y.slice(0, -1),
+  return cointegrationFromLogs(yPrices.map(Math.log), xPrices.map(Math.log));
+}
+/** Venue scans compute each asset's logarithms once, retaining identical statistics. */
+export function cointegrationFromLogs(y: number[], x: number[]): CointegrationResult {
+  if (y.length !== x.length || y.length < 181 || !y.every(Number.isFinite) || !x.every(Number.isFinite))
+    throw Error('At least 180 finite formation log prices plus one signal bar required');
+  const fy = y.slice(0, -1),
     fx = x.slice(0, -1),
     fit = logFit(fy, fx);
   if (fit.beta <= 0) throw Error('Positive hedge ratio required for a long/short pair');

@@ -38,3 +38,17 @@ Search/filter by date range, selected day, account, setup and status. Breakdown 
 - The encrypted backup CLI now includes and validates `journal.json`. Existing pre-journal backups remain valid; take a new computer backup after saving journal data. The total encrypted archive source budget remains 16 MiB across all application data and datasets.
 
 Endpoints: GET `/api/journal`; POST/DELETE `/api/journal/trades`; POST `/api/journal/day`; POST `/api/journal/import`. All use the existing gateway/origin protections. The single-owner journal is shared between the owner's authorized devices; it is not a multi-user brokerage account system.
+
+## Open positions and review workflow
+
+The **Open positions** view derives remaining units and cost basis from saved fills, including entries after partial exits. It uses the terminal's existing market snapshot without adding another poller. Exact-contract linear-perp quotes must be live, finite, positive, have a known last/mark basis, and be no more than 45 seconds old (at most 5 seconds ahead for clock tolerance). Offline, unknown, expired and spot quotes are unavailable; a perp quote is never substituted for spot. Timers and foreground/reconnect events refresh quote eligibility.
+
+Estimated unrealized P&L is direction × remaining units × (quote − remaining average cost). Recorded cash and this estimate are separate, with their sum shown only if every open leg has a usable quote. Binance uses last-trade estimates and Hyperliquid mark estimates, labelled with the source timestamp basis. Neither is an executable fill or account equity. Unrecorded funding and future closing costs are excluded.
+
+Cost-basis-to-stop risk sums remaining units × adverse distance from remaining average cost to the recorded stop, floored at zero per leg. Missing stops make the total incomplete. This is not current-market downside, margin/liquidation risk or an exchange stop order; it excludes fees, gaps and slippage. Leverage never multiplies these amounts.
+
+The **Review queue** flags missing setup, plan or planned risk, missing stops on open legs, and missing review, lesson or execution rating for closed trades. Edit/save removes completed gaps through the existing revision-protected persistence path. A rule deviation can still have a complete review; completeness is not a strategy approval.
+
+Closed analytics now include reviewed counts, first-entry-to-final-exit holding time, duration buckets and longest net win/loss streaks in final-exit order. Breakeven resets streaks. All journal filters apply to positions, queue and analytics; calendar remains all-account by journal date.
+
+Accounting reference checked 24 October 2026: https://hyperliquid.gitbook.io/hyperliquid-docs/trading/entry-price-and-pnl . Journal fee conventions remain explicit positive-cost/negative-rebate, with funding recorded separately.

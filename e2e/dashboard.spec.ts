@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { newTrade } from '../src/journal/model.ts';
 import statarbDemo from '../src/research/statarb-demo.json' with { type: 'json' };
 const market = (id: string, base: string, venue: 'binance' | 'hyperliquid', r: number, vol: number) => ({
   id,
@@ -814,8 +815,104 @@ test('stat-arb scanner selects venue and timeframe, shows ±2 candidates and see
  await page.getByRole('combobox',{name:'Scanner venue',exact:true}).selectOption('hyperliquid');await page.getByRole('combobox',{name:'Scanner timeframe',exact:true}).selectOption('15m');await page.getByRole('combobox',{name:'Formation bars',exact:true}).selectOption('180');
  await page.getByRole('button',{name:'Scan all venue assets',exact:true}).click();await expect(page.getByText('-2.50',{exact:true})).toBeVisible();await expect(page.getByText('Long ETH / short BTC',{exact:false})).toBeVisible();
  await page.locator('.workspace').screenshot({path:test.info().outputPath('statarb-scanner.png')});
+ await page.getByRole('combobox',{name:'Rank candidates',exact:true}).selectOption('deviation');
+ await page.reload();await (await nav.isVisible()?nav.getByRole('button',{name:'Stat-arb',exact:true}):page.getByRole('button',{name:'Stat-arb scanner',exact:true})).click();
+ await expect(page.getByRole('combobox',{name:'Scanner venue',exact:true})).toHaveValue('hyperliquid');await expect(page.getByRole('combobox',{name:'Scanner timeframe',exact:true})).toHaveValue('15m');await expect(page.getByRole('combobox',{name:'Rank candidates',exact:true})).toHaveValue('deviation');await expect(page.getByText('rescan to refresh',{exact:false})).toBeVisible();
  await page.evaluate(()=>localStorage.setItem('fluxdesk.journal.draft.v1',JSON.stringify({title:'Unfinished manual trade'})));
  page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'Journal pair',exact:true}).click();await expect(page.getByRole('heading',{name:'Venue-wide stat-arb scanner',exact:true})).toBeVisible();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('fluxdesk.journal.draft.v1')!).title)).toBe('Unfinished manual trade');expect(await page.evaluate(()=>sessionStorage.getItem('fluxdesk.journal.pair'))).toBeNull();
  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Journal pair',exact:true}).click();await expect(page.getByLabel('Trade title',{exact:true})).toHaveValue('ETH / BTC stat-arb');await expect(page.getByLabel('Leg 1 contract',{exact:true})).toHaveValue('hyperliquid:ETH');await expect(page.getByLabel('Leg 2 contract',{exact:true})).toHaveValue('hyperliquid:BTC');await expect(page.getByText('Scanner context:',{exact:false})).toContainText('z=-2.5');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});
+
+
+test('journal open-position estimates expire and the review queue clears saved completed records', async ({ page }) => {
+  const t = newTrade('2026-10-24');
+  t.id = 'open-position'; t.revision = 1; t.title = 'BTC position review';
+  t.strategy = 'Trend'; t.plan = 'Follow stop'; t.riskUsd = 100;
+  t.legs[0]!.fills = [{ id: 'entry', kind: 'entry', quantity: 1, price: 99000, feeUsd: 10, time: new Date().toISOString() }];
+  let trades = [t], stale = false;
+  await page.route('**/api/markets', r => r.fulfill({json: {
+    assets: [{ ...btc, asOf: Date.now() - (stale ? 60000 : 0) }], asOf: Date.now(), checkedAt: Date.now(),
+    feeds: [{ venue: 'binance', status: 'live', lastSuccessAt: Date.now(), lastAttemptAt: Date.now(), ageMs: 0, markets: 1 }],
+  }}));
+  await page.route('**/api/journal', r => r.fulfill({ json: { schemaVersion: 1, trades, days: [] } }));
+  await page.route('**/api/journal/trades', r => {
+    const saved = { ...r.request().postDataJSON(), revision: 2 }; trades = [saved];
+    return r.fulfill({ status: 201, json: { trade: saved } });
+  });
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Mobile navigation' });
+  const open = async () => { await (await nav.isVisible() ? nav.getByRole('button', { name: 'Journal', exact: true }) : page.getByRole('button', { name: 'Trade journal', exact: true })).click(); };
+  await open();
+  await page.getByRole('button', { name: 'Open positions', exact: true }).click();
+  await expect(page.locator('.journal-trade')).toContainText('$1,000.00');
+  await expect(page.locator('.journal-trade')).toContainText('$990.00');
+  await expect(page.locator('.journal-trade')).toContainText('Incomplete');
+  await page.getByRole('button', { name: 'Review queue', exact: true }).click();
+  await expect(page.locator('.journal-trade')).toContainText('Record open-leg stops');
+  await page.getByRole('button', { name: 'Complete trade review', exact: true }).click();
+  await page.getByLabel('Initial stop', { exact: true }).fill('98000');
+  await page.getByRole('button', { name: 'Save trade', exact: true }).click();
+  await expect(page.getByText('No incomplete records match these filters.', { exact: true })).toBeVisible();
+  stale = true;
+  await page.reload(); await open();
+  await page.getByRole('button', { name: 'Open positions', exact: true }).click();
+  await expect(page.locator('.journal-trade')).toContainText('Current quote unavailable');
+  await expect(page.locator('.journal-trade')).toContainText('Recorded stop: $98,000.00');
+  await page.locator('.workspace').screenshot({ path: test.info().outputPath('journal-positions.png') });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('journal review save travels through the real HTTP handler and survives a disk reload', async ({ page }) => {
+  const { createServer } = await import('node:http');
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { handler } = await import('../server/app.ts');
+  const dir = await mkdtemp(join(tmpdir(), 'fluxdesk-browser-journal-'));
+  const previous = process.env.DATA_DIR;
+  process.env.DATA_DIR = dir;
+  const backend = createServer((req, res) => { void handler(req, res); });
+  try {
+    await new Promise<void>((resolve) => backend.listen(0, '127.0.0.1', resolve));
+    const address = backend.address();
+    if (!address || typeof address === 'string') throw Error('Missing test API address');
+    const origin = `http://127.0.0.1:${address.port}`;
+    const t = newTrade('2026-10-24');
+    t.title = 'Persisted review'; t.strategy = 'Trend'; t.plan = 'Follow stop'; t.riskUsd = 100;
+    t.legs[0]!.fills = [{ id: 'entry', kind: 'entry', quantity: 1, price: 99000, feeUsd: 10, time: new Date().toISOString() }];
+    const seed = await fetch(origin + '/api/journal/trades', { method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify(t) });
+    expect(seed.status).toBe(201);
+    await page.route('**/api/journal**', async route => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const response = await fetch(origin + url.pathname + url.search, {
+        method: request.method(), headers: { 'content-type': 'application/json', origin },
+        body: request.postData() ?? undefined,
+      });
+      await route.fulfill({ status: response.status, contentType: 'application/json', body: await response.text() });
+    });
+    await page.goto('/');
+    const nav = page.getByRole('navigation', { name: 'Mobile navigation' });
+    const open = async () => { await (await nav.isVisible() ? nav.getByRole('button', { name: 'Journal', exact: true }) : page.getByRole('button', { name: 'Trade journal', exact: true })).click(); };
+    await open();
+    await page.getByRole('button', { name: 'Review queue', exact: true }).click();
+    await page.getByRole('button', { name: 'Complete trade review', exact: true }).click();
+    await page.getByLabel('Initial stop', { exact: true }).fill('98000');
+    await page.getByRole('button', { name: 'Save trade', exact: true }).click();
+    await expect(page.getByText('Trade saved on your server.', { exact: true })).toBeVisible();
+    const saved = JSON.parse(await readFile(join(dir, 'journal.json'), 'utf8'));
+    expect(saved.trades[0].revision).toBe(2);
+    expect(saved.trades[0].legs[0].stop).toBe(98000);
+    await page.reload(); await open();
+    await page.getByRole('button', { name: 'Review queue', exact: true }).click();
+    await expect(page.getByText('No incomplete records match these filters.', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Open positions', exact: true }).click();
+    await expect(page.locator('.journal-trade')).toContainText('Recorded stop: $98,000.00');
+  } finally {
+    await new Promise<void>((resolve) => backend.close(() => resolve()));
+    if (previous === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
 });
