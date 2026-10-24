@@ -25,7 +25,7 @@ function call(port: number, path: string, method = 'GET', origin?: string, body 
       host: '127.0.0.1', port, path, method,
       headers: {
         ...(origin ? { origin } : {}),
-        ...(body ? { 'content-type': 'application/json' } : {}),
+        ...(body ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } : {}),
       },
     }, (res) => {
       const chunks: Buffer[] = [];
