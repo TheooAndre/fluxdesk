@@ -1,8 +1,12 @@
-# FluxDesk v0.3: Market Intelligence + Strategy Lab
+# FluxDesk v0.4: Cloud Terminal, Stat-arb Scanner + Trade Journal
 
 A **read-only**, self-hosted trading research dashboard. Native iOS app packaging is not required: it is an installable React/Vite progressive web app, with an optional server-side Web Push service. **No exchange API keys or trade execution are used.**
 
 > Scope: personal single-user research dashboard, not a validated alpha engine. The four trading models are deterministic **candidates** and must be properly backtested before relying on them. It is deliberately not a financial-advice product.
+
+## v0.4 release — 24 October 2026
+
+Protected Vercel PWA with the existing persistent Northflank service, a venue-wide cointegration discovery scanner and a dated crypto trade journal. Owner-reported iPhone acceptance covers scanner/journal, open positions, reviews and analytics. Production configuration uses the existing service and volume, without new compute. New Preview gateways are read-only; production keeps normal saves. See [production preflight](docs/production-preflight.md) and [PR #12](https://github.com/TheooAndre/fluxdesk/pull/12) for the release build, CI and canonical-alias evidence. Research-data validation remains separate from hosting readiness.
 
 ## v0.3 release — 22 October 2026
 

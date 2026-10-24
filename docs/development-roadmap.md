@@ -6,7 +6,7 @@ Updated 24 October 2026. Research only; no order execution or claimed predictive
 
 | Item | State | Evidence / remaining work |
 | --- | --- | --- |
-| Vercel frontend and authenticated persistent Node API | Staging functional | Northflank `fluxdesk-api-staging`, existing Default project, one Sandbox instance, `/data` volume; no production promotion |
+| Vercel frontend and authenticated persistent Node API | Existing service retained for production | Northflank `fluxdesk-api-staging`, existing Default project, one Sandbox instance, `/data` volume; production environment/alias evidence tracked in PR #12 |
 | Historical fetch and Strategy Lab | Owner accepted | Dashboard and historical research work remotely |
 | Archive persistence through real service restart | Owner accepted | Archive reloaded and dataset SHA-256 matched |
 | Faster exchange snapshots | Owner accepted | Foreground 10s polling, coalescing, venue backoff; explicit original ages retained |
@@ -117,3 +117,8 @@ Actual metadata returned two blockers: missing production `FLUXDESK_BACKEND_URL`
 ## Single-service release decision
 
 Owner chose to retain the existing Northflank service on 24 October. No second backend, storage migration or compute upgrade. Production configuration can reuse the existing working branch-scoped Vercel environment objects by changing targets without reading secret values. The preview gateway now rejects non-GET requests to prevent accidental changes to shared owner data. This is an application guard, not isolation from trusted deployment authors or old immutable deployments. Production build/gateway verification and canonical-alias assignment remain required before claiming release complete.
+
+
+## v0.4 release configuration
+
+Owner approved retaining the existing Northflank service. Production URL/credential metadata is now configured, without decrypting secrets; the preflight passes. The production-target build has authenticated HTTP 200 shell, health, markets, journal and scanner reads and rejects logged-out shell access via Vercel sign-in. Preview gateways reject non-GET requests; this is an application guard on deliberately shared infrastructure. Release label/package are v0.4. Existing service/volume and storage allowance are retained; no second service, migration or compute upgrade. Final release CI, canonical alias and merge outcome are recorded in PR #12. Older staging receipts above remain historical evidence.

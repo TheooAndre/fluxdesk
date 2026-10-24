@@ -1,3 +1,5 @@
+> Release decision, 24 October: owner authorized retaining this existing service for production. Production configuration and the read-only Preview guard are documented in [production preflight](production-preflight.md); final alias/CI/merge receipts are in PR #12. Earlier instructions to keep PR #12 draft or deploy Preview only describe the initial staging acceptance phase and are superseded after the release gates pass. The service remains on the existing instance/volume with no compute upgrade. Freeze its backend branch until deliberately changing the provider Git configuration.
+
 # FluxDesk v0.4: Northflank staging deployment
 
 **Status (24 October 2026):** `fluxdesk-api-staging` is functional in the existing Default project. The owner verified remote dashboard / Strategy Lab data, faster refresh and archive persistence with the same dataset ID after a real service restart. The approved configuration remains one Sandbox instance (0.1 vCPU, 256 MB) plus a 6 GB `/data` volume, approximately $0.90/month for storage only.

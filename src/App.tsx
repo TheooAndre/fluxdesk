@@ -558,7 +558,7 @@ function App() {
           <div className="notice tiny-notice">
             <ShieldAlert size={16} /> Research-only. No automatic trading or validated predictive edge.
           </div>
-          <small>FLUXDESK / v0.3 RESEARCH PREVIEW</small>
+          <small>FLUXDESK / v0.4 RESEARCH</small>
         </div>
       </aside>
       <div className="body">
