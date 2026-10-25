@@ -140,3 +140,7 @@ Primary references reviewed: https://tanstack.com/query/latest/docs/framework/re
 ## Historical data acquisition — 25 October 2026
 
 Started a fixed-window Binance public-source qualification intake (2024-09-01 inclusive to 2026-10-01 exclusive). Paginated archive-wide discovery includes historical and non-ASCII prefixes; a five-instrument source pilot includes lifecycle controls, not a research universe. Added a standard-library checksum/receipt collector and offline integrity tests. Funding archive calculation rows remain observations; no canonical funding/PIT dataset or true coverage assertion is produced. Direct REST cross-checks returned HTTP 451 in this runtime, recorded without bypass. See [acquisition protocol](historical-data-acquisition.md) for independent evidence gates, lifecycle sources, fee evidence and remaining full-universe work. No market research/holdout run, new paid source, cloud storage or deployment.
+
+### Fee input and coverage-request decision
+
+25 October: account-specific fee evidence is recorded privately, and the proposed Binance message was declined. Research CLI consumes manifest taker evidence before fingerprint/simulation; synthetic defaults remain preserved. The original data-capture audit stays immutable; a private amendment updates fee readiness while preserving all remaining funding/PIT/lifecycle/OI-volume blockers. No market run or holdout evaluation.

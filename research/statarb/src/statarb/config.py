@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
+import math
 
 
 @dataclass(frozen=True)
@@ -46,3 +48,31 @@ class ResearchConfig:
             raise ValueError("Insufficient rolling/formation history")
         if self.fee_bps < 0 or self.base_slippage_bps < 0 or self.max_drawdown <= 0:
             raise ValueError("Invalid costs/risk parameters")
+
+
+def with_taker_fee_evidence(cfg: ResearchConfig, provenance: dict) -> ResearchConfig:
+    """Real research uses the declared account taker rate; synthetic defaults stay historical.
+
+    This checks the supplied evidence's structure and instrument scope, not its
+    independent authenticity or historical applicability. Maker fills are not modeled.
+    """
+    evidence = provenance.get("fee_evidence")
+    if not isinstance(evidence, dict):
+        raise ValueError("Real research requires dated account fee_evidence in manifest.json")
+    for key in ("source", "account_tier"):
+        if not isinstance(evidence.get(key), str) or not evidence[key].strip():
+            raise ValueError("Fee evidence requires source and account tier")
+    try:
+        observed = datetime.fromisoformat(evidence["observed_at_utc"].replace("Z", "+00:00"))
+        if observed.tzinfo is None or observed.utcoffset() != timedelta(0):
+            raise ValueError("Fee evidence time requires explicit UTC")
+    except (KeyError, TypeError, AttributeError, ValueError) as error:
+        raise ValueError("Fee evidence requires a UTC observation/recording timestamp") from error
+    for key in ("maker_bps", "taker_bps"):
+        value = evidence.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 100:
+            raise ValueError("Fee rates must be finite numeric basis points in [0, 100]")
+    for key in ("venue", "quote_currency"):
+        if key in evidence and evidence[key] != provenance.get(key):
+            raise ValueError("Fee evidence does not match the dataset " + key)
+    return replace(cfg, fee_bps=float(evidence["taker_bps"]))

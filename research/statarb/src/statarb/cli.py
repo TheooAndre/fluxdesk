@@ -6,7 +6,7 @@ from pathlib import Path
 import hashlib
 import json
 import numpy as np
-from .config import ResearchConfig
+from .config import ResearchConfig, with_taker_fee_evidence
 from .data import load_folder
 from .synthetic import synthetic_market
 from .research import run_research
@@ -34,6 +34,8 @@ def main(argv=None):
     if args.command == 'research' and not args.data:
         p.error('research requires --data with point-in-time historical files')
     data = synthetic_market(days=420) if args.command=='demo' else load_folder(args.data, cfg.timeframe_hours)
+    if args.command == 'research':
+        cfg = with_taker_fee_evidence(cfg, data.provenance)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     lock_payload = json.dumps({'config':asdict(cfg), 'dataset_hash':data.provenance.get('sha256_input'),
