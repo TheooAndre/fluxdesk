@@ -1,6 +1,6 @@
 # Crypto Perpetual Pairs: bias-conscious stat-arb refactor
 
-**Research only. Zero live exchange order placement. No real market dataset was supplied.**
+**Research only. Zero live exchange order placement. Public-source qualification intake has begun; no complete audited engine-ready market dataset exists yet.**
 
 Refactors the supplied `backtest.py`, `pair_selection(1).py`, `data_layer.py`, `portfolio.py`, `main.py`, `config.py` and validation scripts; untouched copies are under `legacy/`. The new code fixes major modeling errors rather than rubber-stamping existing retrospective Sharpe scores. See [RESEARCH_MEMO.md](RESEARCH_MEMO.md) for the hypothesis fixed **before** testing the new implementation.
 
@@ -133,7 +133,11 @@ RESEARCH_MEMO.md
 
 ## Reproducibility caveats
 
-- Tested locally on deterministic fixtures; **no live exchange connection tested** and **no actual historical crypto trade sample supplied**, so no empirically validated positive edge or real IS/OOS report can be claimed.
+- Tested locally on deterministic fixtures; public-source qualification is separate from a trading connection. **No complete audited engine-ready market dataset or real IS/OOS result exists**, so no empirically validated positive edge can be claimed.
 - No intrabar stop promises, latency-based queue priority, exact L2 order-book market impact, catastrophic gap guarantees, liquidation/margin modeling or partial-fills engine. A 4h strategy has no credible need to promise VPS colocation; reliable data/time sync and risk controls matter more than microseconds.
 - Not enough validated data to establish a Deflated OOS Sharpe > 1; paper authorization remains blocked.
 - If historical timestamps reference candle *close* rather than *start*, shift them in your import process using the exchange's documented convention before loading.
+
+## Public historical intake
+
+See [acquisition and audit gates](../../docs/historical-data-acquisition.md). `collect_public.py` downloads checksum-verified original archives and explicitly unverified observations without strategy imports, funding/PIT certification or holdout evaluation. A completed collection is not research readiness. Raw captures belong outside this public repository and hosted service.
