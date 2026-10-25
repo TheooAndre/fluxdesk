@@ -37,7 +37,7 @@ Updated 25 October 2026. Research only; no order execution or claimed predictive
 | --- | --- | --- |
 | Venue/timeframe stat-arb scanner | Owner accepted on iPhone; CI #348 and staging passed | All supported current live venue assets attempted; every aligned unordered pair tested, ±2 z-score view, permissive/selective presets, progress/cancel/failures, JSON export and journal handoff. [Method and limits](statarb-scanner.md) |
 | Persistent crypto trade journal | Owner accepted on iPhone; CI #348 and staging passed | Dated multi-leg fills, fees/funding, plans/reviews/tags/emotions/mistakes, daily notes, calendar/analytics, conflict protection, JSON/CSV import/export and encrypted backup inclusion. [Journal guide](trade-journal.md) |
-| Free macro calendar | Keyless provider integration; pending production acceptance | Replaces paid Trading Economics key with Finance Calendar's high-impact US API, links to sources and credits, labels estimates/stale data; selective coverage and no consensus feed. Forex Factory redistribution is prohibited by its published notices. |
+| Free macro calendar | Released on the protected production domain; CI #400 passed | Finance Calendar keyless high-impact US feed with source links, credit, estimate/stale labels and bounded outage cache; selective coverage, generally no consensus. Forex Factory forbids redistribution of its calendar schedules. Canonical `/api/calendar` returned five future timed events after the existing Northflank release branch advanced to merge `88969f9`; journal/health reads remained 200. New frontend production deployment `dpl_7hbFCMP4CXafkSUeKVSdQWq65j18` received the canonical alias. Group any owner iPhone check with a later UI batch. |
 | Grouped iPhone acceptance for new workspaces | Owner confirmed working on 24 October | Owner reported “is working on the phone” after the grouped scanner/journal acceptance request. This records owner-reported device acceptance; no additional automated live scan result or market edge is inferred. Earlier accepted checks do not need repeating |
 
 ## Next work in order
@@ -47,6 +47,8 @@ Updated 25 October 2026. Research only; no order execution or claimed predictive
 3. Empirical research still needs actual audited two-year point-in-time universe/funding histories and owner account-tier fee evidence. Hyperliquid historical mark/oracle ingestion remains unconnected; its documented archive is requester-pays. Do not run the final holdout while selecting data or adapting research. Exploratory v3 observed funding/mark accounting does not certify historical completeness.
 4. Intrabar margin/liquidation simulation remains outside the research engine. Implementing it requires a documented venue/account margin model and appropriate historical observations; do not infer liquidations from bar-close equity.
 5. Continue evidence-based reliability and usability improvements. The v0.4.2 batch below addresses asynchronous journal saves, alert persistence recovery, liquidation connection ownership and request/delivery deadlines. Full CI and deployment receipts belong in its PR.
+
+The calendar release revealed that advancing the backend Git branch also caused Vercel to assign the canonical alias to a Preview deployment. The alias was immediately assigned back to the CI-tested Production deployment. Future backend releases must re-check the canonical alias target and production write configuration after branch updates. No journal or archive mutation was used for this check.
 
 ## Live funding conventions
 
