@@ -563,7 +563,7 @@ function App() {
           <div className="notice tiny-notice">
             <ShieldAlert size={16} /> Research only · No auto-trading
           </div>
-          <small>FLUXDESK / v0.4.1 RESEARCH</small>
+          <small>FLUXDESK / v0.4.2 RESEARCH</small>
         </div>
       </aside>
       <div className="body">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useIsMutating } from '@tanstack/react-query';
 import { api } from '../lib/api.ts';
 import {
   newTrade,
@@ -25,7 +25,15 @@ import './Workspaces.css';
 import JournalInsights from './JournalInsights.tsx';
 import { processAnalytics } from '../journal/insights.ts';
 import type { MarketSnapshot } from '../types.ts';
-const DRAFT = 'fluxdesk.journal.draft.v1';
+import {
+  asDraft,
+  TRADE_DRAFT_KEY as DRAFT,
+  JOURNAL_SAVED,
+  reconcileTradeDraft,
+  reconcileDayDraft,
+  type TradeDraft,
+  type JournalSaved,
+} from '../journal/drafts.ts';
 function initialDraft() {
   try {
     const seed = sessionStorage.getItem('fluxdesk.journal.pair');
@@ -39,10 +47,12 @@ function initialDraft() {
       t.legs[0]!.direction = s.z >= 0 ? 'short' : 'long';
       t.legs.push({ ...t.legs[0]!, assetId: s.x, direction: s.z >= 0 ? 'long' : 'short', fills: [] });
       t.scannerContext = `z=${s.z}, beta=${s.beta}, EG=${s.level}, signal UTC=${new Date(s.signalTime).toISOString()}. Notional y:x=1:${s.beta}. Quantity/risk must be supplied.`;
-      return t;
+      return asDraft(t);
     }
     const raw = localStorage.getItem(DRAFT);
-    return raw ? (JSON.parse(raw) as JournalTrade) : null;
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as TradeDraft;
+    return draft.deviceDraftId ? draft : asDraft(draft);
   } catch {
     return null;
   }
@@ -64,10 +74,11 @@ const emptyDay = (date: string): JournalDay => ({
   updatedAt: 0,
 });
 export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) {
+  const writing = useIsMutating({ mutationKey: ['journal-write'] });
   const qc = useQueryClient(),
     query = useQuery({ queryKey: ['journal'], queryFn: api.journal, retry: 0, refetchOnWindowFocus: true });
   const [date, setDate] = useState(localDate()),
-    [draft, setDraft] = useState<JournalTrade | null>(initialDraft),
+    [draft, setDraft] = useState<TradeDraft | null>(initialDraft),
     [dayDraft, setDay] = useState<JournalDay | null>(() => loadDay(localDate())),
     [message, setMessage] = useState(''),
     [search, setSearch] = useState(''),
@@ -103,27 +114,67 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
     setDay(loadDay(value));
   };
 
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const receipt = (event as CustomEvent<JournalSaved>).detail;
+      if (receipt.kind === 'trade') {
+        setDraft((current) => reconcileTradeDraft(current, receipt.submitted, receipt.saved));
+      } else {
+        setDay((current) => reconcileDayDraft(current, receipt.submitted, receipt.saved));
+      }
+    };
+    window.addEventListener(JOURNAL_SAVED, receive);
+    return () => window.removeEventListener(JOURNAL_SAVED, receive);
+  }, []);
+  const applyReceipt = (receipt: JournalSaved) => {
+    // Update the saved cache immediately, even if the user left this workspace.
+    qc.setQueryData<import('../journal/model.ts').JournalData>(['journal'], (old) => {
+      if (!old) return old;
+      return receipt.kind === 'trade'
+        ? { ...old, trades: [...old.trades.filter((t) => t.id !== receipt.saved.id), receipt.saved] }
+        : { ...old, days: [...old.days.filter((d) => d.date !== receipt.saved.date), receipt.saved] };
+    });
+    let storageFailed = false;
+    try {
+      const key = receipt.kind === 'trade' ? DRAFT : 'fluxdesk.journal.day.' + receipt.saved.date;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const next =
+          receipt.kind === 'trade'
+            ? reconcileTradeDraft(JSON.parse(raw), receipt.submitted, receipt.saved)
+            : reconcileDayDraft(JSON.parse(raw), receipt.submitted, receipt.saved);
+        if (next) localStorage.setItem(key, JSON.stringify(next));
+        else localStorage.removeItem(key);
+      }
+    } catch {
+      storageFailed = true;
+    }
+    // A newly mounted journal also receives the receipt; an old callback cannot clear its new draft.
+    window.dispatchEvent(new CustomEvent<JournalSaved>(JOURNAL_SAVED, { detail: receipt }));
+    setMessage(
+      storageFailed
+        ? 'Saved on your server. Device draft cleanup failed; check the saved record before saving again.'
+        : receipt.kind === 'trade'
+          ? 'Trade saved on your server.'
+          : 'Daily note saved.',
+    );
+    void qc.invalidateQueries({ queryKey: ['journal'] });
+  };
   const save = useMutation({
-    mutationFn: api.saveJournalTrade,
-    onSuccess: () => {
-      setDraft(null);
-      localStorage.removeItem(DRAFT);
-      setMessage('Trade saved on your server.');
-      void qc.invalidateQueries({ queryKey: ['journal'] });
-    },
+    mutationKey: ['journal-write'],
+    mutationFn: async ({ clean }: { clean: JournalTrade; submitted: TradeDraft }) =>
+      api.saveJournalTrade(clean),
+    onSuccess: ({ trade }, { submitted }) => applyReceipt({ kind: 'trade', submitted, saved: trade }),
     onError: (e) => setMessage(e.message),
   });
   const saveDaily = useMutation({
+    mutationKey: ['journal-write'],
     mutationFn: api.saveJournalDay,
-    onSuccess: ({ day: saved }) => {
-      localStorage.removeItem('fluxdesk.journal.day.' + saved.date);
-      setDay(null);
-      setMessage('Daily note saved.');
-      void qc.invalidateQueries({ queryKey: ['journal'] });
-    },
+    onSuccess: ({ day: saved }, submitted) => applyReceipt({ kind: 'day', submitted, saved }),
     onError: (e) => setMessage(e.message),
   });
   const remove = useMutation({
+    mutationKey: ['journal-write'],
     mutationFn: (t: JournalTrade) => api.deleteJournalTrade(t.id, t.revision),
     onSuccess: () => {
       setMessage('Trade deleted.');
@@ -132,6 +183,7 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
     onError: (e) => setMessage(e.message),
   });
   const importing = useMutation({
+    mutationKey: ['journal-write'],
     mutationFn: api.importJournal,
     onSuccess: (r) => {
       setMessage(`Imported ${r.imported}; skipped ${r.skipped} identical records.`);
@@ -169,11 +221,10 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
   );
   const stats = useMemo(() => journalAnalytics(filtered), [filtered]);
   const process = useMemo(() => processAnalytics(filtered), [filtered]);
-  const busy =
-    save.isPending || saveDaily.isPending || remove.isPending || importing.isPending || !navigator.onLine;
+  const busy = writing > 0 || !navigator.onLine;
   const edit = (t: JournalTrade) => {
     if (draft && !window.confirm('Replace the editor draft?')) return;
-    setDraft(structuredClone(t));
+    setDraft(asDraft(structuredClone(t)));
   };
   const month = date.slice(0, 7),
     firstDay = new Date(month + '-01T12:00:00Z'),
@@ -251,7 +302,11 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
           onClick={() => {
             if (window.confirm('Discard the saved device trade draft?')) {
               setDraft(null);
-              localStorage.removeItem(DRAFT);
+              try {
+                localStorage.removeItem(DRAFT);
+              } catch {
+                setMessage('Device draft could not be removed.');
+              }
             }
           }}
         >
@@ -265,8 +320,13 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
           onClick={async () => {
             if (!window.confirm('Replace your draft with the latest saved trade?')) return;
             const fresh = await query.refetch();
-            const latest = fresh.data?.trades.find((t) => t.id === draft.id);
-            if (latest) setDraft(structuredClone(latest));
+            const latest = !fresh.error && fresh.data?.trades.find((t) => t.id === draft.id);
+            if (latest)
+              setDraft((current) =>
+                JSON.stringify(current) === JSON.stringify(draft)
+                  ? asDraft(structuredClone(latest))
+                  : current,
+              );
             else setMessage('Trade is unavailable; your draft is preserved.');
           }}
         >
@@ -277,7 +337,7 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
         <JournalTradeEditor
           key={`${draft.id}:${draft.revision}`}
           trade={draft}
-          setTrade={setDraft}
+          setTrade={(t) => setDraft({ ...t, deviceDraftId: draft.deviceDraftId })}
           busy={busy || query.isError || query.isPending}
           onCancel={() => setDraft(null)}
           onSave={() => {
@@ -289,8 +349,10 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
                 emotions: draft.emotions.map((s) => s.trim()).filter(Boolean),
                 screenshotUrls: draft.screenshotUrls.map((s) => s.trim()).filter(Boolean),
               };
-              validateTrade(clean);
-              save.mutate(clean);
+              const payload: JournalTrade & { deviceDraftId?: string } = { ...clean };
+              delete payload.deviceDraftId;
+              validateTrade(payload);
+              save.mutate({ clean: payload, submitted: draft });
             } catch (e) {
               setMessage((e as Error).message);
             }
@@ -322,10 +384,19 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
           onClick={async () => {
             if (!window.confirm('Replace the device daily draft with the saved note?')) return;
             const fresh = await query.refetch();
-            if (fresh.data) {
-              localStorage.removeItem('fluxdesk.journal.day.' + date);
-              setDay(null);
-            }
+            if (fresh.data && !fresh.error) {
+              try {
+                const key = 'fluxdesk.journal.day.' + date;
+                const raw = localStorage.getItem(key);
+                if (raw && JSON.stringify(JSON.parse(raw)) === JSON.stringify(day))
+                  localStorage.removeItem(key);
+              } catch {
+                setMessage('Device daily draft could not be removed.');
+              }
+              setDay((current) =>
+                current && JSON.stringify(current) !== JSON.stringify(day) ? current : null,
+              );
+            } else setMessage('Could not reload the daily note; your draft is preserved.');
           }}
         >
           Reload saved daily note

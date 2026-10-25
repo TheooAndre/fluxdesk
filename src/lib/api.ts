@@ -1,5 +1,5 @@
-import type {JournalData,JournalTrade,JournalDay} from '../journal/model.ts';
-import type {ScanConfig,ScanJob} from '../../server/statarb-scanner.ts';
+import type { JournalData, JournalTrade, JournalDay } from '../journal/model.ts';
+import type { ScanConfig, ScanJob } from '../../server/statarb-scanner.ts';
 import type {
   AlertEvent,
   AlertRule,
@@ -19,76 +19,93 @@ import type {
 import type { ResearchConfig } from '../engine/backtest.ts';
 import type { DatasetReceipt } from '../../server/research/datasets.ts';
 import type { StoredResearchReport } from '../../server/research/runner.ts';
-async function get<T>(url: string, signal?: AbortSignal, timeoutMs = 20_000): Promise<T> {
+/** All requests have bounded lifetimes. Mutations are never automatically retried. */
+async function request<T>(
+  url: string,
+  options: RequestInit = {},
+  signal?: AbortSignal,
+  timeoutMs = 20_000,
+  errorPrefix = '',
+): Promise<T> {
   const controller = new AbortController();
+  let timedOut = false;
   const abort = () => controller.abort();
   if (signal?.aborted) controller.abort();
   else signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
-    const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+    const res = await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' });
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-      throw Error(body.error ?? 'API error');
+      const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
+      const detail = typeof body?.error === 'string' ? body.error : `Request failed (HTTP ${res.status})`;
+      throw Error(errorPrefix ? `${errorPrefix} ${detail}` : detail);
     }
+    if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
+  } catch (error) {
+    if (timedOut)
+      throw Error(
+        options.method && options.method !== 'GET'
+          ? 'Request timed out. The server may have saved it; refresh and check before trying again.'
+          : 'Request timed out. Please try again.',
+      );
+    throw error;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', abort);
   }
 }
-async function postResearch<T>(url: string, payload: unknown, timeoutMs = 90_000): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
+const get = <T>(url: string, signal?: AbortSignal, timeoutMs = 20_000) =>
+  request<T>(url, {}, signal, timeoutMs);
+const postResearch = <T>(url: string, payload: unknown, timeoutMs = 90_000, errorPrefix = '') =>
+  request<T>(
+    url,
+    {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: controller.signal,
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      const data = (await response.json().catch(() => ({ error: 'Research request failed' }))) as { error?: string };
-      throw Error(data.error ?? 'Research request failed');
-    }
-    return (await response.json()) as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+    },
+    undefined,
+    timeoutMs,
+    errorPrefix,
+  );
 export const api = {
-  importJournal:(data:JournalData)=>postResearch<{imported:number;skipped:number}>('/api/journal/import',data),
-  journal:()=>get<JournalData>('/api/journal'),
-  saveJournalTrade:(trade:JournalTrade)=>postResearch<{trade:JournalTrade}>('/api/journal/trades',trade),
-  saveJournalDay:(day:JournalDay)=>postResearch<{day:JournalDay}>('/api/journal/day',day),
-  deleteJournalTrade:async(id:string,revision:number)=>{const r=await fetch('/api/journal/trades?'+new URLSearchParams({id,revision:String(revision)}),{method:'DELETE'});if(!r.ok)throw Error((await r.json()).error??'Delete failed');return r.json();},
-  statarbStatus:()=>get<{scan:ScanJob|null}>('/api/statarb/scan'),
-  startStatArb:(config:ScanConfig)=>postResearch<{scan:ScanJob}>('/api/statarb/scan',config),
-  cancelStatArb:async()=>{const r=await fetch('/api/statarb/scan',{method:'DELETE'});if(!r.ok)throw Error('Cancel failed');return r.json();},
+  importJournal: (data: JournalData) =>
+    postResearch<{ imported: number; skipped: number }>('/api/journal/import', data),
+  journal: () => get<JournalData>('/api/journal'),
+  saveJournalTrade: (trade: JournalTrade) =>
+    postResearch<{ trade: JournalTrade }>('/api/journal/trades', trade),
+  saveJournalDay: (day: JournalDay) => postResearch<{ day: JournalDay }>('/api/journal/day', day),
+  deleteJournalTrade: (id: string, revision: number) =>
+    request<{ ok: boolean }>(
+      '/api/journal/trades?' + new URLSearchParams({ id, revision: String(revision) }),
+      { method: 'DELETE' },
+    ),
+  statarbStatus: () => get<{ scan: ScanJob | null }>('/api/statarb/scan'),
+  startStatArb: (config: ScanConfig) => postResearch<{ scan: ScanJob }>('/api/statarb/scan', config),
+  cancelStatArb: () => request<{ ok: boolean }>('/api/statarb/scan', { method: 'DELETE' }),
   researchDatasets: (signal?: AbortSignal) =>
     get<{ datasets: DatasetReceipt[]; rejected: number }>('/api/research/datasets', signal, 30_000),
   researchFetch: (payload: { assetId: string; interval: '15m' | '1h' | '4h' | '1d'; count: number }) =>
     postResearch<{ dataset: DatasetReceipt }>('/api/research/datasets', payload),
-  researchMarketHistory: (datasetId: string) => postResearch<{ dataset: DatasetReceipt }>('/api/research/market-history', { datasetId }),
+  researchMarketHistory: (datasetId: string) =>
+    postResearch<{ dataset: DatasetReceipt }>('/api/research/market-history', { datasetId }),
   researchBacktest: (datasetId: string, config: ResearchConfig) =>
     postResearch<StoredResearchReport>('/api/research/backtests', { datasetId, config }),
   watchlist: (signal?: AbortSignal) => get<{ assetIds: string[] }>('/api/watchlist', signal),
-  changeWatchlist: async (id: string, add: boolean): Promise<{ assetIds: string[] }> => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
-    try {
-      const response = await fetch(add ? '/api/watchlist' : '/api/watchlist?asset=' + encodeURIComponent(id), {
-        method: add ? 'POST' : 'DELETE', signal: controller.signal, cache: 'no-store',
-        ...(add ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: id }) } : {}),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: 'Watchlist update failed' })) as { error?: string };
-        throw Error(data.error ?? 'Watchlist update failed');
-      }
-      return await response.json() as { assetIds: string[] };
-    } finally { clearTimeout(timer); }
-  },
+  changeWatchlist: (id: string, add: boolean) =>
+    request<{ assetIds: string[] }>(
+      add ? '/api/watchlist' : '/api/watchlist?asset=' + encodeURIComponent(id),
+      {
+        method: add ? 'POST' : 'DELETE',
+        ...(add
+          ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetId: id }) }
+          : {}),
+      },
+    ),
   markets: (signal?: AbortSignal) =>
     get<MarketSnapshot & { benchmarks: Record<string, Market | null> }>('/api/markets', signal),
   perpetual: (id: string, signal?: AbortSignal) =>
@@ -155,34 +172,21 @@ export const api = {
       events: LiquidationEvent[];
       coverage: string;
     }>(`/api/liquidations?asset=${encodeURIComponent(asset)}&minutes=5`),
-  createAlert: async (data: AlertInput) => {
-    const res = await fetch('/api/alerts', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw Error(((await res.json()) as { error: string }).error);
-    return res.json();
-  },
-  deleteAlert: async (id: string) => {
-    const res = await fetch(`/api/alerts/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw Error('Could not remove alert');
-  },
-  unsubscribe: async (endpoint: string) => {
-    const res = await fetch('/api/push/subscribe', {
-      method: 'DELETE',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ endpoint }),
-    });
-    if (!res.ok) throw Error('Could not disable push notifications. Please retry.');
-  },
+  createAlert: (data: AlertInput) => postResearch<{ alert: AlertRule }>('/api/alerts', data, 20_000),
+  deleteAlert: (id: string) => request<void>(`/api/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  unsubscribe: (endpoint: string) =>
+    request<void>(
+      '/api/push/subscribe',
+      {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ endpoint }),
+      },
+      undefined,
+      20_000,
+      'Could not disable push notifications. Please retry.',
+    ),
   vapidKey: () => get<{ key: string }>('/api/push/key'),
-  subscribe: async (data: PushSubscription) => {
-    const res = await fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw Error('Push subscription failed');
-  },
+  subscribe: (data: PushSubscription) =>
+    postResearch<void>('/api/push/subscribe', data, 20_000, 'Push subscription failed.'),
 };
