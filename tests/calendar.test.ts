@@ -44,4 +44,11 @@ it('fetches the free endpoint without a key and caches the result', async () => 
   expect(response.events).toHaveLength(1);
   expect((await calendar()).events).toHaveLength(1);
   expect(fetcher).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(11 * 60_000);
+  fetcher.mockRejectedValueOnce(new Error('offline'));
+  const unavailable = await calendar();
+  expect(unavailable.message).toContain('showing earlier results');
+  expect(unavailable.events).toHaveLength(1);
+  expect((await calendar()).message).toContain('unavailable');
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });

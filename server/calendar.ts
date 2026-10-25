@@ -14,6 +14,7 @@ type SourceEvent = {
 type SourceResponse = { events?: unknown; total?: unknown };
 type CalendarResponse = { configured: boolean; events: EconomicEvent[]; message?: string };
 let cache: { at: number; day: string; value: CalendarResponse } | null = null;
+let failure: { at: number; day: string; value: CalendarResponse } | null = null;
 let pending: Promise<CalendarResponse> | null = null;
 
 function string(value: unknown): string { return typeof value === 'string' ? value : ''; }
@@ -63,18 +64,23 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
     const result = await getJson<SourceResponse>(url.href);
     const value = { configured: true, events: parseCalendar(result, now) };
     cache = { at: Date.now(), day, value };
+    failure = null;
     return value;
   } catch (e) {
     // A bounded last-good response stays visible, but is never represented as fresh.
     const recent = cache?.day === day && Date.now() - cache.at < 2 * 60 * 60_000;
-    return { configured: true, events: recent ? cache!.value.events.filter(x => Date.parse(x.time) >= now) : [],
+    const value = { configured: true, events: recent ? cache!.value.events.filter(x => Date.parse(x.time) >= now) : [],
       message: `Calendar source unavailable${recent ? '; showing earlier results (may have changed)' : ''}: ${(e as Error).message}` };
+    failure = { at: Date.now(), day, value };
+    return value;
   }
 }
 
 export async function calendar(): Promise<CalendarResponse> {
   const now = Date.now(), day = new Date(now).toISOString().slice(0, 10);
   if (cache?.day === day && now - cache.at < TTL) return { ...cache.value, events: cache.value.events.filter(x => Date.parse(x.time) >= now) };
+  if (failure?.day === day && now - failure.at < TTL) return { ...failure.value,
+    events: failure.value.events.filter(x => Date.parse(x.time) >= now) };
   if (!pending) pending = refresh(day, now).finally(() => { pending = null; });
   return pending;
 }
