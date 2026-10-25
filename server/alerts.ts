@@ -20,6 +20,9 @@ export async function scanAlerts() {
     if (!rules.length) return;
     const list = await freshMarkets();
     for (const rule of rules) {
+      const priorPrice = lastPrice.get(rule.id),
+        priorBar = seenVolumeBar.get(rule.id);
+      let recorded = false;
       try {
         let message = '';
         let boundary: 'above' | 'below' | undefined;
@@ -59,9 +62,16 @@ export async function scanAlerts() {
         }
         if (message) {
           const event = await triggered(rule, message, boundary);
+          recorded = true;
           if (event) await deliver(event);
         }
       } catch (error) {
+        if (!recorded) {
+          if (priorPrice === undefined) lastPrice.delete(rule.id);
+          else lastPrice.set(rule.id, priorPrice);
+          if (priorBar === undefined) seenVolumeBar.delete(rule.id);
+          else seenVolumeBar.set(rule.id, priorBar);
+        }
         console.error('Alert evaluation failure', rule.id, error);
       }
     }
