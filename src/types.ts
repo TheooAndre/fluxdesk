@@ -116,6 +116,17 @@ export type EconomicEvent = {
   forecast: string;
   previous: string;
   actual: string;
+  status?: string;
+  stale?: boolean;
+  sourceName?: string;
+  sourceUrl?: string;
+  eventUrl?: string;
+  licenseCredit?: string;
+  licenseUrl?: string;
+  licenseNotice?: string;
+  rightsCredit?: string;
+  rightsUrl?: string;
+  rightsNotice?: string;
 };
 export type LiquidationEvent = {
   id: string;

@@ -15,8 +15,7 @@ function CalendarTab() {
       <div className="section-intro">
         <h2>High-impact economic calendar</h2>
         <p>
-          Major macro events only. Default scope: United States; scheduled releases shown in your local
-          timezone.
+          Major US releases over the next two weeks, shown in your local timezone.
         </p>
       </div>
       <Card title="Upcoming releases" aside={<Pill tone="red">HIGH IMPACT ONLY</Pill>}>
@@ -44,15 +43,20 @@ function CalendarTab() {
                     </small>
                   </div>
                   <div className="event-info">
-                    <b>{e.title}</b>
-                    <small>{e.country}</small>
+                    <b>{e.eventUrl ? <a href={e.eventUrl} target="_blank" rel="noopener noreferrer">{e.title}</a> : e.title}</b>
+                    <small>{e.country}{e.status === 'estimated' ? ' · Estimated date' : ''}{e.stale ? ' · Source update delayed' : ''}</small>
+                    {e.sourceUrl && <small>Source: <a href={e.sourceUrl} target="_blank" rel="noopener noreferrer">{e.sourceName || 'Official release schedule'}</a></small>}
+                    {e.licenseCredit && <small>Credit: {e.licenseUrl ? <a href={e.licenseUrl} target="_blank" rel="noopener noreferrer">{e.licenseCredit}</a> : e.licenseCredit}</small>}
+                    {e.licenseNotice && <small>{e.licenseNotice}</small>}
+                    {e.rightsCredit && <small>Source credit: {e.rightsUrl ? <a href={e.rightsUrl} target="_blank" rel="noopener noreferrer">{e.rightsCredit}</a> : e.rightsCredit}</small>}
+                    {e.rightsNotice && <small>{e.rightsNotice}</small>}
                   </div>
                   <div className="event-data">
-                    <small>Forecast</small>
+                    <small>Consensus</small>
                     <strong>{e.forecast || '—'}</strong>
                   </div>
                   <div className="event-data">
-                    <small>Previous</small>
+                    <small>Prior</small>
                     <strong>{e.previous || '—'}</strong>
                   </div>
                   <Pill tone="red">HIGH</Pill>
@@ -60,14 +64,14 @@ function CalendarTab() {
               ))
             ) : (
               <div className="empty">
-                No verified upcoming high-impact events from your configured source.
+                No timed, high-impact US releases available in this window.
               </div>
             )}
           </>
         )}
         <p className="footnote">
-          Calendar data requires a provider key, stored server-side. The application intentionally never
-          inserts hard-coded upcoming releases. Source: Trading Economics API (Importance = 3).
+          Free calendar data by <a href="https://www.financecalendar.com" target="_blank" rel="noopener noreferrer">Finance Calendar</a>.
+          Coverage is selective; consensus is generally unavailable. Check the linked official source before trading.
         </p>
       </Card>
     </div>
