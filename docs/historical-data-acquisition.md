@@ -115,3 +115,17 @@ Allowed reasons: `delisted_contract`, `contract_migration`, `ticker_reuse`, `mis
 Both preflight and real loader honor the ledger, ignore excluded bars/funding/membership rows, and retain the exclusion warning in provenance/reports. Missing active histories without an explicit exclusion still block. At least two retained histories are required. The audit hashes the policy in the manifest; the engine fingerprint now includes filenames, used-file hashes and the manifest (including fees/scope). Standalone JSON reports and equity images identify the subset. Structural policy validation does not authenticate a reason or certify retained coverage. Omit `universe_scope` to keep the original full historical universe requirement.
 
 The private candidate ledger preserves archive-wide discovery, including unreviewed candidates. FTM/LINA source anomalies are no longer mandatory to resolve for this subset; their originals remain quarantined evidence. The Binance request stays withdrawn and unsent. No market research or final-holdout evaluation was run to choose these exclusions.
+
+## Weekly retained-asset liquidity source pilot
+
+`research/statarb/collect_liquidity.py` uses pinned original BTCUSDT/ETHUSDT 4h bars and a separate, checksum-verified public daily-metrics capture for weekly UTC decisions across the fixed 760-day window. The calendar is fixed every seven days from 2024-09-01. An additional checksum-verified August candle archive provides the first 24h volume window. Each volume observation sums exactly six completed 4h source `quote_volume` candles, with its latest candle closing four hours before the decision. Inputs are verified against the original receipt hashes, and original data remain unchanged.
+
+```bash
+python3 research/statarb/collect_liquidity.py \
+  --source /path/to/original/intake --scope /path/to/subset-scope.json \
+  --out /path/to/separate-liquidity-capture
+```
+
+The daily metrics `create_time` can label an interval start or end, and original rows can be unordered. The candidate snapshot uses the greatest eligible label at least **10 minutes** before the decision (five minutes for uncertain interval semantics plus five minutes assumed publication delay), and rejects the source if its chosen label is more than 15 minutes old. Original first/last/min/max labels and nonmonotonic transitions are recorded; neither rows nor timestamps are silently sorted, shifted or backfilled. These are conservative **assumptions**, not independently verified historical availability. The `volume_24h_usd` field follows the engine's naming convention but is a sum of source USDT quote volume; no USDT/USD FX equivalence is independently certified.
+
+The separate funding diagnostic checks retained calculation observations against a *nominal* eight-hour grid, reporting empty/multiple slots and millisecond offsets. It does not establish an effective historical payment calendar or turn calculation observations into payable events. The collector writes `observations/liquidity.csv` and `liquidity-audit.json`, **never** engine `membership.csv` or `funding/`. A complete weekly observation grid still leaves contract identity, publication timing/metrics semantics and actual payment population unresolved; no strategy/holdout evaluation is authorized by this source check.
