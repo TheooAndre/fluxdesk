@@ -37,6 +37,7 @@ Updated 25 October 2026. Research only; no order execution or claimed predictive
 | --- | --- | --- |
 | Venue/timeframe stat-arb scanner | Owner accepted on iPhone; CI #348 and staging passed | All supported current live venue assets attempted; every aligned unordered pair tested, ±2 z-score view, permissive/selective presets, progress/cancel/failures, JSON export and journal handoff. [Method and limits](statarb-scanner.md) |
 | Persistent crypto trade journal | Owner accepted on iPhone; CI #348 and staging passed | Dated multi-leg fills, fees/funding, plans/reviews/tags/emotions/mistakes, daily notes, calendar/analytics, conflict protection, JSON/CSV import/export and encrypted backup inclusion. [Journal guide](trade-journal.md) |
+| Free macro calendar | Keyless provider integration; pending production acceptance | Replaces paid Trading Economics key with Finance Calendar's high-impact US API, links to sources and credits, labels estimates/stale data; selective coverage and no consensus feed. Forex Factory redistribution is prohibited by its published notices. |
 | Grouped iPhone acceptance for new workspaces | Owner confirmed working on 24 October | Owner reported “is working on the phone” after the grouped scanner/journal acceptance request. This records owner-reported device acceptance; no additional automated live scan result or market edge is inferred. Earlier accepted checks do not need repeating |
 
 ## Next work in order

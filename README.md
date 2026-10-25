@@ -72,7 +72,7 @@ See `VALIDATION_REPORT.md` for measured checks and remaining release gates. The 
 - Correlation scanner: top 28 liquid same-venue markets (minimum $1m reported daily notional). Pearson *log-return* correlation on 1h/other selected aligned and completed bars. r ≥ **0.87** threshold. Then selected log-spread z-score with an 80-bar rolling OLS hedge coefficient fitted on *prior bars*, not on future prices. We do not infer cointegration from correlation alone.
 - All-timeframe, on-demand long+short scanner, reporting both detected candidates and unavailable intervals. Four rule-based entry detectors on the last **fully closed candle**, no repainting of future pivots: (1) 20-bar swing-failure wick and recovery, (2) close through a confirmed 2-left/2-right swing pivot, (3) EMA20/50 trend continuation pullback, (4) compressed 20-bar range edge rejection. Display possible direction, trigger reference, invalidation level and 2R illustration. Their predictive edge **has not been established**.
 - Alerts on last price crossing a level, fully closed 5m volume exceeding previous 20 candles by x%, and Binance **observed** forced order snapshots totaling ≥ $N over 5 minutes. Client notifications require VAPID configuration and opt-in. Server polls market alerts every minute; thresholds have a 5-minute cooldown. Price triggers use threshold crossings, not persistent beyond-level states; volume alerts emit at most once per completed candle.
-- Economic calendar reads Trading Economics **importance=3** events for the US from a configured commercial API key; without it, events are explicitly unavailable instead of fabricating a schedule.
+- Economic calendar reads the keyless Finance Calendar API for high-impact US releases with exact UTC times over a rolling two-week window. It displays source links, estimated/stale labels and provider attribution. Coverage is selective and consensus is usually unavailable; provider failures are explicit, never filled with a fabricated schedule.
 - iOS PWA installation help and push opt-in. Apple Web Push requires a supported iOS version and installation to Home Screen; permission must come from a user gesture.
 
 ## Data integrity warnings
@@ -123,7 +123,6 @@ Open `http://127.0.0.1:8787`. Use HTTPS + verified OIDC proxy before exposing ex
 | `HOST`, `PORT` | API bind interface and port; default `127.0.0.1:8787` |
 | `DATA_DIR` | Alert and PushSubscription JSON storage directory, writable and backed up |
 | `REVERSE_PROXY_OIDC` | Must be `true` for an intentional non-local bind, only after deploying a real authentication proxy |
-| `TRADING_ECONOMICS_API_KEY` | Optional licensed calendar key; US high-importance data |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Optional Web Push credentials; e.g. `mailto:you@yourdomain.tld` |
 
 Generate VAPID keys with a local package command after installing dependencies: `pnpm exec web-push generate-vapid-keys`. Keep private key secret. Never set `REVERSE_PROXY_OIDC=true` as a shortcut to open network access.
