@@ -95,6 +95,20 @@ def load_folder(folder: str | Path, timeframe_hours: int = 4) -> ResearchData:
     mem["timestamp"] = pd.to_datetime(mem.timestamp, utc=True)
     if mem.timestamp.isna().any():
         raise DataIntegrityError("Invalid membership timestamps")
+    # Excluded corrupt rows can force CSV columns to object dtype. Normalize only
+    # retained rows explicitly, rather than allowing string truthiness/comparisons.
+    for key in ('active', 'linear'):
+        values = mem[key].astype(str).str.lower().map({'true': True, 'false': False, '1': True, '0': False})
+        if values.isna().any():
+            raise DataIntegrityError(f'Invalid retained membership {key}')
+        mem[key] = values.astype(bool)
+    for key in ('open_interest_usd', 'volume_24h_usd'):
+        values = pd.to_numeric(mem[key], errors='coerce')
+        if not np.isfinite(values.to_numpy()).all() or (values < 0).any():
+            raise DataIntegrityError(f'Invalid retained membership {key}')
+        mem[key] = values
+    if mem.duplicated(['timestamp', 'symbol']).any():
+        raise DataIntegrityError('Duplicate retained membership')
     bars, funding = {}, {}
     for path in sorted((root / "bars").glob("*.csv")):
         sym = path.stem
@@ -115,8 +129,7 @@ def load_folder(folder: str | Path, timeframe_hours: int = 4) -> ResearchData:
     if len(bars) < 2:
         raise DataIntegrityError("Need at least two OHLCV asset histories")
     # Undeclared omissions must not silently disappear at the selector's intersection.
-    active = mem.active.astype(str).str.lower().isin(['true', '1'])
-    missing = set(mem.loc[active, 'symbol']) - set(bars)
+    missing = set(mem.loc[mem.active, 'symbol']) - set(bars)
     if missing:
         raise DataIntegrityError('Active markets lack history or explicit exclusion: ' + ', '.join(sorted(missing)))
     used = [mf, member_path] + [root/d/f'{s}.csv' for s in bars for d in ('bars', 'funding')]

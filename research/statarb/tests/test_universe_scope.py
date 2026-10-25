@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from statarb.data import DataIntegrityError, load_folder
+from statarb.data import DataIntegrityError, eligible_at, load_folder
 from statarb.universe import universe_scope
 from test_input_audit import audit, fixture
 from test_fee_evidence import evidence
@@ -45,7 +45,21 @@ def test_whole_asset_excluded_without_deleting_original_or_patching_rows(tmp_pat
     data = load_folder(tmp_path)
     assert set(data.bars) == set(data.funding) == set(data.membership.symbol) == {'A', 'B'}
     assert data.provenance['effective_universe_scope']['full_historical_universe_in_scope'] is False
+    assert eligible_at(data, data.membership.timestamp.min()) == ['A', 'B']
     assert before == {str(p.relative_to(tmp_path)): p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+
+
+@pytest.mark.parametrize('old,new', [
+    (',true,true,', ',maybe,true,'), (',true,true,', ',true,maybe,'),
+    (',10000000,50000000', ',unknown,50000000'),
+])
+def test_invalid_retained_membership_cannot_hide_behind_excluded_rows(tmp_path, old, new):
+    fixture(tmp_path, 80)
+    amend(tmp_path, policy())
+    path = tmp_path/'membership.csv'
+    path.write_text(path.read_text().replace(old, new, 1))
+    with pytest.raises(DataIntegrityError, match='Invalid retained membership'):
+        load_folder(tmp_path)
 
 
 def test_excluding_retired_asset_never_clears_retained_missing_funding(tmp_path):
