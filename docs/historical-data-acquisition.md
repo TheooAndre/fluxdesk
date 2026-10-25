@@ -74,3 +74,11 @@ A vendor coverage statement is evidence to verify, not an automatic audit pass. 
 - https://docs.tardis.dev/downloadable-csv-files/data-types#derivative_ticker — upcoming funding semantics.
 - https://docs.tardis.dev/faq/billing-and-subscriptions — paid history entitlements and sample limitations; no purchase made.
 - https://github.com/binance/binance-public-data/blob/master/TERMS_AND_CONDITIONS.md — current dataset licence; intake is for personal non-production research, not a production feed. Retain attribution and applicable terms with any retained/derived data.
+
+## Fee evidence enforcement and contact decision — 25 October 2026
+
+Account-specific fee input and its provenance are recorded in the private intake amendment, not this public repository. Treat owner statements as owner-reported evidence, not independent exchange-account verification; do not invent unspecified discounts or historical applicability.
+
+Real research CLI runs require dated fee evidence from the dataset manifest and use its taker rate for both legs' executed notional changes, including exits. The maker rate is metadata only; passive execution is not modeled. The original synthetic fixture cost remains unchanged. This cost-input update is not a strategy search or a funding/PIT audit pass; the effective configuration and evidence remain in the experiment fingerprint/provenance.
+
+The proposed Binance coverage request was declined. No external message is sent; the private draft is withdrawn from the action queue. Funding/lifecycle/PIT/OI-volume gaps remain unresolved. The contact decision does not waive those gates or authorize holdout evaluation.
