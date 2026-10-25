@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -192,4 +192,28 @@ it('preserves a saved legacy below rule and does not rearm from an old creation 
   await sample(100);
   await sample(90);
   expect(feed.deliver.mock.calls[0]![0].message).toContain('price below 90');
+});
+
+it('retries an unrecorded crossing after disk recovery without inventing a new crossing', async () => {
+  await create();
+  await sample(100);
+  const path = join(directory, 'state.json'),
+    saved = join(directory, 'state.saved');
+  await rename(path, saved);
+  await mkdir(path);
+  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    await sample(120);
+    expect(feed.deliver).not.toHaveBeenCalled();
+    expect(store.snapshot().events).toHaveLength(0);
+    await rm(path, { recursive: true });
+    await rename(saved, path);
+    await sample(120);
+    expect(feed.deliver).toHaveBeenCalledTimes(1);
+    expect(feed.deliver.mock.calls[0]![0].message).toContain('price crossed above 110');
+    await sample(120);
+    expect(feed.deliver).toHaveBeenCalledTimes(1);
+  } finally {
+    log.mockRestore();
+  }
 });

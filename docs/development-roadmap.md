@@ -1,6 +1,6 @@
 # FluxDesk development list
 
-Updated 24 October 2026. Research only; no order execution or claimed predictive edge.
+Updated 25 October 2026. Research only; no order execution or claimed predictive edge.
 
 ## Current milestone: v0.4 cloud terminal
 
@@ -41,11 +41,11 @@ Updated 24 October 2026. Research only; no order execution or claimed predictive
 
 ## Next work in order
 
-1. Scanner/journal batch is accepted: final CI #348, both staging deployments and owner-reported iPhone acceptance passed. Current application code is `b26bef5` (improvement CI #352 passed). Production-environment preflight/promotion remains a separate deployment task; no production promotion is recorded here.
-2. All requested phone acceptance batches are complete. Batch future phone checks after several changes; retain the existing quality gates. Hosted backup/download/isolated restore and locked-phone push are complete. Take a fresh computer backup after adding journal data; the older owner-verified archive predates the journal.
-3. Binance historical funding/mark snapshots are now implemented in Strategy Lab. Verify live hosted ingestion, audit payment schedule completeness and historical contract metadata, then validate the optional observed-funding/mark v3 engine against audited histories. The v3 implementation is exploratory, explicitly opt-in, with conservative handling of ambiguous funding/exit ordering. Hyperliquid mark/oracle history still needs a documented source. Bar-close open-position equity and entry exposure caps are implemented; intrabar margin/liquidation accounting remains outside the current engine. Never substitute today's funding for historical payments.
-4. Crypto stat-arb source and offline report workflow are integrated into Correlation Lab. Next: obtain auditable historical funding/PIT data and account-tier fees, then run market walk-forward validation; do not interpret scanner correlation as cointegration. Do not open the final holdout while choosing data or adapting the integration.
-5. Saved terminal layouts implemented on each device: up to ten named market/timeframe/benchmark/category/venue/sort combinations, explicit apply/delete and local-storage errors. Shared watchlists remain server-backed; layouts are not included in server backups. Saved-layout desktop/mobile regression checks pass; latest full CI/live acceptance is tracked in PR #12.
+1. The cloud terminal, scanner and journal are released on the protected production domain. PR #12 completed the v0.4 release; PR #13 released the chart/UI fixes as v0.4.1. Existing Northflank service/volume retained. Older staging and preflight sections below are historical receipts, not current release blockers.
+2. Owner acceptance of all previous iPhone batches is complete. Group future device checks after several changes. Keep manual computer backups current after important journal/archive changes; the first owner-verified archive predates the journal.
+3. Empirical research still needs actual audited two-year point-in-time universe/funding histories and owner account-tier fee evidence. Hyperliquid historical mark/oracle ingestion remains unconnected; its documented archive is requester-pays. Do not run the final holdout while selecting data or adapting research. Exploratory v3 observed funding/mark accounting does not certify historical completeness.
+4. Intrabar margin/liquidation simulation remains outside the research engine. Implementing it requires a documented venue/account margin model and appropriate historical observations; do not infer liquidations from bar-close equity.
+5. Continue evidence-based reliability and usability improvements. The v0.4.2 batch below addresses asynchronous journal saves, alert persistence recovery, liquidation connection ownership and request/delivery deadlines. Full CI and deployment receipts belong in its PR.
 
 ## Live funding conventions
 
@@ -126,3 +126,13 @@ Owner approved retaining the existing Northflank service. Production URL/credent
 ## Project checkup — 25 October 2026
 
 Chart price-reference mismatch traced to closed trade candles versus current last/mark snapshots. Added a shared quote overlay without rewriting OHLC; stale/offline/unknown quotes are withheld. Closed-candle cache revalidates/refetches at interval boundaries; detail payload identity is checked and detail polling stops on unrelated workspaces. Long general notes are collapsed under labelled help, while data errors and core price/research labels remain visible. Production browser artifacts no longer erase development traces. See [checkup report](project-checkup-2026-10-25.md) for scope, evidence and remaining limits; hosted CI/release evidence is tracked in the new PR.
+
+## Reliability improvements — v0.4.2
+
+- Journal save receipts clear only the submitted device draft. Edits made during a save are retained and rebased onto the returned server ID/revision, including when leaving and reopening the workspace. A different trade/date draft stays intact. Pending journal writes remain visible to a newly mounted workspace; no automatic mutation retries. Reload actions preserve edits made while refresh was pending and do not replace drafts with stale cached data after a failed refresh.
+- Alert/event/subscription changes are serialized against the last committed state. Memory changes only after atomic file replacement; a failed write neither consumes a cooldown nor poisons later updates. Unrecorded price/volume observations are restored so the next scan can retry after disk recovery. Renewed push subscriptions can update encryption keys at the same endpoint. Removed alert observations are pruned from scanner memory.
+- Liquidation stream startup is idempotent. Retired sockets cannot change replacement connection state or add events; failed/stalled handshakes reconnect after a bounded wait. Invalid sides, prices, quantities and timestamps are rejected. Alert persistence/delivery failures are caught.
+- Every browser API request has a deadline and tolerant HTTP error parsing. Timed-out mutations warn that server completion is uncertain and require refresh/check before another attempt. Push transport has a 10-second inactivity timeout and four delivery workers, so a stalled endpoint does not serialize all other devices. Delivery remains best-effort; no new retry queue or guaranteed delivery is claimed.
+- Regression coverage includes delayed-save navigation/day switching, real HTTP journal persistence, disk-write failure/recovery, cooldown races, rotated subscription keys, old-socket events, handshake timeout and API cancellation/error handling. No owner journal records or historical research data were changed by tests.
+
+Primary references reviewed: https://tanstack.com/query/latest/docs/framework/react/guides/mutations , https://nodejs.org/docs/latest-v24.x/api/globals.html#class-websocket , https://github.com/web-push-libs/web-push#sendnotificationpushsubscription-payload-options . No new dependency or paid service was added.
