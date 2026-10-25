@@ -6,6 +6,7 @@ import hashlib
 import json
 import numpy as np
 import pandas as pd
+from .universe import universe_scope
 
 REQUIRED = ("open", "high", "low", "close", "volume")
 
@@ -68,24 +69,51 @@ def load_folder(folder: str | Path, timeframe_hours: int = 4) -> ResearchData:
     if not mf.exists():
         raise DataIntegrityError("Missing manifest.json with provenance and funding coverage")
     provenance = json.loads(mf.read_text())
+    if not isinstance(provenance, dict):
+        raise DataIntegrityError('Manifest must be an object')
+    try:
+        scope = universe_scope(provenance)
+    except (ValueError, TypeError) as exc:
+        raise DataIntegrityError(f'Invalid universe scope: {exc}') from exc
+    excluded = {row['symbol'] for row in scope['exclusions']}
+    provenance['effective_universe_scope'] = scope
     if provenance.get("contract_type") != "linear_perpetual" or provenance.get("quote_currency") not in ("USDT", "USDC", "USD"):
         raise DataIntegrityError("Only single-venue USD-quoted linear perpetuals supported")
-    if not provenance.get("funding_complete"):
+    if provenance.get("funding_complete") is not True:
         raise DataIntegrityError("Incomplete funding data: backtest cannot claim net executable results")
-    if not provenance.get("universe_point_in_time"):
+    if provenance.get("universe_point_in_time") is not True:
         raise DataIntegrityError("Need historical membership incl. delisted markets, not today's universe")
     member_path = root / "membership.csv"
     if not member_path.exists():
         raise DataIntegrityError("Missing point-in-time membership.csv")
-    mem = pd.read_csv(member_path, parse_dates=["timestamp"])
+    mem = pd.read_csv(member_path)
     if not {"timestamp", "symbol", "active", "linear", "quote", "open_interest_usd", "volume_24h_usd"}.issubset(mem.columns):
         raise DataIntegrityError("Invalid membership columns")
+    mem = mem.loc[~mem.symbol.isin(excluded)].copy()
+    if mem.empty:
+        raise DataIntegrityError('No retained PIT membership after exclusions')
     mem["timestamp"] = pd.to_datetime(mem.timestamp, utc=True)
-    if mem.empty or mem.timestamp.isna().any():
+    if mem.timestamp.isna().any():
         raise DataIntegrityError("Invalid membership timestamps")
+    # Excluded corrupt rows can force CSV columns to object dtype. Normalize only
+    # retained rows explicitly, rather than allowing string truthiness/comparisons.
+    for key in ('active', 'linear'):
+        values = mem[key].astype(str).str.lower().map({'true': True, 'false': False, '1': True, '0': False})
+        if values.isna().any():
+            raise DataIntegrityError(f'Invalid retained membership {key}')
+        mem[key] = values.astype(bool)
+    for key in ('open_interest_usd', 'volume_24h_usd'):
+        values = pd.to_numeric(mem[key], errors='coerce')
+        if not np.isfinite(values.to_numpy()).all() or (values < 0).any():
+            raise DataIntegrityError(f'Invalid retained membership {key}')
+        mem[key] = values
+    if mem.duplicated(['timestamp', 'symbol']).any():
+        raise DataIntegrityError('Duplicate retained membership')
     bars, funding = {}, {}
     for path in sorted((root / "bars").glob("*.csv")):
         sym = path.stem
+        if sym in excluded:
+            continue
         bars[sym] = validate_bars(pd.read_csv(path), timeframe_hours)
         fpath = root / "funding" / f"{sym}.csv"
         if not fpath.exists():
@@ -100,9 +128,15 @@ def load_folder(folder: str | Path, timeframe_hours: int = 4) -> ResearchData:
         funding[sym] = f
     if len(bars) < 2:
         raise DataIntegrityError("Need at least two OHLCV asset histories")
-    provenance["sha256_input"] = hashlib.sha256(
-        b"".join(p.read_bytes() for p in sorted(root.rglob("*.csv")))
-    ).hexdigest()
+    # Undeclared omissions must not silently disappear at the selector's intersection.
+    missing = set(mem.loc[mem.active, 'symbol']) - set(bars)
+    if missing:
+        raise DataIntegrityError('Active markets lack history or explicit exclusion: ' + ', '.join(sorted(missing)))
+    used = [mf, member_path] + [root/d/f'{s}.csv' for s in bars for d in ('bars', 'funding')]
+    hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in used}
+    # Include policy/fee evidence and filenames, not just concatenated CSV contents.
+    provenance['files_sha256'] = hashes
+    provenance["sha256_input"] = hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return ResearchData(bars=bars, funding=funding, membership=mem, provenance=provenance)
 
 

@@ -113,6 +113,7 @@ def save_report(folder: Path, title: str, ret: pd.Series, summary: dict,
     full = dict(summary)
     full.update({"label": title, "discovery_audit": audits,
                  "monthly_returns": month_matrix(ret)})
+    scope_label = ('; data-quality subset' if summary.get('universe_scope', {}).get('mode') == 'data_quality_subset' else '')
     (folder / f'{title}.json').write_text(json.dumps(full, indent=2, default=str, allow_nan=False))
     ret.to_csv(folder / f'{title}_equity.csv', header=['net_bar_return'])
     if simulations:
@@ -125,7 +126,7 @@ def save_report(folder: Path, title: str, ret: pd.Series, summary: dict,
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(10,4))
         ((1+ret).cumprod()).plot(ax=ax)
-        ax.set(title=f'{title}: net equity multiple (research only)', xlabel='UTC', ylabel='Equity / initial')
+        ax.set(title=f'{title}: net equity multiple (research only{scope_label})', xlabel='UTC', ylabel='Equity / initial')
         fig.tight_layout()
         fig.savefig(folder / f'{title}_equity.png', dpi=140)
         plt.close(fig)
@@ -140,7 +141,7 @@ def save_report(folder: Path, title: str, ret: pd.Series, summary: dict,
             im=ax.imshow(matrix, cmap='RdYlGn', aspect='auto', vmin=-10, vmax=10)
             ax.set_xticks(range(12), ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'])
             ax.set_yticks(range(len(years)),[str(y) for y in years])
-            ax.set(title=f'{title}: monthly NET returns %; worst month outlined', xlabel='Month')
+            ax.set(title=f'{title}: monthly NET returns %{scope_label}; worst month outlined', xlabel='Month')
             for j in range(len(years)):
                 for k in range(12):
                     if np.isfinite(matrix[j,k]):
