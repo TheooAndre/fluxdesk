@@ -136,3 +136,7 @@ Chart price-reference mismatch traced to closed trade candles versus current las
 - Regression coverage includes delayed-save navigation/day switching, real HTTP journal persistence, disk-write failure/recovery, cooldown races, rotated subscription keys, old-socket events, handshake timeout and API cancellation/error handling. No owner journal records or historical research data were changed by tests.
 
 Primary references reviewed: https://tanstack.com/query/latest/docs/framework/react/guides/mutations , https://nodejs.org/docs/latest-v24.x/api/globals.html#class-websocket , https://github.com/web-push-libs/web-push#sendnotificationpushsubscription-payload-options . No new dependency or paid service was added.
+
+## Historical data acquisition — 25 October 2026
+
+Started a fixed-window Binance public-source qualification intake (2024-09-01 inclusive to 2026-10-01 exclusive). Paginated archive-wide discovery includes historical and non-ASCII prefixes; a five-instrument source pilot includes lifecycle controls, not a research universe. Added a standard-library checksum/receipt collector and offline integrity tests. Funding archive calculation rows remain observations; no canonical funding/PIT dataset or true coverage assertion is produced. Direct REST cross-checks returned HTTP 451 in this runtime, recorded without bypass. See [acquisition protocol](historical-data-acquisition.md) for independent evidence gates, lifecycle sources, fee evidence and remaining full-universe work. No market research/holdout run, new paid source, cloud storage or deployment.
