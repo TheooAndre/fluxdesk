@@ -313,7 +313,8 @@ export async function candles(assetId: string, interval: string, limit = 140): P
   const { venue, symbol } = assetIdentity(assetId);
   assertInterval(venue, interval);
   if (!Number.isSafeInteger(limit) || limit < 20 || limit > 300) throw Error('Limit must be 20–300');
-  const series = await cache.get(`candles:${assetId}:${interval}:${limit}`, TTL.history, async () => {
+  const key = `candles:${assetId}:${interval}:${limit}`;
+  const fetchSeries = async () => {
     let out: Candle[];
     if (venue === 'binance') {
       type Kline = [number, string, string, string, string, string, number, string];
@@ -353,9 +354,16 @@ export async function candles(assetId: string, interval: string, limit = 140): P
       }));
     }
     return validateCandles(out, interval, Date.now(), venue).slice(-limit);
-  });
-  // Revalidate on cache hits too: a new bar boundary may make this sample obsolete.
-  return validateCandles(series, interval, Date.now(), venue);
+  };
+  const series = await cache.get(key, TTL.history, fetchSeries);
+  // A closed-only cached sample can expire at a candle boundary before its TTL.
+  // Refetch it; never promote a cached, unfinished snapshot to a completed bar.
+  try { return validateCandles(series, interval, Date.now(), venue); }
+  catch (error) {
+    if (!(error instanceof Error) || error.message !== 'Stale candle history; analytics withheld') throw error;
+    cache.invalidate(key);
+    return validateCandles(await cache.get(key, TTL.history, fetchSeries), interval, Date.now(), venue);
+  }
 }
 export async function enrichedOpenInterest(assetId: string): Promise<number | null> {
   const { venue, symbol } = assetIdentity(assetId);

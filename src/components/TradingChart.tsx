@@ -8,10 +8,12 @@ import {
   createChart,
   type IChartApi,
   type ISeriesApi,
+  type IPriceLine,
+  type AutoscaleInfo,
 } from 'lightweight-charts';
 import ChartDrawings from './ChartDrawings.tsx';
-import type { Candle } from '../types.ts';
-import { chartEma, prepareChartData } from '../lib/chart-data.ts';
+import type { Candle, Market } from '../types.ts';
+import { chartEma, prepareChartData, chartQuote } from '../lib/chart-data.ts';
 import { price } from '../lib/format.ts';
 
 type ChartApis = {
@@ -29,8 +31,14 @@ export default function TradingChart({
   assetId,
   base,
   interval,
+  quote,
+  now,
+  quoteAvailable,
 }: {
   data: Candle[];
+  quote?: Market;
+  now: number;
+  quoteAvailable: boolean;
   assetId: string;
   base: string;
   interval: string;
@@ -51,6 +59,7 @@ export default function TradingChart({
     }
   }, [data]);
   const valid = prepared.data !== null;
+  const live = chartQuote(quote, assetId, now, quoteAvailable);
   useEffect(() => {
     if (!container.current || !valid) return;
     const chart = createChart(container.current, {
@@ -122,11 +131,6 @@ export default function TradingChart({
     if (!current || !points) return;
     byTime.current = new Map(data.map((bar) => [Math.floor(bar.time / 1000), bar]));
     const range = current.initialized ? current.chart.timeScale().getVisibleRange() : null;
-    const last = data.at(-1)?.close ?? 1;
-    const precision = last >= 100 ? 2 : last >= 1 ? 4 : last >= 0.01 ? 5 : 8;
-    const format = { type: 'price' as const, precision, minMove: 10 ** -precision };
-    current.candles.applyOptions({ priceFormat: format });
-    current.line.applyOptions({ priceFormat: format });
     current.candles.setData(points.candles);
     current.line.setData(points.line);
     current.annotations.setData(points.line);
@@ -151,6 +155,60 @@ export default function TradingChart({
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
   }, [expanded]);
+  const latestLogical = data.length - 1;
+  const lastClosedPrice = data.at(-1)?.close ?? 1;
+  const livePrice = live?.price,
+    liveLabel = live?.label;
+  useEffect(() => {
+    const current = api.current;
+    if (!current) return;
+    const currentPrice = livePrice ?? lastClosedPrice;
+    const precision = currentPrice >= 100 ? 2 : currentPrice >= 1 ? 4 : currentPrice >= 0.01 ? 5 : 8;
+    const format = { type: 'price' as const, precision, minMove: 10 ** -precision };
+    current.candles.applyOptions({ priceFormat: format });
+    current.line.applyOptions({ priceFormat: format });
+    const priceLines: Array<[ISeriesApi<'Candlestick'> | ISeriesApi<'Line'>, IPriceLine]> = [];
+    for (const series of [current.candles, current.line]) {
+      series.applyOptions({
+        lastValueVisible: livePrice === undefined,
+        priceLineVisible: livePrice === undefined,
+        title: livePrice === undefined ? 'Closed' : '',
+      });
+      if (livePrice !== undefined)
+        priceLines.push([
+          series,
+          series.createPriceLine({
+            price: livePrice,
+            color: '#ffc856',
+            lineWidth: 2,
+            lineStyle: 2,
+            axisLabelVisible: true,
+            title: liveLabel ?? 'Quote',
+          }),
+        ]);
+    }
+    current.annotations.applyOptions({
+      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
+        const info = original();
+        if (
+          !info?.priceRange ||
+          livePrice === undefined ||
+          (current.chart.timeScale().getVisibleLogicalRange()?.to ?? -1) < latestLogical
+        )
+          return info;
+        return {
+          ...info,
+          priceRange: {
+            minValue: Math.min(info.priceRange.minValue, livePrice),
+            maxValue: Math.max(info.priceRange.maxValue, livePrice),
+          },
+        };
+      },
+    });
+    return () => {
+      for (const [series, line] of priceLines) series.removePriceLine(line);
+    };
+  }, [livePrice, liveLabel, valid, assetId, interval, latestLogical, lastClosedPrice]);
   const shiftRange = (zoom: number, shift = 0) => {
     const chart = api.current?.chart,
       range = chart?.timeScale().getVisibleLogicalRange();
@@ -211,9 +269,21 @@ export default function TradingChart({
           interval={interval}
         />
       )}
+      <div className="chart-live-quote" aria-label="Chart current quote">
+        {live ? (
+          <>
+            <strong>
+              {live.label} {price(live.price)}
+            </strong>
+            <small> · {new Date(live.asOf).toLocaleTimeString()}</small>
+          </>
+        ) : (
+          <span>Live quote unavailable</span>
+        )}
+      </div>
       <div className="chart-ohlc" aria-label="Candle OHLC values">
         <b>
-          {base} · {interval}
+          {base} · {interval} · {hover ? 'Selected candle' : 'Last closed candle'}
         </b>
         {candle && (
           <>
@@ -232,7 +302,7 @@ export default function TradingChart({
       />
       <p className="chart-caption">
         Completed trade candles · UTC · Volume in {base} units
-        {indicators ? ' · EMA 20 (gold) / 50 (purple)' : ''}. Drag, pinch or use the controls above.
+        {indicators ? ' · EMA 20 / 50' : ''}
       </p>
       <details className="chart-data-table">
         <summary>View candle data · latest 20 bars</summary>

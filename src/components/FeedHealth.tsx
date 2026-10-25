@@ -29,16 +29,9 @@ export default function FeedHealth({
               <span>{feed.markets} markets</span>
               <span>{ageLabel(feed.lastSuccessAt, now)}</span>
             </div>
-            <p>
-              {feed.message ??
-                (disconnected
-                  ? 'Dashboard connection lost; displayed values may be old.'
-                  : stale
-                    ? 'Waiting for a fresh venue snapshot.'
-                    : feed.venue === 'binance'
-                      ? 'USDT perps · refresh target ~10 seconds while app is active'
-                      : 'Default perp DEX · refresh target ~10 seconds while app is active · USD-equivalent notionals')}
-            </p>
+            {(feed.message || disconnected || stale || feed.status !== 'live') && <p>
+              {feed.message ?? (disconnected ? 'Connection lost; displayed values may be old.' : stale ? 'Waiting for a fresh snapshot.' : 'Feed unavailable.')}
+            </p>}
           </div>
         );
       })}

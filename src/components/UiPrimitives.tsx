@@ -2,7 +2,22 @@ import type { ReactNode } from 'react';
 import { WifiOff, RefreshCw } from 'lucide-react';
 import type { Market } from '../types.ts';
 
-export function Pill({ children, tone = 'muted' }: { children: ReactNode; tone?: 'muted' | 'green' | 'red' }) {
+export function HelpDetails({ title = 'Details', children }: { title?: string; children: ReactNode }) {
+  return (
+    <details className="help-details">
+      <summary>{title}</summary>
+      <div className="footnote">{children}</div>
+    </details>
+  );
+}
+
+export function Pill({
+  children,
+  tone = 'muted',
+}: {
+  children: ReactNode;
+  tone?: 'muted' | 'green' | 'red';
+}) {
   return (
     <span className={'pill ' + (tone === 'green' ? 'pill-green' : tone === 'red' ? 'pill-red' : '')}>
       {children}
@@ -70,7 +85,12 @@ export function Segmented<T extends string>({
   return (
     <div className="segmented">
       {items.map((x) => (
-        <button key={x.value} aria-pressed={x.value === value} className={x.value === value ? 'active' : ''} onClick={() => onChange(x.value)}>
+        <button
+          key={x.value}
+          aria-pressed={x.value === value}
+          className={x.value === value ? 'active' : ''}
+          onClick={() => onChange(x.value)}
+        >
           {x.label}
         </button>
       ))}

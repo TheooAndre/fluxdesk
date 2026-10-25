@@ -11,7 +11,7 @@ import {
   scanCandleAge,
   type ScanPreferences,
 } from '../engine/statarb-settings.ts';
-import { Card } from './UiPrimitives.tsx';
+import { Card, HelpDetails } from './UiPrimitives.tsx';
 import './Workspaces.css';
 const Research = lazy(() => import('./StatArbResearch.tsx'));
 export default function StatArbScanner() {
@@ -182,13 +182,13 @@ export default function StatArbScanner() {
             Cancel scan
           </button>
         </div>
-        <p className="footnote">
+        <HelpDetails title="Scan coverage and limits">
           Every supported live venue asset is attempted: Binance USDT perpetuals or Hyperliquid’s native
           perpetual universe, matching the terminal feed. All unordered pairs with complete matching history
           are tested. No volume, OI or correlation cutoff. Requests are paced to reserve venue rate-limit
           capacity. History is pinned to the scan start; a venue-wide scan can take several minutes. One scan
           at a time; results stay in server memory until restart or the next scan.
-        </p>
+        </HelpDetails>
         <details>
           <summary>Method and filter differences</summary>{' '}
           <p className="footnote">
@@ -382,12 +382,12 @@ export default function StatArbScanner() {
             Next pairs
           </button>
         </div>
-        <p className="footnote">
+        <HelpDetails title="Signal interpretation">
           Directions refer to y − βx in log prices. Notional weights, not equal coin quantities. Latest
           completed candle is the signal observation; quoted fills, funding, liquidity and future convergence
           are not assumed. Settings and view preferences save on this device; rankings apply to the retained
           candidates. Candle age updates as time passes; results remain a scan snapshot.
-        </p>
+        </HelpDetails>
       </Card>
       <button className="secondary" onClick={() => setNotes(!notes)}>
         {notes ? 'Hide' : 'Show'} original research protocol

@@ -221,7 +221,7 @@ export default function ChartDrawings({
             : first
               ? 'Tap or click the second point. Cursor or Escape cancels.'
               : 'Tap or click the first point in the candle pane.'
-          : `${drawings.length} / ${DRAWING_LIMIT} drawings · Saved on this device for this market and timeframe.`}
+          : drawings.length ? `${drawings.length} / ${DRAWING_LIMIT} drawings · Device only` : null}
       </p>
       {error && (
         <p className="notice warning" role="alert">

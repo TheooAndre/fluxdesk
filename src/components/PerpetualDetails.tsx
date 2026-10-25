@@ -1,3 +1,4 @@
+import { HelpDetails } from './UiPrimitives.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api.ts';
 import { price } from '../lib/format.ts';
@@ -106,13 +107,13 @@ export default function PerpetualDetails({
               <small>{quoteAge(data?.asOf ?? null, now)}</small>
             </div>
           </div>
-          <p className="footnote">
+          <HelpDetails title="Price and funding details">
             {item.venue === 'hyperliquid'
               ? 'Hyperliquid supplies mark and oracle prices; received time is when this server obtained the response, not an exchange quote timestamp.'
               : 'Binance supplies mark and index prices separately from the last-trade table price. Funding intervals refresh every minute; unknown intervals remain unknown.'}{' '}
             Funding can change before payment. These live rates are not included in Strategy Lab historical
             backtests.
-          </p>
+          </HelpDetails>
         </>
       )}
     </Card>

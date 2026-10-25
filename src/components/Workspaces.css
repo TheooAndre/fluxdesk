@@ -150,3 +150,9 @@
 
 .workspace-controls button[aria-pressed] { border:1px solid #34465b; border-radius:7px; padding:9px 13px; background:#101b2b;color:#a7bbce; }
 .workspace-controls button[aria-pressed=true] { background:#173a31; color:#65ecc0; border-color:#379c7e; }
+
+.help-details { margin: 10px 0; color: var(--muted, #9aafc6); font-size: 12px; }
+.help-details > summary { cursor: pointer; width: fit-content; padding: 4px 0; }
+.help-details[open] > summary { margin-bottom: 6px; }
+.chart-live-quote { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; padding: 8px 0; font-variant-numeric: tabular-nums; }
+.help-details > summary:focus-visible { outline: 2px solid #47e5b4; outline-offset: 3px; border-radius: 3px; }

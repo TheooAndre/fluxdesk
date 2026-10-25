@@ -7,6 +7,10 @@ export class RequestCache {
     this.maxEntries = maxEntries;
   }
 
+  invalidate(key: string) {
+    this.values.delete(key);
+  }
+
   async get<T>(key: string, ttl: number, work: () => Promise<T>): Promise<T> {
     const hit = this.values.get(key);
     if (hit && hit.expires > Date.now()) return hit.value as T;

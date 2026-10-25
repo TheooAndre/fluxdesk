@@ -3,6 +3,7 @@ import base from './playwright.config.ts';
 export default defineConfig({
   ...base,
   testMatch: '**/production.spec.ts',
+  outputDir: 'test-results/production',
   testIgnore: [],
   projects: [
     { name: 'production-chromium', use: { ...devices['Desktop Chrome'] } },

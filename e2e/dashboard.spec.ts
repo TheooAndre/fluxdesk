@@ -72,10 +72,10 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/asset?**', (route) =>
     route.fulfill({
       json: {
-        id: btc.id,
-        tf: '1h',
+        id: new URL(route.request().url()).searchParams.get('asset'),
+        tf: new URL(route.request().url()).searchParams.get('tf'),
         openInterestUsd: 100_000_000,
-        benchmarkOI: { id: btc.id, usd: 100_000_000, ratio: 1, venueMatched: true },
+        benchmarkOI: { id: new URL(route.request().url()).searchParams.get('asset'), usd: 100_000_000, ratio: 1, venueMatched: true },
         liquidationPriceClusters: [],
         levels: [],
         signals: [],
@@ -386,7 +386,7 @@ test('Strategy Lab uses a saved dataset and renders a clearly labelled research-
       ? mobileNavigation.getByRole('button', { name: 'Lab' })
       : page.getByRole('button', { name: 'Strategy Lab' })
   ).click();
-  await expect(page.getByRole('heading', { name: 'Strategy Lab · v0.3' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Strategy Lab' })).toBeVisible();
   await expect(page.getByText('No datasets stored. Fetch historical candles to begin.')).toBeVisible();
   await page.getByRole('button', { name: /Fetch & archive history/ }).click();
   await expect(page.getByRole('combobox', { name: 'Historical dataset', exact: true })).toHaveValue(dataset.id);
@@ -417,11 +417,14 @@ test('perpetual details label price bases and funding interval without mixed-bas
   await expect(hyperRow.getByText('Mark', { exact: true })).toBeVisible();
   await page.getByLabel('Selected asset').selectOption(ethHyper.id);
   await expect(page.getByText('Mark price', { exact: true }).first()).toBeVisible();
+  await expect(panel.getByText('Hyperliquid supplies mark and oracle prices;', { exact: false })).toBeHidden();
+  await panel.getByText('Price and funding details', { exact: true }).click();
   await expect(panel.getByText('Hyperliquid supplies mark and oracle prices;', { exact: false })).toBeVisible();
   await expect(panel.getByText('Reported funding · per 1h')).toBeVisible();
   await expect(panel.getByText('Shorts pay longs')).toBeVisible();
   await expect(panel.getByText('Hourly schedule estimate', { exact: false })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await panel.getByText('Price and funding details', { exact: true }).click();
   await page.screenshot({ path: test.info().outputPath('perpetual-pricing.png'), fullPage: true });
 });
 
@@ -699,10 +702,10 @@ test('chart drawings support touch or mouse, undo, reload, scale changes and mar
   await page.getByRole('button', { name: 'Undo drawing', exact: true }).click();
   await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Clear drawings', exact: true }).click();
-  await expect(page.getByText('0 / 50 drawings', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clear drawings', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Undo drawing', exact: true }).click();
   await page.getByLabel('Selected asset', { exact: true }).selectOption('binance:ETHUSDT');
-  await expect(page.getByText('0 / 50 drawings', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clear drawings', exact: true })).toBeDisabled();
   await page.getByLabel('Selected asset', { exact: true }).selectOption('binance:BTCUSDT');
   await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -915,4 +918,46 @@ test('journal review save travels through the real HTTP handler and survives a d
     else process.env.DATA_DIR = previous;
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('chart live quote matches the dashboard through refresh, mode change, venue change and offline', async ({ page }) => {
+  await page.clock.install();
+  let value = 100000;
+  await page.route('**/api/markets', route => route.fulfill({ json: {
+    assets: [{ ...btc, price: value, asOf: Date.now() }, { ...ethHyper, price: 4000, asOf: Date.now() }],
+    benchmarks: {}, asOf: Date.now(), checkedAt: Date.now(),
+    feeds: ['binance', 'hyperliquid'].map(venue => ({ venue, status: 'live', lastSuccessAt: Date.now(), lastAttemptAt: Date.now(), ageMs: 0, markets: 1 })),
+  } }));
+  await page.route('**/api/asset?**', route => {
+    const params = new URL(route.request().url()).searchParams;
+    const reference = params.get('asset')?.startsWith('hyperliquid:') ? 4000 : 100000;
+    const realBars = candles.map((bar, i) => { const open = reference * (0.98 + i * 0.0001); return { ...bar, open, close: open + reference * 0.00005, high: open + reference * 0.0001, low: open - reference * 0.0001 }; });
+    return route.fulfill({ json: { id: params.get('asset'), tf: params.get('tf'), candles: realBars, openInterestUsd: 100, benchmarkOI: null, liquidationPriceClusters: [], levels: [], signals: [], liquidations: { observedUsd: 0, available: true, windowCovered: true, count: 0, events: [], coverage: 'partial_snapshots' } } });
+  });
+  await page.goto('/');
+  const quote = page.getByLabel('Chart current quote', { exact: true });
+  await expect(quote).toContainText('Last trade $100,000.00');
+  await expect(page.locator('.big-price')).toHaveText('$100,000.00');
+  await expect(page.getByLabel('Candle OHLC values')).toContainText('Last closed candle');
+  await expect(page.getByLabel('Candle OHLC values')).toContainText('C $99,495.00');
+  value = 100123.45;
+  await page.clock.runFor(10000);
+  await expect(quote).toContainText('Last trade $100,123.45');
+  await expect(page.locator('.big-price')).toHaveText('$100,123.45');
+  await page.screenshot({ path: test.info().outputPath('clean-overview-live-price.png'), fullPage: true });
+  await page.getByRole('group', { name: 'Chart controls' }).getByRole('button', { name: 'Line', exact: true }).click();
+  await expect(quote).toContainText('$100,123.45');
+  await page.getByLabel('Selected asset', { exact: true }).selectOption('hyperliquid:ETH');
+  await expect(quote).toContainText('Mark $4,000.00');
+  await expect(page.locator('.big-price')).toHaveText('$4,000.00');
+  await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); window.dispatchEvent(new Event('offline')); });
+  await expect(quote).toContainText('Live quote unavailable');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('rejects mismatched chart response identity instead of drawing another contract history', async ({ page }) => {
+  await page.route('**/api/asset?**', route => route.fulfill({ json: { id: 'hyperliquid:WRONG', tf: '1h', candles } }));
+  await page.goto('/');
+  await expect(page.getByText('Chart response does not match the selected contract/timeframe', { exact: false })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('img', { name: 'BTC 1h interactive price and volume chart' })).toHaveCount(0);
 });

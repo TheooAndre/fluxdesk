@@ -231,3 +231,27 @@ describe('venue snapshots', () => {
     expect((await marketSnapshot()).assets[0]!.oiUsd).toBeNull();
   });
 });
+
+it('refreshes an unexpired closed-candle cache when a new candle has completed', async () => {
+  vi.useFakeTimers();
+  const boundary = Date.UTC(2026, 9, 25, 12, 1);
+  vi.setSystemTime(boundary - 2);
+  let call = 0;
+  const fetcher = vi.fn(async () => {
+    const shift = call++ ? 1 : 0;
+    const raw = Array.from({ length: 21 }, (_, i) => {
+      const time = boundary - (21 - i - shift) * 60000;
+      const close = shift ? '110' : '100';
+      return [time, '100', '120', '90', close, '1', time + 59999, '100'];
+    });
+    return Response.json(raw);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const { candles } = await import('../server/market.ts');
+  expect((await candles('binance:BOUNDARYUSDT', '1m', 20)).at(-1)!.close).toBe(100);
+  vi.setSystemTime(boundary + 6000);
+  const next = await candles('binance:BOUNDARYUSDT', '1m', 20);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(next.at(-1)!.time).toBe(boundary - 60000);
+  expect(next.at(-1)!.close).toBe(110);
+});
