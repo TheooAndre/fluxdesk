@@ -11,6 +11,7 @@ from .data import load_folder
 from .synthetic import synthetic_market
 from .research import run_research
 from .report import save_report
+from .universe import universe_scope
 
 
 def _clean(v):
@@ -36,6 +37,9 @@ def main(argv=None):
     data = synthetic_market(days=420) if args.command=='demo' else load_folder(args.data, cfg.timeframe_hours)
     if args.command == 'research':
         cfg = with_taker_fee_evidence(cfg, data.provenance)
+    scope = universe_scope(data.provenance)
+    if scope['warning']:
+        print(scope['warning'])
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     lock_payload = json.dumps({'config':asdict(cfg), 'dataset_hash':data.provenance.get('sha256_input'),
@@ -49,6 +53,7 @@ def main(argv=None):
     result = run_research(data, cfg, open_holdout=args.open_holdout)
     for name, evaluation in result.items():
         summ = _clean(evaluation.statistics)
+        summ['universe_scope'] = scope
         save_report(out,name,evaluation.net_returns,summ,evaluation.audits,evaluation.simulations,cfg)
         (out/f'{name}_folds.json').write_text(json.dumps(_clean(evaluation.fold_metrics), indent=2, default=str))
         print(f'{name}: {summ["status"]}; Sharpe={summ.get("sharpe")}; DD={summ.get("max_drawdown")}; '

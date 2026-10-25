@@ -8,6 +8,11 @@ import io
 import json
 import math
 from pathlib import Path
+import sys
+
+# Keep this standalone preflight standard-library only.
+sys.path.insert(0, str(Path(__file__).parent / 'src'))
+from statarb.universe import universe_scope
 
 MAX_FILE = 50 * 1024 * 1024
 MAX_TOTAL = 512 * 1024 * 1024
@@ -65,6 +70,14 @@ def audit_folder(folder):
     except (OSError, ValueError, UnicodeError):
         issue('invalid_manifest', 'manifest.json')
         manifest = {}
+    try:
+        scope = universe_scope(manifest)
+    except (ValueError, TypeError):
+        issue('invalid_universe_scope', 'manifest.json')
+        scope = universe_scope({})
+    excluded = {row['symbol'] for row in scope['exclusions']}
+    if excluded:
+        issue('data_quality_subset_bias', 'manifest.json', 'warning')
     for key in ['funding_complete', 'universe_point_in_time']:
         if manifest.get(key) is not True:
             issue('unverified_' + key, 'manifest.json')
@@ -92,6 +105,8 @@ def audit_folder(folder):
         if (root / directory).is_symlink():
             issue('symlink_directory', directory)
     paths = sorted((root / 'bars').glob('*.csv')) if not (root / 'bars').is_symlink() else []
+    excluded_histories = [p.stem for p in paths if p.stem in excluded]
+    paths = [p for p in paths if p.stem not in excluded]
     if not 2 <= len(paths) <= MAX_SYMBOLS:
         issue('requires_2_to_200_histories', 'bars')
     first_global, last_global = None, None
@@ -143,8 +158,10 @@ def audit_folder(folder):
     snapshots, active_symbols = {}, set()
     try:
         for row in rows('membership.csv', ['timestamp', 'symbol', 'active', 'linear', 'quote', 'open_interest_usd', 'volume_24h_usd']):
-            t = utc(row['timestamp'])
             symbol = row['symbol']
+            if symbol in excluded:
+                continue
+            t = utc(row['timestamp'])
             group = snapshots.setdefault(t, set())
             if symbol in group:
                 issue('duplicate_membership', 'membership.csv')
@@ -177,7 +194,7 @@ def audit_folder(folder):
     if not any((min(a[1],b[1])-max(a[0],b[0])).total_seconds() >= 180*86400 for i,a in enumerate(intervals) for b in intervals[i+1:]):
         issue('no_two_histories_overlap_180_days', 'bars')
     fingerprint = hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-    return {'schema_version': 1, 'status': 'blocked' if error_count else 'structural_checks_only', 'audit_input_sha256': fingerprint, 'files_sha256': hashes, 'issue_counts': counts, 'issues': issues, 'issues_truncated': sum(counts.values()) > len(issues), 'symbols': summaries, 'union_span_days': span_days, 'membership_snapshots': len(snapshots), 'independent_funding_and_pit_audit': False, 'holdout_opened': False, 'research_run': False, 'trading_authorized': False}
+    return {'schema_version': 1, 'status': 'blocked' if error_count else 'structural_checks_only', 'audit_input_sha256': fingerprint, 'files_sha256': hashes, 'issue_counts': counts, 'issues': issues, 'issues_truncated': sum(counts.values()) > len(issues), 'symbols': summaries, 'universe_scope': scope, 'excluded_bar_files_not_evaluated': excluded_histories, 'union_span_days': span_days, 'membership_snapshots': len(snapshots), 'independent_funding_and_pit_audit': False, 'holdout_opened': False, 'research_run': False, 'trading_authorized': False}
 
 
 def main(argv=None):

@@ -1,12 +1,12 @@
 # Historical data acquisition — 25 October 2026
 
-Status: source qualification in progress; **not an audited, engine-ready market dataset**. No empirical research, selection, backtest or holdout evaluation has been run. The preregistered protocol and parameters remain unchanged.
+Status: source qualification in progress; **not an audited, engine-ready market dataset**. No empirical research, selection, backtest or holdout evaluation has been run. The fixed signal/risk parameters remain unchanged; the owner authorized a data-quality subset amendment below.
 
 ## Fixed scope
 
 Start with Binance USD-M, USDT-settled crypto-native linear perpetuals, 4h trade candles. Intake window: **2024-09-01 00:00 UTC inclusive through 2026-10-01 00:00 UTC exclusive** (760 days). This scope is fixed before strategy analysis. Hyperliquid data are a separate venue and cannot be pooled to fill Binance gaps.
 
-The initial source-qualification pilot requests BTCUSDT, ETHUSDT, FTMUSDT, LINAUSDT and LUNAUSDT. Two reference instruments and three historical/lifecycle cases test the pipeline, including absence and post-termination records. They were not selected by correlation, cointegration, z-score or profitability. **These five instruments are not the research universe.** Expanding only to today's survivors would violate the research protocol.
+The initial source-qualification pilot requests BTCUSDT, ETHUSDT, FTMUSDT, LINAUSDT and LUNAUSDT. Two reference instruments and three historical/lifecycle cases test the pipeline, including absence and post-termination records. They were not selected by correlation, cointegration, z-score or profitability. **These five instruments are not the research universe.** A subset study follows the explicit amendment below; it cannot claim the original full-population validation.
 
 ## Sources and evidence
 
@@ -82,3 +82,36 @@ Account-specific fee input and its provenance are recorded in the private intake
 Real research CLI runs require dated fee evidence from the dataset manifest and use its taker rate for both legs' executed notional changes, including exits. The maker rate is metadata only; passive execution is not modeled. The original synthetic fixture cost remains unchanged. This cost-input update is not a strategy search or a funding/PIT audit pass; the effective configuration and evidence remain in the experiment fingerprint/provenance.
 
 The proposed Binance coverage request was declined. No external message is sent; the private draft is withdrawn from the action queue. Funding/lifecycle/PIT/OI-volume gaps remain unresolved. The contact decision does not waive those gates or authorize holdout evaluation.
+
+## Owner-approved data-quality subset amendment — 25 October 2026
+
+The owner authorized skipping FTM, LINA and other instruments with troublesome or missing histories, rather than resolving every delisted/migrated contract. Apply whole-instrument exclusions before strategy evaluation. Preserve the original captures and original blocked audits; do not trim bad periods out of a retained instrument, backfill funding, stitch FTM to S, or select exclusions using pair tests/returns. S is a separate instrument that needs its own history and checks.
+
+This changes the historical population under study. It may introduce survivorship/availability bias even when exclusions use data quality rather than profitability. Label all resulting research as **a retrospective data-quality subset**, with no full-market validation claim. The original complete-universe objective remains unfulfilled but does not block a separately labelled subset study. Historical membership/lifecycle and OI/volume snapshots are still required for retained instruments, as is complete payable funding. Missing archive categories can justify excluding a symbol from this source route; they do not prove that the contract never existed.
+
+Supply an explicit `universe_scope` object in the canonical manifest:
+
+```json
+{
+  "mode": "data_quality_subset",
+  "policy_version": 1,
+  "decided_at_utc": "2026-10-25T12:00:00Z",
+  "selection_basis": "data_quality_only_before_strategy_evaluation",
+  "survivorship_bias_acknowledged": true,
+  "exclusions": [
+    {
+      "symbol": "RETIREDUSDT",
+      "reason_code": "delisted_contract",
+      "reason": "Illustration only: unusable terminated-contract history",
+      "source": "Replace with actual dated lifecycle/source evidence",
+      "observed_at_utc": "2026-10-25T11:00:00Z"
+    }
+  ]
+}
+```
+
+Allowed reasons: `delisted_contract`, `contract_migration`, `ticker_reuse`, `missing_bars`, `invalid_bars`, `unverified_funding`, `missing_membership`, `missing_liquidity_history`, `unverified_contract_identity`. Record each exact symbol separately, its source and a dated explanation. Additional source problems can add documented exclusions before results are viewed; they cannot silently remove a losing trade mid-evaluation. A candidate awaiting checks is not an approved asset, and uncollected assets are not automatically declared corrupt.
+
+Both preflight and real loader honor the ledger, ignore excluded bars/funding/membership rows, and retain the exclusion warning in provenance/reports. Missing active histories without an explicit exclusion still block. At least two retained histories are required. The audit hashes the policy in the manifest; the engine fingerprint now includes filenames, used-file hashes and the manifest (including fees/scope). Standalone JSON reports and equity images identify the subset. Structural policy validation does not authenticate a reason or certify retained coverage. Omit `universe_scope` to keep the original full historical universe requirement.
+
+The private candidate ledger preserves archive-wide discovery, including unreviewed candidates. FTM/LINA source anomalies are no longer mandatory to resolve for this subset; their originals remain quarantined evidence. The Binance request stays withdrawn and unsent. No market research or final-holdout evaluation was run to choose these exclusions.

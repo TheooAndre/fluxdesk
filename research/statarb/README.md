@@ -85,6 +85,12 @@ The manifest needs documented `fee_evidence` for the preflight to clear its stru
 
 Limits: up to 200 price histories, 50 MiB per input, 512 MiB read in total, and 100 displayed issues with aggregate issue counts retained. Symlinked inputs are rejected. The audit SHA-256 hashes the sorted mapping of relative filenames to content hashes, including the manifest; it is separate from the original engine's CSV digest. No prices or statistics from a strategy/holdout evaluation appear in the report.
 
+### Optional data-quality subset
+
+The owner approved excluding whole instruments with unusable source histories before any strategy evaluation. See the [scope amendment and manifest schema](../../docs/historical-data-acquisition.md#owner-approved-data-quality-subset-amendment--25-october-2026). A versioned `universe_scope` ledger gives each excluded symbol a data-quality reason, evidence source and UTC observation time. Both preflight and loader ignore only those declared instruments; undeclared missing active histories still fail. Excluded original files can remain untouched alongside inputs. The engine fingerprint includes the manifest, filenames and hashes of used inputs, so changing the ledger/fee evidence changes the experiment identity.
+
+This is a **retrospective data-quality subset**, subject to survivorship/availability bias, not validation of the complete historical market. JSON reports, provenance, console and equity images carry the scope. Retained instruments still require complete funding, historical membership and OI/volume coverage; never substitute forecasts/zeros or drop losing periods. FTM and S are distinct contract histories, never automatically spliced. Without the explicit ledger, the full historical universe requirement is unchanged. This source-quality amendment is recorded separately from the original preregistration; no signal/risk tuning or market run accompanied it.
+
 ## Exact execution convention
 
 1. At close of 4h candle *t*, update the rolling statistic and, on schedule, beta using data known no later than *t*.

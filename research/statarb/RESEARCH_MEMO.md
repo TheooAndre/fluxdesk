@@ -51,3 +51,11 @@ Do not call bootstrap/BH a 'deflated Sharpe': it is not. Full DSR requires effec
 - DSR: **NOT COMPUTED**; no claim of its threshold being met.
 - Regimes: report slices supported; pre/post-2020 not meaningful for short-lived perpetual histories and explicitly N/A.
 - Live deployment: **NOT AUTHORIZED**.
+
+## Population amendment — 25 October 2026, before empirical evaluation
+
+Owner instruction permits excluding FTM, LINA and other instruments with unusable/missing source histories. Register this as population amendment `data-quality-subset-v1`, separate from the original full-market design above. The one fixed signal/risk parameter variant is unchanged; this is an additional universe-design decision in the trial genealogy, not a claim that the original complete-universe audit passed.
+
+Use an explicit dated whole-instrument exclusion ledger with source evidence, frozen before any strategy evaluation. Reasons concern contract identity/lifecycle or data quality, never correlation, cointegration, z-score, returns, profitability or failed trades. Preserve original bytes and the complete discovered candidate list, including unknown/unreviewed entries. Do not splice migrations or trim losing/problem periods within a retained contract. New exclusions require a new documented data/policy fingerprint before evaluation, never a silent repair during a run.
+
+Results for this amendment apply only to the retained retrospective data-quality subset. Delisted/migrated or poorly archived instruments may be systematically different, so survivorship/availability bias remains and full-market edge cannot be claimed. Funding settlement completeness and historical membership/lifecycle/OI/volume for retained assets remain required. No empirical research or final holdout was evaluated when making this amendment. The original complete-universe design remains above as historical preregistration, not silently rewritten.
