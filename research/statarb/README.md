@@ -91,6 +91,8 @@ The owner approved excluding whole instruments with unusable source histories be
 
 This is a **retrospective data-quality subset**, subject to survivorship/availability bias, not validation of the complete historical market. JSON reports, provenance, console and equity images carry the scope. Retained instruments still require complete funding, historical membership and OI/volume coverage; never substitute forecasts/zeros or drop losing periods. FTM and S are distinct contract histories, never automatically spliced. Without the explicit ledger, the full historical universe requirement is unchanged. This source-quality amendment is recorded separately from the original preregistration; no signal/risk tuning or market run accompanied it.
 
+A separate weekly BTC/ETH source pilot uses `python research/statarb/collect_liquidity.py --source /path/to/original/intake --scope /path/to/subset-scope.json --out /path/to/new/capture`. The [acquisition protocol](../../docs/historical-data-acquisition.md#weekly-retained-asset-liquidity-source-pilot) documents timing assumptions, source-order diagnostics and why this cannot certify historical availability or payable funding. It does not produce research-ready membership or funding files.
+
 ## Exact execution convention
 
 1. At close of 4h candle *t*, update the rolling statistic and, on schedule, beta using data known no later than *t*.
