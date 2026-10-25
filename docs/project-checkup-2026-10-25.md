@@ -27,6 +27,7 @@ The live overlay uses the known quote basis, exact contract ID and source timest
 - Runtime dependency audit: zero advisories. Full development audit: eight findings (five high, two moderate, one low; zero critical). Existing production-only image isolation remains in place; remaining build-tool issues need upstream/major-tool work. No blanket clean security audit is claimed.
 - The PWA continues to keep API GET/POST traffic network-only; no market data is fabricated for offline use. Gateway authentication, revision protection and encrypted-backup tests remain unchanged.
 - Full hosted checks, release commit and final deployment/alias evidence are recorded in the associated PR. New development uses a separate branch; the Northflank backend release branch is advanced only deliberately to a tested main commit.
+- Free macro-calendar release (25 October): PR #19 merged as `88969f9`; CI #400 passed. The existing Northflank backend release branch advanced from `19da493` to that tested commit, with no new service or volume. The protected Vercel production deployment `dpl_7hbFCMP4CXafkSUeKVSdQWq65j18` owns `fluxdesk-terminal.vercel.app`; authenticated health, calendar and journal reads returned HTTP 200. The calendar returned five future timed high-impact US events with a keyless attributed provider. A backend branch update temporarily made Vercel assign the canonical alias to a Preview build; it was reassigned to the Production build and the final alias target re-checked. Always verify the alias target after backend branch updates.
 
 ## Remaining limits
 
