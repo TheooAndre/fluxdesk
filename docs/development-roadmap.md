@@ -122,3 +122,7 @@ Owner chose to retain the existing Northflank service on 24 October. No second b
 ## v0.4 release configuration
 
 Owner approved retaining the existing Northflank service. Production URL/credential metadata is now configured, without decrypting secrets; the preflight passes. The production-target build has authenticated HTTP 200 shell, health, markets, journal and scanner reads and rejects logged-out shell access via Vercel sign-in. Preview gateways reject non-GET requests; this is an application guard on deliberately shared infrastructure. Release label/package are v0.4. Existing service/volume and storage allowance are retained; no second service, migration or compute upgrade. Final release CI, canonical alias and merge outcome are recorded in PR #12. Older staging receipts above remain historical evidence.
+
+## Project checkup — 25 October 2026
+
+Chart price-reference mismatch traced to closed trade candles versus current last/mark snapshots. Added a shared quote overlay without rewriting OHLC; stale/offline/unknown quotes are withheld. Closed-candle cache revalidates/refetches at interval boundaries; detail payload identity is checked and detail polling stops on unrelated workspaces. Long general notes are collapsed under labelled help, while data errors and core price/research labels remain visible. Production browser artifacts no longer erase development traces. See [checkup report](project-checkup-2026-10-25.md) for scope, evidence and remaining limits; hosted CI/release evidence is tracked in the new PR.

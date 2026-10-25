@@ -80,3 +80,10 @@
 .drawing-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; padding: 4px; }
 .chart-drawings summary { font-size: 12px; cursor: pointer; }
 @media(max-width:850px){.bottom-nav{overflow-x:auto;justify-content:flex-start;gap:8px}.bottom-nav button{flex:1 0 50px;min-width:50px}}
+
+/* Shared disclosures and live chart quote styles must load on the overview. */
+.help-details { margin: 10px 0; color: var(--muted, #9aafc6); font-size: 12px; }
+.help-details > summary { cursor: pointer; width: fit-content; padding: 4px 0; }
+.help-details[open] > summary { margin-bottom: 6px; }
+.chart-live-quote { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; padding: 8px 0; font-variant-numeric: tabular-nums; }
+.help-details > summary:focus-visible { outline: 2px solid #47e5b4; outline-offset: 3px; border-radius: 3px; }

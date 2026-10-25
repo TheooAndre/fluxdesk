@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { monitorPwaUpdates } from './lib/pwa-updates.ts';
 import { registerSW } from 'virtual:pwa-register';
-import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, CircleHelp, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star, BookOpen } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star, BookOpen } from 'lucide-react';
 import { api } from './lib/api.ts';
 import { useWatchlist } from './lib/use-watchlist.ts';
 import { useUi, restoreAssetFromLocation, type Tab } from './lib/store.ts';
@@ -16,7 +16,7 @@ import FeedHealth from './components/FeedHealth.tsx';
 import BenchmarkSelector from './components/BenchmarkSelector.tsx';
 import TradingViewAccount from './components/TradingViewAccount.tsx';
 import TerminalLayouts from './components/TerminalLayouts.tsx';
-import { Card, Pill, Loading, ErrorText, BadgeVenue } from './components/UiPrimitives.tsx';
+import { Card, Pill, Loading, ErrorText, BadgeVenue, HelpDetails } from './components/UiPrimitives.tsx';
 // Load each workspace module only when its view or data is needed.
 const CategoryBrowser = lazy(() => import('./components/CategoryBrowser.tsx'));
 const TradingChart = lazy(() => import('./components/TradingChart.tsx'));
@@ -54,8 +54,12 @@ function useDashboard(enabled: boolean) {
   });
   const asset = useQuery({
     queryKey: ['asset', ui.assetId, ui.tf, ui.benchmark],
-    queryFn: ({ signal }) => api.asset(ui.assetId, ui.tf, ui.benchmark, signal),
-    enabled: enabled && !!ui.assetId,
+    queryFn: async ({ signal }) => {
+      const detail = await api.asset(ui.assetId, ui.tf, ui.benchmark, signal);
+      if (detail.id !== ui.assetId || detail.tf !== ui.tf) throw Error('Chart response does not match the selected contract/timeframe');
+      return detail;
+    },
+    enabled: enabled && !!ui.assetId && (ui.tab === 'overview' || ui.tab === 'signals'),
     refetchInterval: 60_000,
   });
   return { ui, mk, asset, selected: mk.data?.assets.find((a) => a.id === ui.assetId) };
@@ -225,11 +229,11 @@ function MarketTable({
           </button>
         )}
       </div>
-      <p className="footnote">
+      <HelpDetails title="Market data details">
         24h rolling performance. Vs benchmark is unavailable for different or unknown price bases. Relative return = (1 + alt return) / (1 + benchmark return) − 1. Same
         instrument may appear on both venues; prices are not pooled. Historical and volume data can have
         different exchange conventions.
-      </p>
+      </HelpDetails>
     </Card>
   );
 }
@@ -267,14 +271,16 @@ function AssetChart({
   item,
   candles,
   now,
+  quoteAvailable,
 }: {
+  quoteAvailable: boolean;
   now: number;
   item: Market | undefined;
   candles: Awaited<ReturnType<typeof api.asset>>['candles'] | undefined;
 }) {
   const ui = useUi();
   return (
-    <Card title="Selected market" aside={<span className="small-label">Trade candles · closed bars</span>}>
+    <Card title="Selected market">
       {item ? (
         <>
           <div className="asset-chart-head">
@@ -296,7 +302,7 @@ function AssetChart({
           </div>
           <div className="selected-categories">{marketCategories(item).length ? marketCategories(item).map((category) => <Pill key={category}>{categoryLabel(category)}</Pill>) : <Pill>Uncategorized</Pill>}</div>
           <TradingViewAccount assetId={item.id} interval={ui.tf} />
-          {candles?.length ? <Suspense fallback={<Loading label="Loading interactive chart…" />}><TradingChart key={item.id + ':' + ui.tf} data={candles} assetId={item.id} base={item.base} interval={ui.tf} /></Suspense> : <Loading label="Fetching historical bars…" />}
+          {candles?.length ? <Suspense fallback={<Loading label="Loading interactive chart…" />}><TradingChart key={item.id + ':' + ui.tf} data={candles} assetId={item.id} base={item.base} interval={ui.tf} quote={item} now={now} quoteAvailable={quoteAvailable} /></Suspense> : <Loading label="Fetching historical bars…" />}
         </>
       ) : (
         <p className="empty">Select an asset to inspect</p>
@@ -390,11 +396,10 @@ function Insights({
           ))}
         </div>
       ) : null}
-      <div className="notice small-notice">
-        <CircleHelp size={16} /> Actual future liquidation clusters cannot be inferred from open interest
-        alone. Reported liquidations are partial exchange snapshots; levels above are historical-price
-        calculations, not verified exchange orders.
-      </div>
+      <HelpDetails title="Level and liquidation limits">
+        Historical-price levels are not verified orders. Liquidations show partial observed snapshots;
+        future liquidation clusters cannot be inferred from open interest.
+      </HelpDetails>
     </Card>
   );
 }
@@ -406,7 +411,7 @@ function Intro({ tab }: { tab: Tab }) {
           <span className="live-dot" /> QUANT MARKET TERMINAL
         </div>
         <h1>{tab === 'overview' ? 'Market overview' : NAV.find((x) => x.id === tab)?.label}</h1>
-        <p>Exchange snapshots, relative strength and structured research.</p>
+
       </div>
       <div className="date-box">
         <Radio size={16} /> Market feeds · 24/7
@@ -556,9 +561,9 @@ function App() {
         </nav>
         <div className="sidebar-bottom">
           <div className="notice tiny-notice">
-            <ShieldAlert size={16} /> Research-only. No automatic trading or validated predictive edge.
+            <ShieldAlert size={16} /> Research only · No auto-trading
           </div>
-          <small>FLUXDESK / v0.4 RESEARCH</small>
+          <small>FLUXDESK / v0.4.1 RESEARCH</small>
         </div>
       </aside>
       <div className="body">
@@ -666,7 +671,7 @@ function App() {
                   onCategory={ui.setCategory} onVenue={ui.setVenue} onSearch={ui.setSearch}
                   onSelect={(id) => { ui.setAsset(id); setOverviewPanel('chart'); }} />
               </Suspense> : <div className="overview-grid">
-                <AssetChart item={selected} now={now} candles={asset.isError ? undefined : asset.data?.candles} />
+                <AssetChart item={selected} now={now} quoteAvailable={!offline && !mk.isError && !!mk.data?.feeds.some(f => f.venue === selected?.venue && f.status === 'live')} candles={asset.isError ? undefined : asset.data?.candles} />
                 <Insights item={selected} detail={asset.isError ? undefined : asset.data} />
               </div>}
               {selected && <Suspense fallback={<Loading label="Loading perpetual pricing…" />}>

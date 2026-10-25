@@ -18,7 +18,7 @@ import {
   exportSummaryCsv,
 } from '../journal/files.ts';
 import { money } from '../lib/format.ts';
-import { Card } from './UiPrimitives.tsx';
+import { Card, HelpDetails } from './UiPrimitives.tsx';
 import JournalTradeEditor from './JournalTradeEditor.tsx';
 import LineChart from './LineChart.tsx';
 import './Workspaces.css';
@@ -188,10 +188,6 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
   return (
     <div className="content-stack workspace">
       <Card title="Crypto trade journal">
-        <p>
-          Dated trades, multi-leg positions, execution costs, habits and daily reviews. Stored on your
-          persistent server and included in encrypted backups.
-        </p>
         <div className="workspace-controls">
           <label>
             Selected journal date
@@ -334,10 +330,10 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
         >
           Reload saved daily note
         </button>
-        <p className="footnote">
+        <HelpDetails title="Date and save details">
           Dates use the device’s calendar; fill timestamps are stored with UTC offsets. Daily notes save
           separately from trades.
-        </p>
+        </HelpDetails>
       </Card>
       <Card title="Filter journal">
         <div className="workspace-controls">
@@ -537,14 +533,14 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
             height={180}
             ariaLabel="Cumulative closed-trade net P&L"
           />
-          <p className="footnote">
+          <HelpDetails title="Accounting details">
             Closed trades only, ordered by final exit time. P&L curve and USD drawdown are not account
             equity/returns: deposits, withdrawals and open-position marks are excluded. Calendar buckets use
             your chosen journal date. Filters apply to these statistics. Tags/mistakes/emotions can overlap,
             so those rows are not additive. MFE/MAE are optional manual observations, not inferred from fills.
             Holding time spans first entry to final exit across all legs; breakeven trades reset streaks. A
             completed review has a review, lesson and execution rating.
-          </p>
+          </HelpDetails>
           <div className="workspace-grid">
             {Object.entries({
               'By holding time': process.buckets,
@@ -572,10 +568,10 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
       )}
       {view === 'calendar' && (
         <Card title={`P&L calendar · ${month}`}>
-          <p className="footnote">
+          <HelpDetails title="Calendar details">
             All recorded accounts; journal-date buckets. Closed P&L only; counts include plans/open trades.
             Choose a day for its notes, then use Selected day only in the log.
-          </p>
+          </HelpDetails>
           <div className="journal-calendar">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
               <b key={d}>{d}</b>
@@ -654,13 +650,13 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
             />
           </label>
         </div>
-        <p className="footnote">
+        <HelpDetails title="Import formats and limits">
           JSON is a complete portable backup; CSV summary is for analysis, not restoration. Imports are atomic
           and duplicate-aware. CSV uses the supplied single-leg schema; use JSON for multi-leg trades. Limits:
           2000 trades, 3660 daily notes, 4 MiB journal, 4 MiB per import. Exchange API auto-sync and image
           uploads are not connected; use HTTPS chart/screenshot links. Save failures keep your device trade
           draft.
-        </p>
+        </HelpDetails>
       </Card>
     </div>
   );

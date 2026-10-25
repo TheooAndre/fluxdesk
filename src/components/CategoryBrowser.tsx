@@ -8,7 +8,7 @@ import {
 } from '../lib/categories.ts';
 import { money, pct, price } from '../lib/format.ts';
 import type { Market } from '../types.ts';
-import { Card, BadgeVenue } from './UiPrimitives.tsx';
+import { Card, BadgeVenue, HelpDetails } from './UiPrimitives.tsx';
 
 export default function CategoryBrowser({
   assets,
@@ -115,14 +115,14 @@ export default function CategoryBrowser({
           Showing 100 of {results.length} contracts. Narrow the search to inspect more.
         </p>
       )}
-      <p className="footnote">
+      <HelpDetails title="Category details">
         Counts are exchange contracts, not unique tokens. Tags can overlap and are curated research labels.
         New or uncertain mappings remain Uncategorized. No category index return or investment ranking is
         implied.{' '}
         <a href="https://www.coingecko.com/en/categories" target="_blank" rel="noopener noreferrer">
           Category definitions
         </a>
-      </p>
+      </HelpDetails>
     </Card>
   );
 }

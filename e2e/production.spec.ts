@@ -49,6 +49,7 @@ test.beforeEach(async ({ page }) => {
           : path === '/api/asset'
             ? {
                 id: asset.id,
+                tf: new URL(route.request().url()).searchParams.get('tf'),
                 candles,
                 levels: [],
                 signals: [],

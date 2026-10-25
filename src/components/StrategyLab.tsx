@@ -1,3 +1,4 @@
+import { HelpDetails } from './UiPrimitives.tsx';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database, FlaskConical, Play, RefreshCw, ShieldAlert } from 'lucide-react';
@@ -198,14 +199,14 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
       <div className="lab-intro">
         <FlaskConical size={20} aria-hidden="true"/>
         <div>
-          <h2>Strategy Lab · v0.3</h2>
-          <p>Reproducible candle-based research. This workstation does not send exchange orders.</p>
+          <h2>Strategy Lab</h2>
+          <p>Historical research · No live execution</p>
         </div>
       </div>
       <div className="lab-columns">
         <section className="lab-panel" aria-label="Historical datasets">
           <h3><Database size={17} aria-hidden="true"/> Historical datasets</h3>
-          <p className="lab-footnote">Fetch 80–1,000 completed candles from the selected perpetual exchange. Missing or corrupted data is rejected. Requires internet access.</p>
+          <HelpDetails title="Dataset requirements">Fetch 80–1,000 completed candles. Missing or corrupted data is rejected.</HelpDetails>
           <form onSubmit={(e) => { e.preventDefault(); if (!unavailable) fetchMutation.mutate(); }} className="lab-fields">
             <label>Contract ID
               <input value={assetId} onChange={(e) => { setAssetId(e.target.value); setReport(null); }}
@@ -257,7 +258,7 @@ export default function StrategyLab({ initialAssetId, offline }: { initialAssetI
 
         <section className="lab-panel" aria-label="Backtest settings">
           <h3><Play size={17} aria-hidden="true"/> Research configuration</h3>
-          <p className="lab-footnote">No parameter search is performed. Treat the holdout as a one-time evaluation: repeatedly changing rules after seeing it can invalidate that evidence.</p>
+          <HelpDetails title="Research protocol">No parameter search is performed. Repeated changes after viewing the holdout invalidate its independence.</HelpDetails>
           <form className="lab-fields" onSubmit={(e) => {
             e.preventDefault();
             if (!unavailable && effectiveId) { setReport(null); runMutation.mutate(); }

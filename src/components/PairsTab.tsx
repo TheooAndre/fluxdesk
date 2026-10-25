@@ -1,3 +1,4 @@
+import { HelpDetails } from './UiPrimitives.tsx';
 import { lazy, Suspense, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
@@ -139,11 +140,11 @@ function CorrelationScanner({ item, assets }: { item: Market | undefined; assets
                 data={pair.data.stats.spreadSeries.map((x) => ({ value: x.z }))}
                 height={180}
               />
-              <p className="footnote">
+              <HelpDetails title="Correlation and spread details">
                 Hedge ratio fitted using prior 80 bars for each z observation. A high correlation alone does
                 NOT establish cointegration. Verify residual stationarity, rolling stability, costs and
                 untouched out-of-sample performance before treating deviations as signals.
-              </p>
+              </HelpDetails>
             </>
           ) : (
             <div className="empty">Insufficient matching history to form a valid spread.</div>
@@ -156,11 +157,26 @@ function CorrelationScanner({ item, assets }: { item: Market | undefined; assets
 
 function PairsTab(props: { item: Market | undefined; assets: Market[] }) {
   const [view, setView] = useState<'scanner' | 'statarb'>('scanner');
-  return <div className="content-stack">
-    <div role="group" aria-label="Correlation lab views">
-      <Segmented items={[{ label: 'Correlation scanner', value: 'scanner' }, { label: 'Stat-arb scanner', value: 'statarb' }]} value={view} onChange={setView} />
+  return (
+    <div className="content-stack">
+      <div role="group" aria-label="Correlation lab views">
+        <Segmented
+          items={[
+            { label: 'Correlation scanner', value: 'scanner' },
+            { label: 'Stat-arb scanner', value: 'statarb' },
+          ]}
+          value={view}
+          onChange={setView}
+        />
+      </div>
+      {view === 'statarb' ? (
+        <Suspense fallback={<Loading label="Loading stat-arb scanner…" />}>
+          <StatArbScanner />
+        </Suspense>
+      ) : (
+        <CorrelationScanner {...props} />
+      )}
     </div>
-    {view === 'statarb' ? <Suspense fallback={<Loading label="Loading stat-arb scanner…"/>}><StatArbScanner /></Suspense> : <CorrelationScanner {...props} />}
-  </div>;
+  );
 }
 export default PairsTab;

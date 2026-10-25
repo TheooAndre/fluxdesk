@@ -3,7 +3,7 @@ import { openPosition, reviewGaps, journalQuoteContext } from '../journal/insigh
 import type { JournalTrade } from '../journal/model.ts';
 import type { MarketSnapshot } from '../types.ts';
 import { money, price } from '../lib/format.ts';
-import { Card } from './UiPrimitives.tsx';
+import { Card, HelpDetails } from './UiPrimitives.tsx';
 
 export default function JournalInsights({
   trades,
@@ -51,8 +51,8 @@ export default function JournalInsights({
     <Card title={mode === 'positions' ? `Open positions · ${rows.length}` : `Review queue · ${rows.length}`}>
       <p className="footnote">
         {mode === 'positions'
-          ? 'Based on saved fills. Estimates use current venue last/mark quotes, not executable prices. Offline, stale, missing and spot quotes are excluded. Fees and funding are included only when recorded; future closing costs are excluded. Filters apply.'
-          : 'Complete your records: setup, plan, planned risk, open-leg stops, and a review, lesson and execution rating for closed trades. This checks completeness, not trade quality. Filters apply.'}
+          ? 'Estimates from saved fills and fresh venue quotes; excludes unrecorded costs.'
+          : 'Complete the missing fields listed below.'}
       </p>
       {rows.slice(0, limit).map(({ trade, position, gaps }) => (
         <article className="journal-trade" key={trade.id}>
@@ -104,8 +104,8 @@ export default function JournalInsights({
                         : 'Current quote unavailable for this leg'}
                     </p>
                     <p>
-                      Recorded stop: {leg.stop === null ? 'Missing' : price(leg.stop)} · cost-basis
-                      risk: {stopRisk === null ? 'Unknown' : money(stopRisk, false)}
+                      Recorded stop: {leg.stop === null ? 'Missing' : price(leg.stop)} · cost-basis risk:{' '}
+                      {stopRisk === null ? 'Unknown' : money(stopRisk, false)}
                     </p>
                   </div>
                 ),
@@ -142,12 +142,12 @@ export default function JournalInsights({
         </button>
       )}
       {mode === 'positions' && (
-        <p className="footnote">
+        <HelpDetails title="Position estimates and stop risk">
           Stop risk is the remaining quantity multiplied by the adverse distance from its average cost to the
           recorded stop, floored at zero per leg. It excludes gaps, slippage, costs and liquidation; it is not
           current-market risk or a guarantee. A recorded stop does not place an exchange order. Leverage is
           not a P&L multiplier.
-        </p>
+        </HelpDetails>
       )}
     </Card>
   );

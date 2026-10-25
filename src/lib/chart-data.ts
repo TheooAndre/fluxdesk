@@ -1,5 +1,22 @@
 import type { CandlestickData, HistogramData, LineData, UTCTimestamp } from 'lightweight-charts';
-import type { Candle } from '../types.ts';
+import type { Candle, Market } from '../types.ts';
+
+/** Quote overlay only: never replace a trade candle with a last/mark snapshot. */
+export function chartQuote(quote: Market | undefined, assetId: string, now: number, available: boolean) {
+  if (
+    !quote ||
+    quote.id !== assetId ||
+    !Number.isFinite(quote.price) ||
+    quote.price <= 0 ||
+    !Number.isFinite(quote.asOf) ||
+    now - quote.asOf < -5000 ||
+    now - quote.asOf > 45000 ||
+    !available ||
+    (quote.priceBasis !== 'last' && quote.priceBasis !== 'mark')
+  )
+    return null;
+  return { price: quote.price, label: quote.priceBasis === 'mark' ? 'Mark' : 'Last trade', asOf: quote.asOf };
+}
 
 export function prepareChartData(bars: Candle[]) {
   let previous = -1;
