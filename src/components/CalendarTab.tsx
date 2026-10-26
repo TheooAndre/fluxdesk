@@ -19,10 +19,17 @@ function CalendarTab() {
         </p>
       </div>
       <Card title="Upcoming releases" aside={<Pill tone="red">HIGH IMPACT ONLY</Pill>}>
+        <button type="button" disabled={feed.isFetching} onClick={() => void feed.refetch()}>
+          {feed.isFetching ? 'Refreshing calendar…' : 'Refresh calendar'}
+        </button>
+        {feed.error && <ErrorText error={feed.error} />}
+        {feed.error && feed.data && (
+          <p role="status">Refresh failed. Showing the last loaded calendar; dates may have changed.</p>
+        )}
         {feed.isLoading ? (
           <Loading />
-        ) : feed.error ? (
-          <ErrorText error={feed.error} />
+        ) : !feed.data ? (
+          null
         ) : (
           <>
             {feed.data?.message && (
