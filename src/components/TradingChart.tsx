@@ -3,6 +3,7 @@ import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
+  PriceScaleMode,
   HistogramSeries,
   LineSeries,
   createChart,
@@ -50,6 +51,8 @@ export default function TradingChart({
   const [mode, setMode] = useState<'candles' | 'line'>('candles');
   const [indicators, setIndicators] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [autoScale, setAutoScale] = useState(true);
+  const [logScale, setLogScale] = useState(false);
   const [hover, setHover] = useState<Candle | undefined>();
   const prepared = useMemo(() => {
     try {
@@ -155,6 +158,26 @@ export default function TradingChart({
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
   }, [expanded]);
+  useEffect(() => {
+    if (!drawingApi) return;
+    const sync = () => {
+      const scale = drawingApi.chart.priceScale('right').options();
+      setAutoScale(scale.autoScale);
+      setLogScale(scale.mode === PriceScaleMode.Logarithmic);
+    };
+    // Read the library state after axis drag/double-click; do not reset it on data refresh.
+    let frame = 0;
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(sync); };
+    sync();
+    window.addEventListener('pointerup', schedule);
+    drawingApi.chart.chartElement().addEventListener('dblclick', schedule);
+    const element = drawingApi.chart.chartElement();
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('pointerup', schedule);
+      element.removeEventListener('dblclick', schedule);
+    };
+  }, [drawingApi]);
   const latestLogical = data.length - 1;
   const lastClosedPrice = data.at(-1)?.close ?? 1;
   const livePrice = live?.price,
@@ -260,15 +283,6 @@ export default function TradingChart({
           {expanded ? 'Close expanded chart' : 'Expand chart'}
         </button>
       </div>
-      {drawingApi && (
-        <ChartDrawings
-          key={assetId + ':' + interval}
-          chart={drawingApi.chart}
-          series={drawingApi.annotations}
-          assetId={assetId}
-          interval={interval}
-        />
-      )}
       <div className="chart-live-quote" aria-label="Chart current quote">
         {live ? (
           <>
@@ -294,12 +308,39 @@ export default function TradingChart({
           </>
         )}
       </div>
+      <div className="chart-workspace">
+      {drawingApi && (
+        <ChartDrawings
+          key={assetId + ':' + interval}
+          chart={drawingApi.chart}
+          series={drawingApi.annotations}
+          assetId={assetId}
+          interval={interval}
+        />
+      )}
       <div
         ref={container}
         className="trading-chart-canvas"
         role="img"
         aria-label={`${base} ${interval} interactive price and volume chart`}
       />
+      <div className="chart-scale-controls" role="group" aria-label="Price scale">
+        <button className="subtle" title="Automatically fit the visible price range" aria-label="Auto price scale" aria-pressed={autoScale} onClick={() => {
+          const scale = api.current?.chart.priceScale('right');
+          if (!scale) return;
+          scale.applyOptions({ autoScale: !scale.options().autoScale });
+          setAutoScale(scale.options().autoScale);
+        }}>Auto</button>
+        <button className="subtle" title="Logarithmic price scale" aria-label="Log price scale" aria-pressed={logScale} onClick={() => {
+          const scale = api.current?.chart.priceScale('right');
+          if (!scale) return;
+          const next = scale.options().mode !== PriceScaleMode.Logarithmic;
+          scale.applyOptions({ mode: next ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal });
+          setLogScale(next);
+          setAutoScale(scale.options().autoScale);
+        }}>Log</button>
+      </div>
+      </div>
       <p className="chart-caption">
         Completed trade candles · UTC · Volume in {base} units
         {indicators ? ' · EMA 20 / 50' : ''}

@@ -1,7 +1,7 @@
 # Encrypted backup and isolated restore
 
 The application archive tool backs up `state.json` (alerts, events and push
-subscriptions), `watchlist.json` and up to 100 immutable research datasets.
+subscriptions), `watchlist.json`, `journal.json` and up to 100 immutable research datasets.
 It excludes environment files, credentials, temporary files and provider volume
 identity. Dataset filenames and SHA-256 fingerprints are verified before backup
 and again before restore. Archives use AES-256-GCM, a random salt/nonce and a
@@ -93,6 +93,7 @@ hosting changes; keep the latest three verified backups until a retention policy
 is chosen. This is guidance, not an installed scheduler. Terminal layout or
 TradingView preferences stored only in the browser are not in this server backup.
 
-Acceptance remains pending until an actual hosted archive has been downloaded,
-verified and restored on the owner's computer. Local fixture tests do not clear
-this gate. Provider shell/secure-export access is required for the first step.
+The owner verified the original hosted backup and isolated computer restore on
+23 October. That receipt predates the journal. A fresh archive including current
+journal records still needs host export, download and isolated computer restore;
+local fixture tests do not clear that new-data recovery check.
