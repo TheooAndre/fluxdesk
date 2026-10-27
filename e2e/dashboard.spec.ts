@@ -686,6 +686,15 @@ test('chart drawings support touch or mouse, undo, reload, scale changes and mar
   await mark(0.3, 0.2); await mark(0.55, 0.45);
   await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
   await page.locator('.trading-chart').screenshot({path: test.info().outputPath('chart-drawings.png')});
+  const rail = await page.getByRole('toolbar', { name: 'Drawing tools' }).boundingBox();
+  const plot = await canvas.boundingBox();
+  expect(rail!.x + rail!.width).toBeLessThanOrEqual(plot!.x);
+  await page.getByRole('button', { name: 'Log price scale', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Log price scale', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Auto price scale', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Auto price scale', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Auto price scale', exact: true }).click();
+  await page.getByRole('button', { name: 'Log price scale', exact: true }).click();
   const saved = await page.evaluate(() => localStorage.getItem('fluxdesk:drawings:v1:binance:BTCUSDT:1h'));
   expect(JSON.parse(saved!).map((d: {kind: string}) => d.kind)).toEqual(['horizontal', 'trend', 'rectangle']);
   await page.getByRole('button', { name: 'Line', exact: true }).click();
@@ -709,6 +718,12 @@ test('chart drawings support touch or mouse, undo, reload, scale changes and mar
   await page.getByLabel('Selected asset', { exact: true }).selectOption('binance:BTCUSDT');
   await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Stay in drawing mode' }).click();
+  await page.getByRole('button', { name: 'Horizontal level', exact: true }).click();
+  await mark(0.4, 0.25); await mark(0.5, 0.35);
+  await expect(page.getByRole('button', { name: 'Horizontal level', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Cursor', exact: true }).click();
+  await expect(page.getByText('5 / 50 drawings', { exact: false })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

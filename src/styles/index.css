@@ -87,3 +87,15 @@
 .help-details[open] > summary { margin-bottom: 6px; }
 .chart-live-quote { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; padding: 8px 0; font-variant-numeric: tabular-nums; }
 .help-details > summary:focus-visible { outline: 2px solid #47e5b4; outline-offset: 3px; border-radius: 3px; }
+
+/* Icon rail stays beside the plot on desktop and touch layouts. */
+.chart-workspace { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px; min-width: 0; }
+.chart-workspace .chart-drawings { display: contents; }
+.chart-workspace .trading-chart-canvas { grid-column: 2; grid-row: 1; }
+.drawing-rail { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; border-right: 1px solid #34465b; }
+.drawing-rail button, .drawing-rail label { width: 40px; height: 40px; min-height: 40px; padding: 8px; display: flex; align-items: center; justify-content: center; }
+.drawing-rail input[type="color"] { width: 28px; height: 28px; padding: 0; cursor: pointer; }
+.drawing-rail button[aria-pressed="true"], .chart-scale-controls button[aria-pressed="true"] { background: #213d59; color: #69c4ff; }
+.chart-workspace .chart-caption, .chart-workspace .notice, .chart-workspace details { grid-column: 1 / -1; }
+.chart-scale-controls { grid-column: 2; grid-row: 2; display: flex; justify-content: flex-end; gap: 4px; border-top: 1px solid #34465b; padding: 4px 0; }
+.chart-scale-controls button { min-height: 36px; }

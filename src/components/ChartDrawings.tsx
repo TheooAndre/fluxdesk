@@ -1,3 +1,4 @@
+import { MousePointer2, Minus, Slash, Square, Undo2, Trash2, Repeat2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import {
@@ -10,6 +11,7 @@ import {
 } from '../lib/chart-drawings.ts';
 import { price } from '../lib/format.ts';
 
+const icons = { horizontal: Minus, trend: Slash, rectangle: Square };
 const labels = { horizontal: 'Horizontal level', trend: 'Trend line', rectangle: 'Rectangle' };
 export default function ChartDrawings({
   chart,
@@ -38,6 +40,7 @@ export default function ChartDrawings({
   const [tool, setTool] = useState<Drawing['kind'] | null>(null);
   const [first, setFirst] = useState<DrawingPoint | null>(null);
   const [preview, setPreview] = useState<DrawingPoint | null>(null);
+  const [keepDrawing, setKeepDrawing] = useState(false);
   const [color, setColor] = useState('#ffc856');
   const primitive = useMemo(() => new DrawingPrimitive(), []);
   const [undo, setUndo] = useState<Drawing[][]>([]);
@@ -121,7 +124,7 @@ export default function ChartDrawings({
       ]);
       setFirst(null);
       setPreview(null);
-      setTool(null);
+      if (!keepDrawing) setTool(null);
     };
     const move = (event: PointerEvent) => setPreview(point(event));
     const escape = (event: KeyboardEvent) => {
@@ -146,12 +149,13 @@ export default function ChartDrawings({
         handleScroll: { pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       });
     };
-  }, [chart, series, tool, first, drawings, color, save]);
+  }, [chart, series, tool, first, drawings, color, save, keepDrawing]);
   return (
     <div className="chart-drawings">
-      <div className="chart-toolbar" role="group" aria-label="Drawing tools">
+      <div className="drawing-rail" role="toolbar" aria-orientation="vertical" aria-label="Drawing tools">
         <button
           className="subtle"
+          aria-label="Cursor" title="Cursor"
           aria-pressed={!tool}
           onClick={() => {
             setTool(null);
@@ -159,11 +163,12 @@ export default function ChartDrawings({
             setPreview(null);
           }}
         >
-          Cursor
+          <MousePointer2 size={20} aria-hidden="true" />
         </button>
         {(Object.keys(labels) as Drawing['kind'][]).map((kind) => (
           <button
             key={kind}
+            aria-label={labels[kind]} title={labels[kind]}
             className="subtle"
             aria-pressed={tool === kind}
             disabled={drawings.length >= DRAWING_LIMIT}
@@ -173,11 +178,12 @@ export default function ChartDrawings({
               setPreview(null);
             }}
           >
-            {labels[kind]}
+            {(() => { const Icon = icons[kind]; return <Icon size={20} aria-hidden="true" />; })()}
           </button>
         ))}
-        <label>
-          Color{' '}
+        <button className="subtle" aria-label="Stay in drawing mode" title="Stay in drawing mode" aria-pressed={keepDrawing} onClick={() => setKeepDrawing(!keepDrawing)}><Repeat2 size={20} aria-hidden="true" /></button>
+        <label title="Drawing color">
+          <span className="sr-only">Color</span>
           <input
             aria-label="Drawing color"
             type="color"
@@ -187,6 +193,7 @@ export default function ChartDrawings({
         </label>
         <button
           className="subtle"
+          aria-label="Undo drawing" title="Undo drawing"
           disabled={!undo.length && !first}
           onClick={() => {
             if (first) {
@@ -200,10 +207,11 @@ export default function ChartDrawings({
             setUndo(undo.slice(0, -1));
           }}
         >
-          Undo drawing
+          <Undo2 size={20} aria-hidden="true" />
         </button>
         <button
           className="subtle"
+          aria-label="Clear drawings" title="Clear drawings"
           disabled={!drawings.length}
           onClick={() => {
             save([]);
@@ -211,7 +219,7 @@ export default function ChartDrawings({
             setPreview(null);
           }}
         >
-          Clear drawings
+          <Trash2 size={20} aria-hidden="true" />
         </button>
       </div>
       <p className="chart-caption" role="status">
