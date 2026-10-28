@@ -48,7 +48,12 @@ function apiPath(req: GatewayRequest, url: URL): string | null {
   const match = /^\/api\/([a-z0-9_-]+(?:\/[a-z0-9_-]+)*)$/i.exec(rawPath);
   if (!match) return null;
   const routes = url.searchParams.getAll('__fd_route');
-  const helperRoute = req.query?.__fd_route;
+  // Vercel's lazy query getter reparses req.url with legacy url.parse() in
+  // the deployed Node runtime (DEP0169). The URL above already parses that
+  // query safely. Only inspect explicitly supplied data properties here;
+  // keep validating rewrite metadata without invoking the platform getter.
+  const suppliedQuery = Object.getOwnPropertyDescriptor(req, 'query')?.value as GatewayRequest['query'];
+  const helperRoute = suppliedQuery?.__fd_route;
   if (routes.length > 1 || (helperRoute !== undefined && typeof helperRoute !== 'string'))
     return null;
   if (routes.length && helperRoute !== undefined && routes[0] !== helperRoute)
