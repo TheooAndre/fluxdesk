@@ -230,6 +230,73 @@ describe('venue snapshots', () => {
     const { marketSnapshot } = await import('../server/market.ts');
     expect((await marketSnapshot()).assets[0]!.oiUsd).toBeNull();
   });
+  it('refreshes without clients or alerts, starts only once, and health reads never fetch', async () => {
+    const { market, fetchMock } = await fixture();
+    const worker = await import('../server/market-refresh.ts');
+    expect(worker.marketRefreshStatus()).toMatchObject({ running: false, completedCycles: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    const stop = worker.startMarketRefresh();
+    try {
+      expect(worker.startMarketRefresh()).toBe(stop);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(worker.marketRefreshStatus()).toMatchObject({ running: true, completedCycles: 1 });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      // No market API reads between worker cycles.
+      await vi.advanceTimersByTimeAsync(30_000);
+      const state = worker.marketRefreshStatus();
+      expect(state).toMatchObject({ completedCycles: 4, lastCompletedAt: now + 30_000 });
+      expect(state.feeds.every((feed) => feed.lastSuccessAt === now + 30_000)).toBe(true);
+      expect(market.cachedMarketSnapshot().assets).toHaveLength(2);
+      expect(fetchMock).toHaveBeenCalledTimes(9);
+      stop();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(worker.marketRefreshStatus().running).toBe(false);
+      expect(worker.marketRefreshStatus().feeds.every((feed) => feed.status === 'stale')).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(9);
+    } finally { stop(); }
+  });
+  it('background refresh respects per-venue backoff and preserves failed snapshot ages', async () => {
+    const { fetchMock, fail } = await fixture();
+    const worker = await import('../server/market-refresh.ts');
+    const stop = worker.startMarketRefresh();
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      fail();
+      await vi.advanceTimersByTimeAsync(10_000);
+      const binanceCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('binance')).length;
+      const attempts = binanceCalls();
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect(binanceCalls()).toBe(attempts);
+      expect(worker.marketRefreshStatus().feeds[0]).toMatchObject({ status: 'stale', lastSuccessAt: now, ageMs: 60_000 });
+      expect(worker.marketRefreshStatus().feeds[1]).toMatchObject({ status: 'live', lastSuccessAt: now + 60_000 });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(binanceCalls()).toBe(attempts + 1);
+    } finally { stop(); }
+  });
+  it('does not overlap slow background cycles and recovers after an unexpected rejection', async () => {
+    const { market } = await fixture();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const refresh = vi.spyOn(market, 'marketSnapshot').mockImplementationOnce(async () => {
+      await pending;
+      return market.cachedMarketSnapshot();
+    }).mockRejectedValueOnce(Error('temporary failure')).mockResolvedValue(market.cachedMarketSnapshot());
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const worker = await import('../server/market-refresh.ts');
+    const stop = worker.startMarketRefresh();
+    try {
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(worker.marketRefreshStatus()).toMatchObject({ inFlight: true, completedCycles: 0 });
+      finish();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(log).toHaveBeenCalledOnce();
+      expect(worker.marketRefreshStatus()).toMatchObject({ inFlight: false, completedCycles: 2 });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(refresh).toHaveBeenCalledTimes(3);
+      expect(worker.marketRefreshStatus().completedCycles).toBe(3);
+    } finally { finish(); stop(); }
+  });
 });
 
 it('refreshes an unexpired closed-candle cache when a new candle has completed', async () => {

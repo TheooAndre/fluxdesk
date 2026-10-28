@@ -180,7 +180,7 @@ test('market table sorts and asset selection are usable', async ({ page }) => {
   await expect(page.getByText('ETH', { exact: true }).first()).toBeVisible();
 });
 
-test('market snapshots poll every 10 seconds and refresh immediately after resume and reconnect', async ({ page }) => {
+test('market snapshots poll in background tabs and refresh immediately after resume and reconnect', async ({ page }) => {
   await page.clock.install();
   let requests = 0;
   page.on('request', (request) => {
@@ -194,20 +194,22 @@ test('market snapshots poll every 10 seconds and refresh immediately after resum
   await expect.poll(() => requests).toBeGreaterThan(initial);
   await expect(refresh).toBeEnabled();
 
-  // A suspended/background app should not poll, then must refresh on return
-  // instead of waiting through another full polling interval.
+  // Hidden tabs may still run timers. True OS suspension cannot be prevented;
+  // server collection is independent, and resuming must fetch immediately.
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
     document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
   });
   const beforeHidden = requests;
-  await page.clock.fastForward(60_000);
-  expect(requests).toBe(beforeHidden);
+  await page.clock.fastForward(10_000);
+  await expect.poll(() => requests).toBeGreaterThan(beforeHidden);
+  await expect(refresh).toBeEnabled();
+  const beforeResume = requests;
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
     document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
   });
-  await expect.poll(() => requests).toBeGreaterThan(beforeHidden);
+  await expect.poll(() => requests).toBeGreaterThan(beforeResume);
   await expect(refresh).toBeEnabled();
 
   await page.evaluate(() => {

@@ -7,6 +7,7 @@ import { authenticateGateway, GatewayAuthError } from './gateway.ts';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { marketSnapshot, freshMarkets, candles, assetIdentity, enrichedOpenInterest, perpetualQuote } from './market.ts';
+import { marketRefreshStatus } from './market-refresh.ts';
 import { priceAlertDirection } from '../src/lib/price-alert.ts';
 import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
@@ -127,7 +128,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === '/api/research/backtests' && req.method === 'POST')
       return json(res, await executeResearchBacktest(await body(req)));
     if (path === '/api/health')
-      return json(res, { ok: true, at: Date.now(), liquidations: liquidityStatus() });
+      return json(res, { ok: true, at: Date.now(), liquidations: liquidityStatus(), markets: marketRefreshStatus() });
     if (path === '/api/markets') {
       const snapshot = await marketSnapshot();
       const list = snapshot.assets;

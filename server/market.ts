@@ -227,6 +227,10 @@ async function refreshVenue(venue: Venue) {
 }
 export async function marketSnapshot(): Promise<MarketSnapshot> {
   await Promise.all([refreshVenue('binance'), refreshVenue('hyperliquid')]);
+  return cachedMarketSnapshot();
+}
+/** Read current ages/status without initiating exchange requests (e.g. health probes). */
+export function cachedMarketSnapshot(): MarketSnapshot {
   const now = Date.now(),
     assets: Market[] = [],
     status: FeedStatus[] = [];
