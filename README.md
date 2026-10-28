@@ -77,15 +77,20 @@ See `VALIDATION_REPORT.md` for measured checks and remaining release gates. The 
 
 ## Data integrity warnings
 
-Market overview snapshots poll every **10 seconds while the app is active**,
-with immediate refresh on return/reconnection and a **Refresh** button. The
-backend reuses each venue's successful quote snapshot for at most **5 seconds**
-before the next request can refresh it, and coalesces concurrent requests.
+The persistent Node API refreshes market overview snapshots every **10 seconds**,
+even with no open dashboard or enabled alerts. The browser also polls in hidden
+tabs while its timers run, with immediate refresh on return/reconnection and a
+**Refresh** button. The backend reuses each venue's successful quote snapshot
+for at most **5 seconds** before the next request can refresh it, and coalesces
+concurrent browser, background-worker and alert requests.
 This is a polling target, not a latency guarantee: exchange response time,
 network delays and rate-limit backoff can make data older. Existing snapshot
 timestamps and stale/unavailable labels remain authoritative; a failed fetch
-never resets the last-success time. Browser suspension pauses polling. This
-does not change historical candle caching, signal cadence or research rules.
+never resets the last-success time. Browser/phone suspension pauses client
+updates, but server collection continues while the backend is running. The
+authenticated health endpoint exposes worker cycles and actual venue ages
+without triggering a refresh. Quotes are a latest snapshot, not a new historical
+archive. This does not change candle caching, alert cadence or research rules.
 
 1. **Binance `!forceOrder@arr` is a sampled stream**, at most one liquidation order snapshot per symbol per second. Sum of observed snapshots **is not the true total liquidations** (events may be missed and snapshots are not a unique liquidation ledger). The app correctly labels it partial. Public Hyperliquid all-account liquidation notional is **not** implemented; per-user liquidation/fill events do not imply a complete market-wide liquidation stream.
 2. Liquidation *future levels* are not observable from OHLCV and OI alone. The app instead shows transparent support/resistance and historical observed liquidation execution prices. Forward liquidation estimates require an appropriately licensed vendor, a venue-specific on-chain reconstruction, or a documented estimation model with large uncertainty.

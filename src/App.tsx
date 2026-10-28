@@ -46,7 +46,7 @@ function useDashboard(enabled: boolean) {
     enabled,
     queryFn: ({ signal }) => api.markets(signal),
     refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
     staleTime: 5_000,
     refetchOnWindowFocus: 'always',
     refetchOnReconnect: 'always',

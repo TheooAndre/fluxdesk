@@ -45,6 +45,14 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
 });
+it('exposes background collection health without treating a stopped worker as running', async () => {
+  const response = await fetch(`${origin}/api/health`);
+  const body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body.markets).toMatchObject({ running: false, intervalMs: 10_000, completedCycles: 0, lastCompletedAt: null });
+  expect(body.markets.feeds).toHaveLength(2);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+});
 it('serves a complete unavailable-feed response instead of a misleading healthy empty market table', async () => {
   const response = await fetch(`${origin}/api/markets`);
   const body = await response.json();

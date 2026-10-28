@@ -51,6 +51,30 @@ status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' \
   "http://127.0.0.1:$PORT/api/health")"
 [[ "$status" == "200" ]] || { echo "Authorized health expected 200, got $status" >&2; exit 1; }
 
+# No dashboard or /api/markets request: the real entrypoint must start collection.
+# Health is a passive read, so increasing cycles prove it is independent of clients.
+docker exec "$NAME" node --input-type=module -e "
+  const health = async () => {
+    const response = await fetch('http://127.0.0.1:8787/api/health', { headers: {
+      'x-fluxdesk-gateway-token': process.env.FLUXDESK_GATEWAY_TOKEN,
+      'x-fluxdesk-public-host': 'fluxdesk-ci.example',
+    }});
+    if (!response.ok) throw Error('Health failed: ' + response.status);
+    return (await response.json()).markets;
+  };
+  const first = await health();
+  if (!first.running || first.intervalMs !== 10000) throw Error('Market worker not started');
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    const next = await health();
+    if (next.completedCycles > first.completedCycles && next.lastStartedAt > first.lastStartedAt) {
+      console.log('PASS: market collection advances without dashboard requests');
+      process.exit(0);
+    }
+  }
+  throw Error('Market worker stopped advancing');
+"
+
 # Exercise a real persisted watchlist mutation through the authenticated API.
 status="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
   -H "x-fluxdesk-gateway-token: $SECRET" \
