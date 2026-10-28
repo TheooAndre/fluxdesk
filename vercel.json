@@ -3,6 +3,11 @@
   "framework": "vite",
   "buildCommand": "pnpm build",
   "outputDirectory": "dist",
+  "git": {
+    "deploymentEnabled": {
+      "feat/cloud-foundation-v0.4": false
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",

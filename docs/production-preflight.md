@@ -1,5 +1,28 @@
 # Production configuration preflight
 
+## Background market refresh release (28 October 2026)
+
+The persistent API now starts a market refresh worker independently of browser
+requests. Deploy the CI-tested commit to the existing Northflank service by
+deliberately fast-forwarding its frozen `feat/cloud-foundation-v0.4` release
+branch. No provider, instance, volume or credential change is needed.
+
+The Vercel domain still has a historical association with this backend branch.
+`vercel.json` disables Vercel Git deployments **only for that branch**, preventing
+a backend update from assigning the dashboard URL to a read-only Preview.
+Normal feature previews and `main` Production builds remain enabled. Verify
+the actual alias target after every rollout, then assign the tested Production
+build explicitly. See [Vercel Git configuration](https://vercel.com/docs/project-configuration/git-configuration).
+
+Before fetching markets, make two authenticated `/api/health` reads separated
+by at least 20 seconds. Confirm `markets.running`, advancing `completedCycles`
+and `lastStartedAt`, and current per-venue `lastSuccessAt` timestamps. Health
+reads do not trigger market requests. A completed worker cycle alone does not
+prove feed freshness; check each venue. Reconfirm the gateway, calendar, PWA
+files and final alias without modifying owner records.
+
+The original configuration receipts below are retained as deployment history.
+
 The working canonical phone app is a protected Preview deployment. On 24 October 2026, Vercel metadata confirmed all-deployment Authentication and Node 24.x, but both `FLUXDESK_BACKEND_URL` and `FLUXDESK_GATEWAY_TOKEN` were Preview-only. No production entries were hidden. No secrets were decrypted or copied.
 
 ## Repeatable check
