@@ -195,11 +195,23 @@ function AlertsTab({ item }: { item: Market | undefined }) {
             </div>
           )}
         </Card>
-        <Card title="Active rules" aside={<Pill>{rules.data?.alerts.length ?? 0} rules</Pill>}>
+        <Card title="Active rules" aside={<Pill>{rules.data ? `${rules.data.alerts.length} rules` : 'Not loaded'}</Pill>}>
+          <button
+            type="button"
+            className="secondary"
+            disabled={rules.isFetching || create.isPending || remove.isPending}
+            onClick={() => void rules.refetch()}
+          >
+            {rules.isFetching ? 'Refreshing alerts…' : 'Refresh alerts'}
+          </button>
+          {rules.error && <ErrorText error={rules.error} />}
+          {rules.error && rules.data && (
+            <p role="status">Refresh failed. Showing the last loaded rules and triggers; their status may have changed.</p>
+          )}
           {rules.isLoading ? (
             <Loading />
-          ) : rules.error ? (
-            <ErrorText error={rules.error} />
+          ) : !rules.data ? (
+            null
           ) : rules.data?.alerts.length ? (
             rules.data.alerts.map((x) => (
               <div className="alert-rule" key={x.id}>
@@ -218,7 +230,9 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                           : `≥ ${money(x.threshold)} / 5m`}
                   </small>
                 </div>
-                <button aria-label="Delete alert" className="icon-btn" onClick={() => remove.mutate(x.id)}>
+                <button aria-label="Delete alert" className="icon-btn"
+                  disabled={remove.isPending || rules.isFetching || rules.isError || !navigator.onLine}
+                  onClick={() => remove.mutate(x.id)}>
                   <X size={18} />
                 </button>
               </div>
@@ -235,9 +249,9 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                 <small>{clock(e.time)}</small>
               </div>
             ))
-          ) : (
+          ) : rules.data ? (
             <div className="small-label">Nothing triggered yet.</div>
-          )}
+          ) : null}
         </Card>
       </div>
     </div>

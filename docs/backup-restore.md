@@ -33,6 +33,19 @@ pnpm archive verify /secure/fluxdesk-2026-10-23.fdbackup --password-file /secure
 pnpm archive restore /secure/fluxdesk-2026-10-23.fdbackup /secure/isolated-restore --password-file /secure/backup-password
 ```
 
+For the current journal-inclusive recovery check, append `--require-journal` to
+**each** command. It rejects a missing `journal.json` before creating a backup or
+restore directory. Older archives remain readable without this option. This
+checks inclusion and schema validity, not whether a particular trade was saved.
+
+Successful commands print `filePaths`, `createdAt` and `archiveSha256` alongside
+the file count and dataset IDs. Compare the same archive's receipts on the host
+and computer: the SHA-256 must match your independent `shasum -a 256` result and
+`filePaths` must include `journal.json`. Receipts contain metadata only, never
+journal contents, passwords or subscription keys. They are not a substitute for
+the actual isolated restore. Use the updated CLI on both machines; earlier
+revisions do not support this option or the expanded receipt.
+
 The restore directory must **not exist**. The tool validates every entry before
 creating it, rejects path traversal/symlinks, writes private files, and never
 merges into or overwrites the live data directory. Existing output archives are
@@ -69,7 +82,7 @@ The website continues running without a downloaded backup. The computer copy
 protects against loss of the hosted volume and counts as offsite because it is
 on a separate machine. No cloud-storage subscription is needed.
 
-1. Create the encrypted archive in an authorized Northflank service shell,
+1. Create the encrypted archive with `--require-journal` in an authorized Northflank service shell,
    using the real `/data` directory and the CLI included in `/app`. Use a private
    password file outside `/data` and outside the checkout; keep its recoverable
    password-manager copy on your computer. Never send the password in chat.
@@ -81,7 +94,7 @@ on a separate machine. No cloud-storage subscription is needed.
    `shasum -a 256 /path/to/file.fdbackup`; on Linux use `sha256sum`.
    A matching transfer checksum does not replace archive verification.
 4. In a checkout of the matching FluxDesk revision on your computer, run the
-   `verify` and `restore` commands above, supplying your local password file and
+   `verify` and `restore` commands above with `--require-journal`, supplying your local password file and
    a new restore directory. Compare the reported dataset IDs with Strategy Lab.
    Do not start a second backend against the restored files.
 5. Retain the verified encrypted file and its checksum. Remove temporary host

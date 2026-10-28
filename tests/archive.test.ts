@@ -62,7 +62,11 @@ function hostileArchive(raw: string): Buffer {
 it('round-trips encrypted app state/watchlist/datasets and preserves the original dataset ID', async () => {
   const f = await fixture();
   const result = await createArchive(f.source, f.file, password);
-  expect(result).toEqual({ files: 3, datasetIds: [f.receipt.id] });
+  expect(result).toMatchObject({ files: 3, datasetIds: [f.receipt.id],
+    filePaths: [`research/datasets/${f.receipt.id}.json`, 'state.json', 'watchlist.json'],
+    createdAt: expect.any(Number),
+    archiveSha256: createHash('sha256').update(await readFile(f.file)).digest('hex'),
+  });
   expect((await stat(f.file)).mode & 0o777).toBe(0o600);
   expect((await readFile(f.file)).includes(Buffer.from('never-copy-this-secret'))).toBe(false);
   expect(await verifyArchive(f.file, password)).toEqual(result);
@@ -77,6 +81,25 @@ it('round-trips encrypted app state/watchlist/datasets and preserves the origina
   const second = join(f.root, 'second.fdbackup');
   await createArchive(f.source, second, password);
   expect(await readFile(second)).not.toEqual(await readFile(f.file));
+});
+it('requires the journal before writing a backup or restore and reports identical authenticated receipts', async () => {
+  const f = await fixture();
+  const options = { requireJournal: true };
+  await expect(createArchive(f.source, f.file, password, options)).rejects.toThrow('required journal.json');
+  await expect(stat(f.file)).rejects.toMatchObject({ code: 'ENOENT' });
+  // Legacy archives remain readable, but cannot pass the new recovery requirement.
+  await createArchive(f.source, f.file, password);
+  await expect(verifyArchive(f.file, password, options)).rejects.toThrow('required journal.json');
+  await expect(restoreArchive(f.file, f.target, password, options)).rejects.toThrow('required journal.json');
+  await expect(stat(f.target)).rejects.toMatchObject({ code: 'ENOENT' });
+  await writeFile(join(f.source, 'journal.json'), JSON.stringify({ schemaVersion: 1, trades: [], days: [] }));
+  const current = join(f.root, 'with-journal.fdbackup');
+  const result = await createArchive(f.source, current, password, options);
+  expect(result.filePaths).toContain('journal.json');
+  expect(result.archiveSha256).toBe(createHash('sha256').update(await readFile(current)).digest('hex'));
+  expect(await verifyArchive(current, password, options)).toEqual(result);
+  expect(await restoreArchive(current, f.target, password, options)).toEqual(result);
+  expect(await readFile(join(f.target, 'journal.json'), 'utf8')).toBe(await readFile(join(f.source, 'journal.json'), 'utf8'));
 });
 it('rejects wrong passwords, corruption and short passwords without creating a restore directory', async () => {
   const f = await fixture();
@@ -158,6 +181,9 @@ it('CLI verifies with a private password file and never logs its contents', asyn
   ]);
   expect(JSON.parse(result.stdout)).toMatchObject({ verified: true, files: 3, datasetIds: [f.receipt.id] });
   expect(result.stdout + result.stderr).not.toContain(password);
+  await expect(run(process.execPath, ['--import', 'tsx', 'scripts/archive-cli.ts', 'verify',
+    f.file, '--password-file', passwordFile, '--require-journal']))
+    .rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('required journal.json') });
   await chmod(passwordFile, 0o644);
   await expect(
     run(process.execPath, [
