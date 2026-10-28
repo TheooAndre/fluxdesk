@@ -114,7 +114,7 @@ jobs:
           exit 1
       - name: Preserve browser setup logs on failure
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: browser-setup-logs
           path: /tmp/fluxdesk-browser-*.log
@@ -126,7 +126,7 @@ jobs:
         run: pnpm exec playwright test --config playwright.production.config.ts
       - name: Preserve Playwright traces and screenshots
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-traces
           path: test-results/
@@ -136,7 +136,7 @@ jobs:
         run: pnpm lighthouse
       - name: Preserve Lighthouse reports for failed audits
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-reports
           path: lighthouse-report/
@@ -151,7 +151,7 @@ jobs:
         run: pnpm audit --json > development-dependency-audit.json
       - name: Preserve development dependency audit
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: development-dependency-audit
           path: development-dependency-audit.json
