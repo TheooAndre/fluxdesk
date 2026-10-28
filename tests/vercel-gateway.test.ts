@@ -64,6 +64,28 @@ describe('private Vercel API gateway', () => {
     expect(mock).not.toHaveBeenCalled();
   });
 
+  it('routes raw URLs without invoking the platform legacy query getter', async () => {
+    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
+    const getter = vi.fn(() => { throw Error('Legacy query parser must not run'); });
+    const server = createServer((req, res) => {
+      Object.defineProperty(req, 'query', { get: getter, configurable: true });
+      void gateway(req, res);
+    });
+    servers.push(server);
+    await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+    const port = (server.address() as AddressInfo).port;
+    const mock = vi.fn(async () => Response.json({ ok: true }));
+    vi.stubGlobal('fetch', mock);
+    expect((await call(port, '/api/health?check=1')).status).toBe(200);
+    expect((await call(port, '/api/gateway?__fd_route=research/datasets&limit=2')).status).toBe(200);
+    expect((await call(port, '/api/health?__fd_route=markets')).status).toBe(404);
+    expect((await call(port, '/api/gateway?__fd_route=health&__fd_route=health')).status).toBe(404);
+    expect(getter).not.toHaveBeenCalled();
+    expect(mock).toHaveBeenCalledTimes(2);
+    expect(String((mock.mock.calls[1] as unknown as [URL])[0])).toBe('https://private-api.example.com/api/research/datasets?limit=2');
+  });
+
   it('fails closed without HTTPS backend and strong server-held token', async () => {
     const port = await start();
     const missing = await call(port, '/api/gateway?__fd_route=health');

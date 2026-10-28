@@ -123,6 +123,60 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/watchlist**', (route) => route.fulfill({ json: { assetIds: [] } }));
   await page.route('**/api/alerts', (route) => route.fulfill({ json: { alerts: [], events: [] } }));
 });
+test('alerts retain cached rules after refresh failure and prevent duplicate deletes', async ({ page }) => {
+  let rules = [{ id: 'test-rule', assetId: btc.id, kind: 'volume', threshold: 100, enabled: true, createdAt: Date.now() }];
+  let failRead = false;
+  let deletes = 0;
+  let releaseDelete: (() => void) | undefined;
+  const deletion = new Promise<void>(resolve => { releaseDelete = resolve; });
+  await page.route('**/api/alerts', route => route.fulfill(failRead
+    ? { status: 503, json: { error: 'Alert service temporarily unavailable' } }
+    : { json: { alerts: rules, events: [{ id: 'event-one', message: 'Previous volume trigger', time: Date.now() }] } }));
+  await page.route('**/api/alerts/*', async route => {
+    deletes++;
+    await deletion;
+    rules = [];
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toHaveCount(1);
+  failRead = true;
+  await page.getByRole('button', { name: 'Refresh alerts', exact: true }).click();
+  await expect(page.getByText('Refresh failed. Showing the last loaded rules and triggers; their status may have changed.')).toBeVisible();
+  await expect(page.locator('.alert-rule')).toHaveCount(1);
+  await expect(page.getByText('Previous volume trigger', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete alert', exact: true })).toBeDisabled();
+  failRead = false;
+  await page.getByRole('button', { name: 'Refresh alerts', exact: true }).click();
+  const remove = page.getByRole('button', { name: 'Delete alert', exact: true });
+  await expect(remove).toBeEnabled();
+  await expect(page.getByText(/Refresh failed. Showing the last loaded rules/)).toHaveCount(0);
+  await remove.click();
+  await expect(remove).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Refresh alerts', exact: true })).toBeDisabled();
+  expect(deletes).toBe(1);
+  releaseDelete!();
+  await expect(page.locator('.alert-rule')).toHaveCount(0);
+  await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toBeVisible();
+  expect(deletes).toBe(1);
+  await page.screenshot({ path: test.info().outputPath('alerts-recovered.png'), fullPage: true });
+});
+
+test('alerts show initial load failure without false empty-state claims and recover manually', async ({ page }) => {
+  await page.route('**/api/alerts', route => route.fulfill({ status: 503, json: { error: 'Alert service temporarily unavailable' } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.getByText(/Alert service temporarily unavailable/)).toBeVisible();
+  await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Nothing triggered yet.', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Not loaded', { exact: true })).toBeVisible();
+  await page.route('**/api/alerts', route => route.fulfill({ json: { alerts: [], events: [] } }));
+  await page.getByRole('button', { name: 'Refresh alerts', exact: true }).click();
+  await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Nothing triggered yet.', { exact: true })).toBeVisible();
+});
+
 test('categories filter contracts and open the selected venue chart', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

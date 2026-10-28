@@ -14,6 +14,27 @@ const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 20 * 1024 * 1024;
 type ArchiveFile = { path: string; sha256: string; content: string };
 export type ArchiveManifest = { schemaVersion: 1; createdAt: number; files: ArchiveFile[] };
+type ArchiveOptions = { requireJournal?: boolean };
+type ArchiveReceipt = {
+  files: number;
+  datasetIds: string[];
+  filePaths: string[];
+  createdAt: number;
+  archiveSha256: string;
+};
+function requireContents(manifest: ArchiveManifest, options: ArchiveOptions) {
+  if (options.requireJournal && !manifest.files.some((file) => file.path === 'journal.json'))
+    throw Error('Backup does not contain required journal.json');
+}
+function receipt(manifest: ArchiveManifest, bytes: Buffer): ArchiveReceipt {
+  return {
+    files: manifest.files.length,
+    datasetIds: manifest.files.filter((f) => f.path.startsWith('research/')).map((f) => f.path.slice(18, -5)),
+    filePaths: manifest.files.map((f) => f.path).sort(),
+    createdAt: manifest.createdAt,
+    archiveSha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+}
 const digest = (content: string) => createHash('sha256').update(content).digest('hex');
 const allowedPath = (path: string) =>
   path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' || /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
@@ -137,7 +158,8 @@ export async function createArchive(
   source: string,
   output: string,
   password: string,
-): Promise<{ files: number; datasetIds: string[] }> {
+  options: ArchiveOptions = {},
+): Promise<ArchiveReceipt> {
   const root = await realpath(source),
     files: ArchiveFile[] = [];
   let total = 0;
@@ -172,23 +194,21 @@ export async function createArchive(
   }
   if (!files.length) throw Error('No application data found to back up');
   const manifest: ArchiveManifest = { schemaVersion: 1, createdAt: Date.now(), files };
+  requireContents(manifest, options);
   const encrypted = await pack(manifest, password);
   // Exclusive output creation: never replace an existing backup.
   await writeFile(resolve(output), encrypted, { mode: 0o600, flag: 'wx' });
-  return {
-    files: files.length,
-    datasetIds: files.filter((f) => f.path.startsWith('research/')).map((f) => f.path.slice(18, -5)),
-  };
+  return receipt(manifest, encrypted);
 }
 export async function verifyArchive(
   file: string,
   password: string,
-): Promise<{ files: number; datasetIds: string[] }> {
-  const manifest = await unpack(await readRegularFile(file, MAX_ARCHIVE_BYTES), password);
-  return {
-    files: manifest.files.length,
-    datasetIds: manifest.files.filter((f) => f.path.startsWith('research/')).map((f) => f.path.slice(18, -5)),
-  };
+  options: ArchiveOptions = {},
+): Promise<ArchiveReceipt> {
+  const bytes = await readRegularFile(file, MAX_ARCHIVE_BYTES);
+  const manifest = await unpack(bytes, password);
+  requireContents(manifest, options);
+  return receipt(manifest, bytes);
 }
 /** Restore only to a NEW directory, after authenticating and validating every
  * entry. The live DATA_DIR is never merged, overwritten or deleted.
@@ -197,8 +217,11 @@ export async function restoreArchive(
   file: string,
   target: string,
   password: string,
-): Promise<{ files: number; datasetIds: string[] }> {
-  const manifest = await unpack(await readRegularFile(file, MAX_ARCHIVE_BYTES), password);
+  options: ArchiveOptions = {},
+): Promise<ArchiveReceipt> {
+  const bytes = await readRegularFile(file, MAX_ARCHIVE_BYTES);
+  const manifest = await unpack(bytes, password);
+  requireContents(manifest, options);
   const destination = resolve(target);
   await mkdir(destination, { mode: 0o700 }); // EEXIST is deliberately fatal.
   try {
@@ -211,8 +234,5 @@ export async function restoreArchive(
     await rm(destination, { recursive: true, force: true });
     throw error;
   }
-  return {
-    files: manifest.files.length,
-    datasetIds: manifest.files.filter((f) => f.path.startsWith('research/')).map((f) => f.path.slice(18, -5)),
-  };
+  return receipt(manifest, bytes);
 }

@@ -95,9 +95,9 @@ docker exec "$NAME" node --import tsx --input-type=module -e "
 # Exercise encrypted backup and isolated restore in the actual 256MiB image.
 # This random CI-only password is never logged and never leaves /tmp.
 docker exec "$NAME" node -e "require('node:fs').writeFileSync('/tmp/backup-password', require('node:crypto').randomBytes(32).toString('hex'), { mode: 0o600 })"
-docker exec "$NAME" node --import tsx scripts/archive-cli.ts backup /data /tmp/ci.fdbackup --password-file /tmp/backup-password
-docker exec "$NAME" node --import tsx scripts/archive-cli.ts verify /tmp/ci.fdbackup --password-file /tmp/backup-password
-docker exec "$NAME" node --import tsx scripts/archive-cli.ts restore /tmp/ci.fdbackup /tmp/isolated-restore --password-file /tmp/backup-password
+docker exec "$NAME" node --import tsx scripts/archive-cli.ts backup /data /tmp/ci.fdbackup --password-file /tmp/backup-password --require-journal
+docker exec "$NAME" node --import tsx scripts/archive-cli.ts verify /tmp/ci.fdbackup --password-file /tmp/backup-password --require-journal
+docker exec "$NAME" node --import tsx scripts/archive-cli.ts restore /tmp/ci.fdbackup /tmp/isolated-restore --password-file /tmp/backup-password --require-journal
 docker exec "$NAME" node -e "if (JSON.parse(require('node:fs').readFileSync('/tmp/isolated-restore/watchlist.json', 'utf8')).assetIds[0] !== 'binance:BTCUSDT') process.exit(1)"
 
 docker exec "$NAME" node -e "if (JSON.parse(require('node:fs').readFileSync('/tmp/isolated-restore/journal.json', 'utf8')).trades[0].title !== 'CI journal persistence proof') process.exit(1)"
