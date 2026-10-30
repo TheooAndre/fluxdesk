@@ -1,0 +1,8 @@
+.private-login { min-height:100dvh; display:grid; place-items:center; padding:24px; }
+.private-login-card { width:min(100%,420px); display:grid; gap:16px; padding:32px; border:1px solid #263348; border-radius:18px; background:#101827; box-shadow:0 20px 80px #0005; }
+.private-login-card h1 { font-size:28px; margin:0; }
+.private-login-card p { margin:0; color:#a9b5c8; }
+.private-login-card input { width:100%; min-height:48px; padding:12px; border:1px solid #42516b; border-radius:8px; background:#090e19; color:#fff; font-size:16px; }
+.private-login-card button { min-height:48px; }
+.private-login-card [role=alert], .login-session [role=alert] { color:#ffadad; }
+.login-session { display:flex; justify-content:flex-end; align-items:center; gap:12px; padding:6px 16px; background:#101827; }

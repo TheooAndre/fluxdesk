@@ -33,7 +33,7 @@ try {
   globalThis.fetch = originalFetch;
   await server.close();
 }
-if (typeof markup !== 'string' || !markup.includes('Market overview'))
+if (typeof markup !== 'string' || !(markup.includes('Market overview') || markup.includes('Private workspace')))
   throw Error('Static shell did not render');
 await build({
   plugins: [

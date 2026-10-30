@@ -38,6 +38,8 @@ async function request<T>(
   }, timeoutMs);
   try {
     const res = await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' });
+    if (res.status === 401 && import.meta.env.VITE_FLUXDESK_APP_LOGIN === 'true')
+      window.dispatchEvent(new Event('fluxdesk-session-expired'));
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
       const detail = typeof body?.error === 'string' ? body.error : `Request failed (HTTP ${res.status})`;

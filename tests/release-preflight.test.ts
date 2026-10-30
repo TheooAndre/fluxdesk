@@ -52,3 +52,13 @@ it('never reflects input values or arbitrary attacker-supplied fields into repor
     expect(report).not.toContain(value);
   expect(releasePreflight(data).configurationReady).toBe(false);
 });
+
+it('requires app-login verification and private password metadata before allowing the production-domain wall to be removed', () => {
+  const input = { ...snapshot(), authMode: 'app-password', appLoginVerified: true };
+  input.project.ssoProtection.deploymentType = 'prod_deployment_urls_and_all_previews';
+  input.envs.push({ key: 'FLUXDESK_APP_PASSWORD', type: 'sensitive', target: ['production'] }, { key: 'VITE_FLUXDESK_APP_LOGIN', type: 'plain', target: ['production'] });
+  expect(releasePreflight(input).configurationReady).toBe(true);
+  expect(releasePreflight({ ...input, appLoginVerified: false }).configurationReady).toBe(false);
+  input.envs.find(env => env.key === 'FLUXDESK_APP_PASSWORD')!.type = 'plain';
+  expect(releasePreflight(input).configurationReady).toBe(false);
+});

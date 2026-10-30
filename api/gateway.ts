@@ -1,10 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { appLoginEnabled, handleAppLogin, signedIn } from '../server/app-login.ts';
 
 /**
  * Vercel Function gateway for the private persistent FluxDesk API.
  *
  * Requirements:
- *   - Vercel Authentication: ALL deployments, not merely previews.
+ *   - Vercel Authentication on all deployments, OR configured FluxDesk app login.
+ *     Keep Vercel protection enabled until app login has been verified.
  *   - FLUXDESK_BACKEND_URL: HTTPS origin of the persistent backend.
  *   - FLUXDESK_GATEWAY_TOKEN: SAME 32+ byte secret as the backend.
  *
@@ -87,8 +89,7 @@ async function requestBody(req: GatewayRequest, maxBytes = MAX_BODY_BYTES): Prom
 
 export default async function handler(req: GatewayRequest, res: ServerResponse) {
   res.setHeader('cache-control', 'no-store');
-  const upstream = backendOrigin();
-  if (!upstream) return reply(res, 503, 'Private API backend is not configured');
+
 
   // Host is supplied by Vercel's routing layer. Never use arbitrary
   // x-forwarded-host or user-controlled query values to choose the backend.
@@ -101,6 +102,10 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
   const requestedPath = apiPath(req, publicUrl);
   if (!requestedPath) return reply(res, 404, 'Unknown API endpoint');
   publicUrl.searchParams.delete('__fd_route');
+  if (await handleAppLogin(req, res, requestedPath)) return;
+  if (appLoginEnabled() && !signedIn(req)) return reply(res, 401, 'Sign in to FluxDesk to continue.');
+  const upstream = backendOrigin();
+  if (!upstream) return reply(res, 503, 'Private API backend is not configured');
   if (!['GET', 'POST', 'DELETE', 'PUT'].includes(req.method ?? ''))
     return reply(res, 405, 'Method not allowed');
 

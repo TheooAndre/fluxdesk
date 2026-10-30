@@ -3,6 +3,7 @@ import { Writable } from 'node:stream';
 import { renderToPipeableStream } from 'react-dom/server';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx';
+import PrivateLogin from './components/PrivateLogin.tsx';
 
 /** Build-only UI: queries remain disabled until the browser mounts App. */
 export function renderShell(): Promise<string> {
@@ -35,7 +36,7 @@ export function renderShell(): Promise<string> {
     const stream = renderToPipeableStream(
       <React.StrictMode>
         <QueryClientProvider client={query}>
-          <App />
+          {import.meta.env.VITE_FLUXDESK_APP_LOGIN === 'true' ? <PrivateLogin><App /></PrivateLogin> : <App />}
         </QueryClientProvider>
       </React.StrictMode>,
       {
