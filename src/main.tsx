@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx';
+import PrivateLogin from './components/PrivateLogin.tsx';
 import './styles/index.css';
 
 const query = new QueryClient({
@@ -11,7 +12,7 @@ const root = document.getElementById('root')!;
 const app = (
   <React.StrictMode>
     <QueryClientProvider client={query}>
-      <App />
+      {import.meta.env.VITE_FLUXDESK_APP_LOGIN === 'true' ? <PrivateLogin><App /></PrivateLogin> : <App />}
     </QueryClientProvider>
   </React.StrictMode>
 );

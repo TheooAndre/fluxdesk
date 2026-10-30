@@ -142,6 +142,10 @@ jobs:
           path: lighthouse-report/
           if-no-files-found: ignore
           retention-days: 7
+      - name: Build and verify private app login on desktop and mobile
+        run: |
+          VITE_FLUXDESK_APP_LOGIN=true pnpm build
+          pnpm exec playwright test --config playwright.login.config.ts
       - name: Audit runtime dependencies
         run: pnpm audit --prod --audit-level high
 

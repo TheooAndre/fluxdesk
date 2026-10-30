@@ -14,7 +14,12 @@ export function releasePreflight(input: unknown) {
   const blockers: string[] = [];
   if (project.id !== RELEASE_PROJECT || project.accountId !== RELEASE_TEAM || project.name !== 'fluxdesk')
     blockers.push('Project/team does not match FluxDesk.');
-  if (protection.enabled !== true || protection.deploymentType !== 'all')
+  const appLogin = data.authMode === 'app-password';
+  if (appLogin) {
+    if (data.appLoginVerified !== true) blockers.push('Verify the deployed app login before removing the Vercel wall.');
+    if (protection.enabled !== true || !['all', 'prod_deployment_urls_and_all_previews'].includes(String(protection.deploymentType)))
+      blockers.push('Keep Vercel Authentication on deployment URLs and previews.');
+  } else if (protection.enabled !== true || protection.deploymentType !== 'all')
     blockers.push('Vercel Authentication must cover all deployments.');
   if (!['22.x', '24.x'].includes(String(project.nodeVersion)))
     blockers.push('Verify the supported Node runtime.');
@@ -23,7 +28,8 @@ export function releasePreflight(input: unknown) {
   const envs = Array.isArray(data.envs) ? data.envs.map(object) : [];
   if (envs.some((e) => 'value' in e || 'decryptedValue' in e))
     blockers.push('Remove credential values from the input; supply metadata only.');
-  for (const key of required) {
+  const requiredKeys: readonly string[] = appLogin ? [...required, 'FLUXDESK_APP_PASSWORD', 'VITE_FLUXDESK_APP_LOGIN'] : required;
+  for (const key of requiredKeys) {
     const matches = envs.filter(
       (e) => e.key === key && Array.isArray(e.target) && e.target.includes('production'),
     );
@@ -31,11 +37,11 @@ export function releasePreflight(input: unknown) {
     else {
       const env = matches[0]!;
       const allowedTypes =
-        key === 'FLUXDESK_GATEWAY_TOKEN' ? ['encrypted', 'sensitive'] : ['plain', 'encrypted', 'sensitive'];
+        ['FLUXDESK_GATEWAY_TOKEN', 'FLUXDESK_APP_PASSWORD'].includes(key) ? ['encrypted', 'sensitive'] : ['plain', 'encrypted', 'sensitive'];
       if (!allowedTypes.includes(String(env.type)) || env.gitBranch)
         blockers.push(`${key}: production configuration has an invalid storage type or branch scope.`);
-      if (key === 'FLUXDESK_GATEWAY_TOKEN' && (env.target as unknown[]).some((t) => t !== 'production'))
-        blockers.push('Production gateway credential must have its own production-only scope.');
+      if (['FLUXDESK_GATEWAY_TOKEN', 'FLUXDESK_APP_PASSWORD'].includes(key) && (env.target as unknown[]).some((t) => t !== 'production'))
+        blockers.push('Production credentials must have their own production-only scope.');
     }
   }
   return {
