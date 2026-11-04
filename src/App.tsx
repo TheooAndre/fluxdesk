@@ -524,7 +524,7 @@ function App() {
   }, []);
   const workerStatus = worker.data === undefined
     ? null
-    : assessWorkerHealth(worker.data, worker.dataUpdatedAt, now);
+    : assessWorkerHealth(worker.data, worker.dataUpdatedAt, Date.now());
   const workerIssue = offline || worker.isError || (workerStatus !== null && workerStatus.state !== 'healthy');
   const degraded =
     workerIssue ||
