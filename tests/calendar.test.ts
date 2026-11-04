@@ -170,6 +170,9 @@ it('validates the attributed third-source schedule and rejects stale or untimed 
     },
   ]);
   expect(() => parseXoomarCalendar({ ...payload, updatedAt: '2026-10-01T00:00:00Z' }, now)).toThrow('stale');
+  expect(parseXoomarCalendar({ ...payload, updatedAt: String(now - 86_400_000) }, now)).toHaveLength(1);
+  expect(() => parseXoomarCalendar({ ...payload, updatedAt: 'not-a-date' }, now)).toThrow('invalid');
+  expect(() => parseXoomarCalendar({ ...payload, updatedAt: '2026-11-11T00:00:00Z' }, now)).toThrow('future');
   expect(() =>
     parseXoomarCalendar({ ...payload, data: [{ ...payload.data[0], scheduledAt: null }] }, now),
   ).toThrow('incomplete');

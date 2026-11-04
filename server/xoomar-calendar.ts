@@ -19,9 +19,14 @@ type Payload = { data?: unknown; updatedAt?: unknown };
 export function parseXoomarCalendar(payload: Payload, now = Date.now()): EconomicEvent[] {
   if (!payload || !Array.isArray(payload.data) || typeof payload.updatedAt !== 'string')
     throw Error('XOOMAR calendar response malformed');
-  const updated = Date.parse(payload.updatedAt);
-  if (!Number.isFinite(updated) || updated > now + 5 * 60_000 || now - updated > 14 * 86_400_000)
-    throw Error('XOOMAR calendar update timestamp invalid or stale');
+  const updated = /^\d{13}$/.test(payload.updatedAt)
+    ? Number(payload.updatedAt)
+    : Date.parse(payload.updatedAt);
+  if (!Number.isFinite(updated)) throw Error('XOOMAR calendar update timestamp invalid');
+  if (updated > now + 5 * 60_000)
+    throw Error(`XOOMAR calendar update timestamp future (${Math.ceil((updated - now) / 60_000)}m)`);
+  if (now - updated > 14 * 86_400_000)
+    throw Error(`XOOMAR calendar update timestamp stale (${Math.floor((now - updated) / 86_400_000)}d)`);
   const events: EconomicEvent[] = [];
   for (const row of payload.data as Row[]) {
     if (!row || typeof row !== 'object') throw Error('XOOMAR calendar event malformed');
