@@ -148,6 +148,7 @@ it('validates the attributed third-source schedule and rejects stale or untimed 
   const now = Date.parse('2026-11-10T00:00:00Z');
   const payload = {
     updatedAt: '2026-11-09T12:00:00Z',
+    meta: { sourceAttribution: 'Release dates and figures: official agencies.' },
     data: [
       {
         source: 'bls',
@@ -167,6 +168,7 @@ it('validates the attributed third-source schedule and rejects stale or untimed 
       forecast: '',
       previous: '3.0%',
       licenseCredit: 'Data: XOOMAR',
+      rightsCredit: 'Release dates and figures: official agencies.',
     },
   ]);
   expect(() => parseXoomarCalendar({ ...payload, updatedAt: '2026-10-01T00:00:00Z' }, now)).toThrow('stale');
@@ -184,6 +186,7 @@ it('uses XOOMAR after both first sources reject and reports the source flags', a
   const fetcher = vi.fn(async (input: string) => {
     if (input.includes('financecalendar.com')) return new Response('unauthorized', { status: 401 });
     if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
+    expect(input).toBe('https://xoomar.com/api/markets/calendar');
     return Response.json({
       updatedAt: '2026-11-09T12:00:00Z',
       data: [

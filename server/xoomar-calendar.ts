@@ -14,7 +14,7 @@ type Row = {
   unit?: unknown;
   canonicalUrl?: unknown;
 };
-type Payload = { data?: unknown; updatedAt?: unknown };
+type Payload = { data?: unknown; updatedAt?: unknown; meta?: { sourceAttribution?: unknown } };
 
 export function parseXoomarCalendar(payload: Payload, now = Date.now()): EconomicEvent[] {
   if (!payload || !Array.isArray(payload.data) || typeof payload.updatedAt !== 'string')
@@ -63,15 +63,15 @@ export function parseXoomarCalendar(payload: Payload, now = Date.now()): Economi
       eventUrl: canonical,
       licenseCredit: 'Data: XOOMAR',
       licenseUrl: XOOMAR_CALENDAR_URL,
+      rightsCredit:
+        typeof payload.meta?.sourceAttribution === 'string' ? payload.meta.sourceAttribution : '',
     });
   }
   return events.sort((a, b) => a.time.localeCompare(b.time));
 }
 
-export async function fetchXoomarCalendar(day: string, now: number): Promise<EconomicEvent[]> {
-  const url = new URL(API);
-  url.searchParams.set('from', day);
-  url.searchParams.set('to', new Date(now + 14 * 86_400_000).toISOString().slice(0, 10));
-  url.searchParams.set('importance', 'high');
-  return parseXoomarCalendar(await getJson<Payload>(url.href), now);
+export async function fetchXoomarCalendar(now: number): Promise<EconomicEvent[]> {
+  // The default window spans the previous week through the next month. Filter
+  // locally so the provider's filtered response cannot hide a newer update.
+  return parseXoomarCalendar(await getJson<Payload>(API), now);
 }
