@@ -29,6 +29,15 @@ const candles = Array.from({ length: 150 }, (_, i) => ({
   volumeUsd: 30000,
 }));
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/health', (route) => {
+    const at = Date.now();
+    return route.fulfill({ json: {
+      ok: true, at, liquidations: { connected: true },
+      markets: { running: true, intervalMs: 10_000, completedCycles: 20,
+        lastStartedAt: at - 2_000, lastCompletedAt: at - 1_000,
+        feeds: ['binance', 'hyperliquid'].map(venue => ({ venue, status: 'live', lastSuccessAt: at - 1_000 })) },
+    } });
+  });
   await page.route('**/api/markets', (route) =>
     route.fulfill({
       json: {
@@ -122,6 +131,25 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/statarb/scan', route => route.fulfill({json:{scan:null}}));
   await page.route('**/api/watchlist**', (route) => route.fulfill({ json: { assetIds: [] } }));
   await page.route('**/api/alerts', (route) => route.fulfill({ json: { alerts: [], events: [] } }));
+});
+test('warns when the independent worker stalls despite recent browser market snapshots', async ({ page }) => {
+  let stalled = true;
+  await page.route('**/api/health', (route) => {
+    const at = Date.now();
+    return route.fulfill({ json: {
+      ok: true, at, liquidations: { connected: true },
+      markets: { running: true, intervalMs: 10_000, completedCycles: 20,
+        lastStartedAt: at - (stalled ? 121_000 : 2_000),
+        lastCompletedAt: at - (stalled ? 121_000 : 1_000),
+        feeds: ['binance', 'hyperliquid'].map(venue => ({ venue, status: 'live', lastSuccessAt: at - 1_000 })) },
+    } });
+  });
+  await page.goto('/');
+  await expect(page.getByText('The background market worker has no recent valid cycle.')).toBeVisible();
+  await expect(page.getByText('RECENT SNAPSHOT')).toHaveCount(2);
+  stalled = false;
+  await page.reload();
+  await expect(page.getByText(/Background refresh: 20 completed cycles/)).toBeVisible();
 });
 test('alerts retain cached rules after refresh failure and prevent duplicate deletes', async ({ page }) => {
   let rules = [{ id: 'test-rule', assetId: btc.id, kind: 'volume', threshold: 100, enabled: true, createdAt: Date.now() }];
