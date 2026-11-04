@@ -142,7 +142,7 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
       return value;
     } catch (fallbackError) {
       try {
-        const events = await fetchXoomarCalendar(day, now);
+        const events = await fetchXoomarCalendar(now);
         const value: CalendarResponse = {
           configured: true,
           events,

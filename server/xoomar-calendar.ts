@@ -14,14 +14,19 @@ type Row = {
   unit?: unknown;
   canonicalUrl?: unknown;
 };
-type Payload = { data?: unknown; updatedAt?: unknown };
+type Payload = { data?: unknown; updatedAt?: unknown; meta?: { sourceAttribution?: unknown } };
 
 export function parseXoomarCalendar(payload: Payload, now = Date.now()): EconomicEvent[] {
   if (!payload || !Array.isArray(payload.data) || typeof payload.updatedAt !== 'string')
     throw Error('XOOMAR calendar response malformed');
-  const updated = Date.parse(payload.updatedAt);
-  if (!Number.isFinite(updated) || updated > now + 5 * 60_000 || now - updated > 14 * 86_400_000)
-    throw Error('XOOMAR calendar update timestamp invalid or stale');
+  const updated = /^\d{13}$/.test(payload.updatedAt)
+    ? Number(payload.updatedAt)
+    : Date.parse(payload.updatedAt);
+  if (!Number.isFinite(updated)) throw Error('XOOMAR calendar update timestamp invalid');
+  if (updated > now + 5 * 60_000)
+    throw Error(`XOOMAR calendar update timestamp future (${Math.ceil((updated - now) / 60_000)}m)`);
+  if (now - updated > 14 * 86_400_000)
+    throw Error(`XOOMAR calendar update timestamp stale (${Math.floor((now - updated) / 86_400_000)}d)`);
   const events: EconomicEvent[] = [];
   for (const row of payload.data as Row[]) {
     if (!row || typeof row !== 'object') throw Error('XOOMAR calendar event malformed');
@@ -58,15 +63,15 @@ export function parseXoomarCalendar(payload: Payload, now = Date.now()): Economi
       eventUrl: canonical,
       licenseCredit: 'Data: XOOMAR',
       licenseUrl: XOOMAR_CALENDAR_URL,
+      rightsCredit:
+        typeof payload.meta?.sourceAttribution === 'string' ? payload.meta.sourceAttribution : '',
     });
   }
   return events.sort((a, b) => a.time.localeCompare(b.time));
 }
 
-export async function fetchXoomarCalendar(day: string, now: number): Promise<EconomicEvent[]> {
-  const url = new URL(API);
-  url.searchParams.set('from', day);
-  url.searchParams.set('to', new Date(now + 14 * 86_400_000).toISOString().slice(0, 10));
-  url.searchParams.set('importance', 'high');
-  return parseXoomarCalendar(await getJson<Payload>(url.href), now);
+export async function fetchXoomarCalendar(now: number): Promise<EconomicEvent[]> {
+  // The default window spans the previous week through the next month. Filter
+  // locally so the provider's filtered response cannot hide a newer update.
+  return parseXoomarCalendar(await getJson<Payload>(API), now);
 }
