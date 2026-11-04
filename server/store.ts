@@ -56,6 +56,24 @@ export function deleteAlert(id: string) {
     next.alerts = next.alerts.filter((x) => x.id !== id);
   });
 }
+export function setAlertEnabled(id: string, enabled: boolean): Promise<AlertRule | null> {
+  return change((next) => {
+    const alert = next.alerts.find((x) => x.id === id);
+    if (!alert) return null;
+    if (alert.enabled !== enabled) {
+      alert.enabled = enabled;
+      if (enabled) {
+        // A manual rearm is a fresh monitoring window, including both range boundaries.
+        delete alert.lastTriggeredAt;
+        if (alert.kind === 'price_range') {
+          delete alert.lastTriggeredAboveAt;
+          delete alert.lastTriggeredBelowAt;
+        }
+      }
+    }
+    return structuredClone(alert);
+  });
+}
 export function triggered(rule: AlertRule, message: string, boundary?: 'above' | 'below') {
   return change((next) => {
     const original = next.alerts.find((x) => x.id === rule.id);
@@ -72,6 +90,7 @@ export function triggered(rule: AlertRule, message: string, boundary?: 'above' |
       else original.lastTriggeredBelowAt = now;
     }
     original.lastTriggeredAt = now;
+    if (original.repeat !== true) original.enabled = false;
     const event: AlertEvent = {
       id: randomUUID(),
       assetId: rule.assetId,

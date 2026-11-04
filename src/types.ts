@@ -98,11 +98,13 @@ export type AlertCondition =
       lastTriggeredBelowAt?: number;
     }
   | { kind: Exclude<AlertKind, 'price_range'>; threshold: number; direction?: 'above' | 'below'; referencePrice?: number };
-export type AlertInput = { assetId: string } & AlertCondition;
+export type AlertInput = { assetId: string; repeat?: boolean } & AlertCondition;
 export type AlertRule = AlertCondition & {
   id: string;
   assetId: string;
   enabled: boolean;
+  /** Repeating alerts keep monitoring after a trigger. Missing means one shot. */
+  repeat?: boolean;
   createdAt: number;
   lastTriggeredAt?: number;
 };

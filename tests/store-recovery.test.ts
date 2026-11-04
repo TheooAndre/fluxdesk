@@ -59,6 +59,7 @@ it('serializes cooldown checks and does not consume cooldown after a failed even
   const results = await Promise.all(Array.from({ length: 6 }, () => store.triggered(alert, 'crossed')));
   expect(results.filter(Boolean)).toHaveLength(1);
   expect(store.snapshot().events).toHaveLength(1);
+  expect(store.snapshot().alerts[0]!.enabled).toBe(false);
   await store.deleteAlert(alert.id);
   expect(await store.triggered(alert, 'deleted')).toBeNull();
 });

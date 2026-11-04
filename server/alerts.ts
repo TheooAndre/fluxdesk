@@ -9,6 +9,10 @@ const seenVolumeBar = new Map<string, number>();
 export function armPriceAlert(id: string, price: number) {
   lastPrice.set(id, price);
 }
+export function disarmPriceAlert(id: string) {
+  lastPrice.delete(id);
+  seenVolumeBar.delete(id);
+}
 export async function scanAlerts() {
   if (running) return;
   running = true;
