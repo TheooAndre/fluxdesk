@@ -116,7 +116,11 @@ function CalendarTab() {
                 </div>
               ))
             ) : (
-              <div className="empty">No timed, high-impact US releases available in this window.</div>
+              <div className="empty">
+                {feed.data.source === 'unavailable'
+                  ? 'Release schedule unavailable. Check the source status above and retry later.'
+                  : 'No timed, high-impact US releases available in this window.'}
+              </div>
             )}
           </>
         )}

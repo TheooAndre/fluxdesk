@@ -73,6 +73,7 @@ const postResearch = <T>(url: string, payload: unknown, timeoutMs = 90_000, erro
     errorPrefix,
   );
 export const api = {
+  health: (signal?: AbortSignal) => get<unknown>('/api/health', signal),
   importJournal: (data: JournalData) =>
     postResearch<{ imported: number; skipped: number }>('/api/journal/import', data),
   journal: () => get<JournalData>('/api/journal'),
