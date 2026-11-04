@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { calendar, parseCalendar } from '../server/calendar.ts';
 import { parseBlsCalendar } from '../server/bls-calendar.ts';
+import { parseXoomarCalendar } from '../server/xoomar-calendar.ts';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -67,6 +68,7 @@ it('fetches the free endpoint without a key and caches the result', async () => 
   const fetcher = vi.fn(async (input: string) => {
     const url = new URL(input);
     if (url.origin === 'https://www.bls.gov') throw new Error('BLS offline');
+    if (url.origin === 'https://xoomar.com') throw new Error('XOOMAR offline');
     expect(url.origin).toBe('https://www.financecalendar.com');
     expect(url.searchParams.get('country')).toBe('US');
     expect(url.searchParams.get('impact')).toBe('high');
@@ -84,7 +86,7 @@ it('fetches the free endpoint without a key and caches the result', async () => 
   expect(unavailable.message).toContain('showing earlier results');
   expect(unavailable.events).toHaveLength(1);
   expect((await calendar()).message).toContain('unavailable');
-  expect(fetcher).toHaveBeenCalledTimes(3);
+  expect(fetcher).toHaveBeenCalledTimes(4);
 });
 
 const blsIcs = `BEGIN:VCALENDAR\r
@@ -140,4 +142,64 @@ it('uses the official partial schedule and marks the failed primary source', asy
   expect(response.message).toContain('partial official BLS');
   expect((await calendar()).events).toHaveLength(1);
   expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it('validates the attributed third-source schedule and rejects stale or untimed rows', () => {
+  const now = Date.parse('2026-11-10T00:00:00Z');
+  const payload = {
+    updatedAt: '2026-11-09T12:00:00Z',
+    data: [
+      {
+        source: 'bls',
+        eventName: 'Consumer Price Index',
+        importance: 'high',
+        scheduledAt: '2026-11-11T13:30:00Z',
+        previous: '3.0%',
+        forecast: null,
+      },
+      { source: 'fed', eventName: 'Minor speech', importance: 'low', scheduledAt: '2026-11-11T15:00:00Z' },
+    ],
+  };
+  expect(parseXoomarCalendar(payload, now)).toMatchObject([
+    {
+      title: 'Consumer Price Index',
+      time: '2026-11-11T13:30:00.000Z',
+      forecast: '',
+      previous: '3.0%',
+      licenseCredit: 'Data: XOOMAR',
+    },
+  ]);
+  expect(() => parseXoomarCalendar({ ...payload, updatedAt: '2026-10-01T00:00:00Z' }, now)).toThrow('stale');
+  expect(() =>
+    parseXoomarCalendar({ ...payload, data: [{ ...payload.data[0], scheduledAt: null }] }, now),
+  ).toThrow('incomplete');
+});
+
+it('uses XOOMAR after both first sources reject and reports the source flags', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-10T00:00:00Z'));
+  const fetcher = vi.fn(async (input: string) => {
+    if (input.includes('financecalendar.com')) return new Response('unauthorized', { status: 401 });
+    if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
+    return Response.json({
+      updatedAt: '2026-11-09T12:00:00Z',
+      data: [
+        {
+          source: 'bls',
+          eventName: 'Consumer Price Index',
+          importance: 'high',
+          scheduledAt: '2026-11-11T13:30:00Z',
+        },
+      ],
+    });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const response = await calendar();
+  expect(response).toMatchObject({
+    configured: true,
+    source: 'xoomar',
+    staleSources: ['financecalendar', 'bls'],
+  });
+  expect(response.events).toHaveLength(1);
+  expect(fetcher).toHaveBeenCalledTimes(3);
 });
