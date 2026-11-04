@@ -42,6 +42,7 @@ export default function CategoryBrowser({
         a.symbol.toLowerCase().includes(search.toLowerCase())),
   );
   const description = CATEGORIES.find((c) => c.id === selected)?.description;
+  const isLowFloatHighFdv = selected === 'low-float-high-fdv';
   return (
     <Card
       title="Market categories"
@@ -61,6 +62,12 @@ export default function CategoryBrowser({
         ))}
       </div>
       {description && <p className="footnote">{description}</p>}
+      {isLowFloatHighFdv && (
+        <p className="footnote">
+          Snapshot reviewed {CATEGORY_REVIEWED_AT}. Prices and unlocks can move assets across the threshold;
+          verify the current supply schedule before using this screen.
+        </p>
+      )}
       <div className="controls">
         <input
           className="category-search"
@@ -118,9 +125,25 @@ export default function CategoryBrowser({
       <HelpDetails title="Category details">
         Counts are exchange contracts, not unique tokens. Tags can overlap and are curated research labels.
         New or uncertain mappings remain Uncategorized. No category index return or investment ranking is
-        implied.{' '}
+        implied. The low-float screen is a dated supply-risk filter, not a prediction.{' '}
         <a href="https://www.coingecko.com/en/categories" target="_blank" rel="noopener noreferrer">
           Category definitions
+        </a>{' '}
+        ·{' '}
+        <a
+          href="https://www.coingecko.com/research/publications/low-vs-high-float-crypto"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Float methodology
+        </a>{' '}
+        ·{' '}
+        <a
+          href="https://www.coingecko.com/en/highlights/incoming-token-unlocks"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Current unlocks
         </a>
       </HelpDetails>
     </Card>
