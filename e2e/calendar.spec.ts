@@ -14,7 +14,7 @@ test('free macro feed shows official source and provider credit', async ({ page 
     page.getByRole('button', { name: 'Macro calendar' })).click();
   await expect(page.getByText('US CPI', { exact: true })).toBeVisible();
   await expect(page.getByText('US · Estimated date')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Bureau of Labor Statistics' }))
+  await expect(page.getByRole('link', { name: 'Bureau of Labor Statistics', exact: true }))
     .toHaveAttribute('href', 'https://www.bls.gov/schedule/news_release/cpi.htm');
   await expect(page.getByRole('link', { name: 'Finance Calendar' }))
     .toHaveAttribute('href', 'https://www.financecalendar.com');
@@ -26,4 +26,15 @@ test('free macro feed shows official source and provider credit', async ({ page 
   await page.getByRole('button', { name: 'Refresh calendar', exact: true }).click();
   await expect(page.getByText('No timed, high-impact US releases available in this window.')).toBeVisible();
   await expect(page.getByText('US CPI', { exact: true })).toHaveCount(0);
+  await page.route('**/api/calendar', route => route.fulfill({ json: {
+    configured: true, source: 'bls', staleSources: ['financecalendar'],
+    message: 'Finance Calendar unavailable. Showing a partial official BLS release schedule.',
+    events: [{ id: 'bls:cpi', time: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+      country: 'US', title: 'Consumer Price Index', importance: 3, forecast: '', previous: '', actual: '',
+      sourceName: 'U.S. Bureau of Labor Statistics', sourceUrl: 'https://www.bls.gov/schedule/news_release/bls.ics' }],
+  } }));
+  await page.getByRole('button', { name: 'Refresh calendar', exact: true }).click();
+  await expect(page.getByText('Consumer Price Index', { exact: true })).toBeVisible();
+  await expect(page.getByText('Source: official BLS schedule · partial coverage')).toBeVisible();
+  await expect(page.getByText('Unavailable source: financecalendar')).toBeVisible();
 });
