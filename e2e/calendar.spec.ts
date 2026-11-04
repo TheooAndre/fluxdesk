@@ -14,7 +14,7 @@ test('free macro feed shows official source and provider credit', async ({ page 
     page.getByRole('button', { name: 'Macro calendar' })).click();
   await expect(page.getByText('US CPI', { exact: true })).toBeVisible();
   await expect(page.getByText('US · Estimated date')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Bureau of Labor Statistics' }))
+  await expect(page.getByRole('link', { name: 'Bureau of Labor Statistics', exact: true }))
     .toHaveAttribute('href', 'https://www.bls.gov/schedule/news_release/cpi.htm');
   await expect(page.getByRole('link', { name: 'Finance Calendar' }))
     .toHaveAttribute('href', 'https://www.financecalendar.com');
