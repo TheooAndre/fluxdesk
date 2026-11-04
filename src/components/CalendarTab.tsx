@@ -37,6 +37,9 @@ function CalendarTab() {
             {feed.data.source === 'bls' && (
               <p className="footnote">Source: official BLS schedule · partial coverage</p>
             )}
+            {feed.data.source === 'xoomar' && (
+              <p className="footnote">Source: XOOMAR US schedule · verify release times with the agency</p>
+            )}
             {feed.data.staleSources?.length ? (
               <p className="footnote">Unavailable source: {feed.data.staleSources.join(', ')}</p>
             ) : null}
@@ -130,7 +133,11 @@ function CalendarTab() {
           >
             U.S. Bureau of Labor Statistics
           </a>
-          . Coverage is selective. Check the linked official source before trading.
+          ; third source by{' '}
+          <a href="https://xoomar.com/markets/api/calendar" target="_blank" rel="noopener noreferrer">
+            XOOMAR
+          </a>
+          . Coverage is selective. Check the linked source before trading.
         </p>
       </Card>
     </div>

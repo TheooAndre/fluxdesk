@@ -1,6 +1,7 @@
 import type { EconomicEvent } from '../src/types.ts';
 import { getJson } from './market.ts';
 import { fetchBlsCalendar } from './bls-calendar.ts';
+import { fetchXoomarCalendar } from './xoomar-calendar.ts';
 
 const BASE = 'https://www.financecalendar.com/wp-json/fc/v1/calendar';
 const TTL = 10 * 60_000;
@@ -32,7 +33,7 @@ type SourceResponse = { events?: unknown; total?: unknown };
 export type CalendarResponse = {
   configured: boolean;
   events: EconomicEvent[];
-  source: 'financecalendar' | 'bls' | 'cached' | 'unavailable';
+  source: 'financecalendar' | 'bls' | 'xoomar' | 'cached' | 'unavailable';
   staleSources: string[];
   message?: string;
 };
@@ -140,19 +141,34 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
       failure = null;
       return value;
     } catch (fallbackError) {
-      // A bounded last-good response stays visible, but is never represented as fresh.
-      const recent = cache?.day === day && Date.now() - cache.at < 2 * 60 * 60_000;
-      const value: CalendarResponse = {
-        configured: true,
-        events: recent
-          ? cache!.value.events.filter((x) => Date.parse(x.time) >= now).map((x) => ({ ...x, stale: true }))
-          : [],
-        source: recent ? 'cached' : 'unavailable',
-        staleSources: ['financecalendar', 'bls'],
-        message: `Calendar sources unavailable${recent ? '; showing earlier results (may have changed)' : ''}: Finance Calendar: ${(e as Error).message}; BLS: ${(fallbackError as Error).message}`,
-      };
-      failure = { at: Date.now(), day, value };
-      return value;
+      try {
+        const events = await fetchXoomarCalendar(day, now);
+        const value: CalendarResponse = {
+          configured: true,
+          events,
+          source: 'xoomar',
+          staleSources: ['financecalendar', 'bls'],
+          message:
+            'Finance Calendar and BLS unavailable. Showing the attributed XOOMAR US schedule; verify release times with the originating agency.',
+        };
+        cache = { at: Date.now(), day, value };
+        failure = null;
+        return value;
+      } catch (thirdError) {
+        // A bounded last-good response stays visible, but is never represented as fresh.
+        const recent = cache?.day === day && Date.now() - cache.at < 2 * 60 * 60_000;
+        const value: CalendarResponse = {
+          configured: true,
+          events: recent
+            ? cache!.value.events.filter((x) => Date.parse(x.time) >= now).map((x) => ({ ...x, stale: true }))
+            : [],
+          source: recent ? 'cached' : 'unavailable',
+          staleSources: ['financecalendar', 'bls', 'xoomar'],
+          message: `Calendar sources unavailable${recent ? '; showing earlier results (may have changed)' : ''}: Finance Calendar: ${(e as Error).message}; BLS: ${(fallbackError as Error).message}; XOOMAR: ${(thirdError as Error).message}`,
+        };
+        failure = { at: Date.now(), day, value };
+        return value;
+      }
     }
   }
 }
