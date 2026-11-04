@@ -1,6 +1,7 @@
 import {
   CATEGORIES,
   CATEGORY_REVIEWED_AT,
+  lowFloatEvidence,
   categoryLabel,
   marketCategories,
   matchesCategory,
@@ -43,6 +44,9 @@ export default function CategoryBrowser({
   );
   const description = CATEGORIES.find((c) => c.id === selected)?.description;
   const isLowFloatHighFdv = selected === 'low-float-high-fdv';
+  const dilutionSnapshotAgeDays = Math.floor(
+    (Date.now() - Date.parse(`${CATEGORY_REVIEWED_AT}T00:00:00Z`)) / 86_400_000,
+  );
   return (
     <Card
       title="Market categories"
@@ -66,6 +70,8 @@ export default function CategoryBrowser({
         <p className="footnote">
           Snapshot reviewed {CATEGORY_REVIEWED_AT}. Prices and unlocks can move assets across the threshold;
           verify the current supply schedule before using this screen.
+          {dilutionSnapshotAgeDays > 7 &&
+            ' This snapshot is over a week old; membership may no longer meet the screen.'}
         </p>
       )}
       <div className="controls">
@@ -93,28 +99,38 @@ export default function CategoryBrowser({
         </span>
       </div>
       <div className="category-results">
-        {results.slice(0, 100).map((asset) => (
-          <button
-            className="category-asset"
-            key={asset.id}
-            onClick={() => onSelect(asset.id)}
-            aria-label={`Chart ${asset.base} on ${asset.venue}`}
-          >
-            <BadgeVenue venue={asset.venue} />
-            <span>
-              <b>{asset.base}</b>
-              <small>
-                {asset.venue} · {marketCategories(asset).map(categoryLabel).join(' / ') || 'Uncategorized'}
-              </small>
-            </span>
-            <span className="category-quote">
-              <b>{price(asset.price)}</b>
-              <small className={asset.return24h >= 0 ? 'positive' : 'negative'}>
-                {pct(asset.return24h)} · {money(asset.volumeUsd24h)} vol
-              </small>
-            </span>
-          </button>
-        ))}
+        {results.slice(0, 100).map((asset) => {
+          const evidence = isLowFloatHighFdv ? lowFloatEvidence(asset) : undefined;
+          return (
+            <button
+              className="category-asset"
+              key={asset.id}
+              onClick={() => onSelect(asset.id)}
+              aria-label={`Chart ${asset.base} on ${asset.venue}`}
+            >
+              <BadgeVenue venue={asset.venue} />
+              <span>
+                <b>{asset.base}</b>
+                <small>
+                  {asset.venue} · {marketCategories(asset).map(categoryLabel).join(' / ') || 'Uncategorized'}
+                </small>
+                {evidence && (
+                  <small>
+                    {Math.round(evidence.marketCapToFdv * 1000) / 10}% market cap / FDV
+                    {' · '}
+                    {money(evidence.fdvUsd)} FDV at review
+                  </small>
+                )}
+              </span>
+              <span className="category-quote">
+                <b>{price(asset.price)}</b>
+                <small className={asset.return24h >= 0 ? 'positive' : 'negative'}>
+                  {pct(asset.return24h)} · {money(asset.volumeUsd24h)} vol
+                </small>
+              </span>
+            </button>
+          );
+        })}
         {!results.length && <p className="empty">No current contracts match this category and search.</p>}
       </div>
       {results.length > 100 && (

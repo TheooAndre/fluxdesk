@@ -104,6 +104,15 @@ export const LOW_FLOAT_HIGH_FDV_SNAPSHOT = [
   },
 ] as const;
 
+const dilutionEvidence = new Map<string, (typeof LOW_FLOAT_HIGH_FDV_SNAPSHOT)[number]>();
+for (const entry of LOW_FLOAT_HIGH_FDV_SNAPSHOT) {
+  dilutionEvidence.set(`binance:${entry.symbol}USDT`, entry);
+  dilutionEvidence.set(`hyperliquid:${entry.symbol}`, entry);
+}
+export function lowFloatEvidence(market: Pick<Market, 'id'>) {
+  return dilutionEvidence.get(market.id);
+}
+
 export const CATEGORIES = [
   { id: 'l1', label: 'L1', description: 'Base-layer blockchain networks.' },
   { id: 'ai', label: 'AI', description: 'AI networks, applications and compute.' },

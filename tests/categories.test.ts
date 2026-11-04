@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import {
   LOW_FLOAT_HIGH_FDV_CRITERIA,
   LOW_FLOAT_HIGH_FDV_SNAPSHOT,
+  lowFloatEvidence,
   marketCategories,
   matchesCategory,
 } from '../src/lib/categories.ts';
@@ -52,11 +53,13 @@ it('keeps the low-float/high-FDV screen tied to its documented snapshot rule', (
     expect(entry.maxSupply).toBeGreaterThan(0);
     expect(marketCategories({ id: `binance:${entry.symbol}USDT` })).toContain('low-float-high-fdv');
     expect(marketCategories({ id: `hyperliquid:${entry.symbol}` })).toContain('low-float-high-fdv');
+    expect(lowFloatEvidence({ id: `binance:${entry.symbol}USDT` })).toEqual(entry);
   }
 
   expect(marketCategories({ id: 'binance:PUMPUSDT' })).not.toContain('low-float-high-fdv');
   expect(marketCategories({ id: 'binance:FILUSDT' })).not.toContain('low-float-high-fdv');
   expect(marketCategories({ id: 'binance:AEROUSDT' })).not.toContain('low-float-high-fdv');
+  expect(lowFloatEvidence({ id: 'binance:1000HYPEUSDT' })).toBeUndefined();
 });
 
 it('leaves new, malformed and uncertain listings explicitly uncategorized', () => {

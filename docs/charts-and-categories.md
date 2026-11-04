@@ -16,6 +16,8 @@ Classification is a versioned curated map reviewed 4 November 2026. It uses exac
 
 This category is a dated supply-risk screen rather than a permanent project theme. A supported asset is included when all of the following were true in the 4 November 2026 CoinGecko snapshot:
 
+The category list shows each included contract's market cap / FDV ratio and FDV from that review. It warns when the snapshot is more than seven days old; these figures are historical review evidence, not live supply data.
+
 - market cap / fully diluted valuation was below `0.50`;
 - fully diluted valuation was at least `$1 billion`; and
 - the asset had a finite maximum supply, avoiding false precision for uncapped issuance.
