@@ -10,6 +10,7 @@ import { money, pct, price, clock } from './lib/format.ts';
 import { CATEGORIES, categoryLabel, marketCategories, matchesCategory } from './lib/categories.ts';
 import type { CategoryFilter } from './lib/categories.ts';
 import { priceBasisLabel, quoteAge, relativeToBenchmark } from './lib/market-quality.ts';
+import { assessWorkerHealth } from './lib/worker-health.ts';
 import type { Market } from './types.ts';
 import { intervalsFor } from './engine/intervals.ts';
 import FeedHealth from './components/FeedHealth.tsx';
@@ -500,6 +501,17 @@ function App() {
   const [booted, setBooted] = useState(false);
   const [offline, setOffline] = useState(false);
   const { ui, mk, asset, selected } = useDashboard(booted);
+  const worker = useQuery({
+    queryKey: ['passive-health'],
+    enabled: booted,
+    queryFn: ({ signal }) => api.health(signal),
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: true,
+    staleTime: 10_000,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+    retry: 1,
+  });
   const watchlist = useWatchlist(booted && ui.tab === 'overview');
   useEffect(() => {
     restoreAssetFromLocation();
@@ -510,7 +522,12 @@ function App() {
     const timer = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(timer);
   }, []);
+  const workerStatus = worker.data === undefined
+    ? null
+    : assessWorkerHealth(worker.data, worker.dataUpdatedAt, now);
+  const workerIssue = offline || worker.isError || (workerStatus !== null && workerStatus.state !== 'healthy');
   const degraded =
+    workerIssue ||
     mk.isError ||
     offline ||
     !mk.data ||
@@ -581,7 +598,7 @@ function App() {
           <div className="top-actions">
             <span className="top-status">
               <span className={'live-dot ' + (degraded ? 'error-dot' : '')} />
-              {degraded ? 'Feeds need attention' : 'Feeds · ~10s'}
+              {degraded ? 'Updates need attention' : workerStatus ? 'Feeds + worker · ~10s' : 'Checking updates'}
             </span>
             <InstallControls />
           </div>
@@ -641,6 +658,18 @@ function App() {
             </button>
           </div>
           {mk.isError && <ErrorText error={mk.error} />} {(!booted || mk.isLoading) && <Loading />}
+          <div className={`notice worker-status${workerIssue ? ' warning' : ''}`} role={workerIssue ? 'status' : undefined}>
+            <Activity size={17} aria-hidden="true" />
+            <span>
+              {offline
+                ? 'Background refresh status unavailable while offline.'
+                : worker.isError
+                  ? 'Background refresh status unavailable. Market snapshots may still load.'
+                  : workerStatus?.state === 'healthy'
+                    ? `Background refresh: ${workerStatus.cycles} completed cycles; last completed ${Math.floor(workerStatus.completedAgeMs / 1000)}s before this passive check.`
+                    : workerStatus?.reason ?? 'Checking passive background refresh status…'}
+            </span>
+          </div>
           {mk.data && (
             <FeedHealth feeds={mk.data.feeds ?? []} now={now} disconnected={offline || mk.isError} />
           )}

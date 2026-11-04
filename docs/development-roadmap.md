@@ -1,6 +1,6 @@
 # FluxDesk development list
 
-Updated 25 October 2026. Research only; no order execution or claimed predictive edge.
+Updated 4 November 2026. Research only; no order execution or claimed predictive edge.
 
 ## Current milestone: v0.4 cloud terminal
 
@@ -37,7 +37,8 @@ Updated 25 October 2026. Research only; no order execution or claimed predictive
 | --- | --- | --- |
 | Venue/timeframe stat-arb scanner | Owner accepted on iPhone; CI #348 and staging passed | All supported current live venue assets attempted; every aligned unordered pair tested, ±2 z-score view, permissive/selective presets, progress/cancel/failures, JSON export and journal handoff. [Method and limits](statarb-scanner.md) |
 | Persistent crypto trade journal | Owner accepted on iPhone; CI #348 and staging passed | Dated multi-leg fills, fees/funding, plans/reviews/tags/emotions/mistakes, daily notes, calendar/analytics, conflict protection, JSON/CSV import/export and encrypted backup inclusion. [Journal guide](trade-journal.md) |
-| Free macro calendar | Released; current upstream failures under repair | Finance Calendar returns HTTP 401 and official BLS iCalendar HTTP 403 from the current Northflank backend. PR #32 deployed explicit source flags, partial BLS fallback and bounded stale results; both sources still fail at runtime. This follow-up adds an attributed XOOMAR schedule as a third source, pending live access and data-shape verification. The calendar is selective and no consensus is invented. The protected personal dashboard credits third-party data; review terms before republishing it. Forex Factory forbids redistribution of its calendar schedules. Group any owner iPhone check with a later UI batch. |
+| Free macro calendar | Released; third source verified live | Finance Calendar returns HTTP 401 and official BLS iCalendar HTTP 403 from Northflank. PR #35 uses XOOMAR's fresh default window and filters locally; the protected production API returned six attributed, timed US high-impact releases on 4 November. It flags the first two sources unavailable and invents no consensus. Cached results are marked stale if all sources fail. The personal dashboard credits XOOMAR and the originating agencies; review third-party terms before republishing. Group any owner iPhone check with a later UI batch. |
+| Passive background refresh status | UI improvement in progress | Show the health endpoint's worker cycle count, recent completion/start timestamps and both venue feed successes separately from browser market refreshes. Incomplete or future worker timestamps warn instead of implying background progress; inaccessible health is labeled monitoring unavailable. |
 | Grouped iPhone acceptance for new workspaces | Owner confirmed working on 24 October | Owner reported “is working on the phone” after the grouped scanner/journal acceptance request. This records owner-reported device acceptance; no additional automated live scan result or market edge is inferred. Earlier accepted checks do not need repeating |
 
 ## Next work in order

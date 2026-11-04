@@ -15,6 +15,7 @@
 @media(max-width:480px){.scan-result{grid-template-columns:45px 1fr 59px 16px;gap:6px;padding:10px 8px}.scan-result strong{font-size:11px}.scan-result .pill{padding:5px 6px;font-size:9px}}
 
 .feed-health{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:18px}.feed-card{border:1px solid #2b4053;border-radius:11px;background:#101d2b;padding:15px;min-width:0}.feed-card strong{font-size:13px}.feed-card .pill{font-size:9px}.feed-live .pill{color:#6ce7bd;background:#193d35}.feed-stale,.feed-unavailable{border-color:#725242}.feed-stale .pill,.feed-unavailable .pill{color:#ffc4ac;background:#3a2b25}.feed-meta{display:flex;gap:12px;font-size:11px;color:#a0b6cb;margin-top:10px}.feed-card p{margin:8px 0 0;font-size:11px;color:#91a7bf;line-height:1.6;overflow-wrap:anywhere}.selection-warning{align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap}details{margin-top:8px;font-size:11px;overflow-wrap:anywhere}summary{cursor:pointer;margin-bottom:5px}details>div{padding:3px 0}.controls select{max-width:100%}@media(max-width:600px){.feed-health{grid-template-columns:1fr}.feed-card{padding:12px}}
+.worker-status{margin-bottom:12px}
 
 
 .benchmark-picker{position:relative;margin-top:7px}

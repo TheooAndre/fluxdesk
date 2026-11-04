@@ -89,8 +89,11 @@ timestamps and stale/unavailable labels remain authoritative; a failed fetch
 never resets the last-success time. Browser/phone suspension pauses client
 updates, but server collection continues while the backend is running. The
 authenticated health endpoint exposes worker cycles and actual venue ages
-without triggering a refresh. Quotes are a latest snapshot, not a new historical
-archive. This does not change candle caching, alert cadence or research rules.
+without triggering a refresh. The UI reads that passive status separately and
+warns if worker progress or either background feed is missing or stale; a fresh
+market table alone does not prove the worker is running. Quotes are a latest
+snapshot, not a new historical archive. This does not change candle caching,
+alert cadence or research rules.
 
 1. **Binance `!forceOrder@arr` is a sampled stream**, at most one liquidation order snapshot per symbol per second. Sum of observed snapshots **is not the true total liquidations** (events may be missed and snapshots are not a unique liquidation ledger). The app correctly labels it partial. Public Hyperliquid all-account liquidation notional is **not** implemented; per-user liquidation/fill events do not imply a complete market-wide liquidation stream.
 2. Liquidation *future levels* are not observable from OHLCV and OI alone. The app instead shows transparent support/resistance and historical observed liquidation execution prices. Forward liquidation estimates require an appropriately licensed vendor, a venue-specific on-chain reconstruction, or a documented estimation model with large uncertainty.
