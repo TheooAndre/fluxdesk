@@ -162,7 +162,14 @@ export const api = {
       candidates: PairCandidate[];
     }>(`/api/correlations?asset=${encodeURIComponent(asset)}&tf=${tf}&minimum=0.87`, signal, 90_000),
   alerts: () => get<{ alerts: AlertRule[]; events: AlertEvent[] }>('/api/alerts'),
-  calendar: () => get<{ configured: boolean; events: EconomicEvent[]; message?: string }>('/api/calendar'),
+  calendar: () =>
+    get<{
+      configured: boolean;
+      events: EconomicEvent[];
+      source?: 'financecalendar' | 'bls' | 'cached' | 'unavailable';
+      staleSources?: string[];
+      message?: string;
+    }>('/api/calendar'),
   liquidations: (asset: string) =>
     get<{
       observedUsd: number | null;

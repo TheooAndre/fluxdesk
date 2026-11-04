@@ -14,9 +14,7 @@ function CalendarTab() {
     <div className="content-stack">
       <div className="section-intro">
         <h2>High-impact economic calendar</h2>
-        <p>
-          Major US releases over the next two weeks, shown in your local timezone.
-        </p>
+        <p>Major US releases over the next two weeks, shown in your local timezone.</p>
       </div>
       <Card title="Upcoming releases" aside={<Pill tone="red">HIGH IMPACT ONLY</Pill>}>
         <button type="button" disabled={feed.isFetching} onClick={() => void feed.refetch()}>
@@ -28,16 +26,20 @@ function CalendarTab() {
         )}
         {feed.isLoading ? (
           <Loading />
-        ) : !feed.data ? (
-          null
-        ) : (
+        ) : !feed.data ? null : (
           <>
             {feed.data?.message && (
-              <div className="notice">
+              <div className="notice" role="status">
                 <CircleHelp size={17} />
                 {feed.data.message}
               </div>
             )}
+            {feed.data.source === 'bls' && (
+              <p className="footnote">Source: official BLS schedule · partial coverage</p>
+            )}
+            {feed.data.staleSources?.length ? (
+              <p className="footnote">Unavailable source: {feed.data.staleSources.join(', ')}</p>
+            ) : null}
             {feed.data?.events.length ? (
               feed.data.events.map((e) => (
                 <div className="event" key={e.id}>
@@ -50,12 +52,53 @@ function CalendarTab() {
                     </small>
                   </div>
                   <div className="event-info">
-                    <b>{e.eventUrl ? <a href={e.eventUrl} target="_blank" rel="noopener noreferrer">{e.title}</a> : e.title}</b>
-                    <small>{e.country}{e.status === 'estimated' ? ' · Estimated date' : ''}{e.stale ? ' · Source update delayed' : ''}</small>
-                    {e.sourceUrl && <small>Source: <a href={e.sourceUrl} target="_blank" rel="noopener noreferrer">{e.sourceName || 'Official release schedule'}</a></small>}
-                    {e.licenseCredit && <small>Credit: {e.licenseUrl ? <a href={e.licenseUrl} target="_blank" rel="noopener noreferrer">{e.licenseCredit}</a> : e.licenseCredit}</small>}
+                    <b>
+                      {e.eventUrl ? (
+                        <a href={e.eventUrl} target="_blank" rel="noopener noreferrer">
+                          {e.title}
+                        </a>
+                      ) : (
+                        e.title
+                      )}
+                    </b>
+                    <small>
+                      {e.country}
+                      {e.status === 'estimated' ? ' · Estimated date' : ''}
+                      {e.stale ? ' · Source update delayed' : ''}
+                    </small>
+                    {e.sourceUrl && (
+                      <small>
+                        Source:{' '}
+                        <a href={e.sourceUrl} target="_blank" rel="noopener noreferrer">
+                          {e.sourceName || 'Official release schedule'}
+                        </a>
+                      </small>
+                    )}
+                    {e.licenseCredit && (
+                      <small>
+                        Credit:{' '}
+                        {e.licenseUrl ? (
+                          <a href={e.licenseUrl} target="_blank" rel="noopener noreferrer">
+                            {e.licenseCredit}
+                          </a>
+                        ) : (
+                          e.licenseCredit
+                        )}
+                      </small>
+                    )}
                     {e.licenseNotice && <small>{e.licenseNotice}</small>}
-                    {e.rightsCredit && <small>Source credit: {e.rightsUrl ? <a href={e.rightsUrl} target="_blank" rel="noopener noreferrer">{e.rightsCredit}</a> : e.rightsCredit}</small>}
+                    {e.rightsCredit && (
+                      <small>
+                        Source credit:{' '}
+                        {e.rightsUrl ? (
+                          <a href={e.rightsUrl} target="_blank" rel="noopener noreferrer">
+                            {e.rightsCredit}
+                          </a>
+                        ) : (
+                          e.rightsCredit
+                        )}
+                      </small>
+                    )}
                     {e.rightsNotice && <small>{e.rightsNotice}</small>}
                   </div>
                   <div className="event-data">
@@ -70,15 +113,24 @@ function CalendarTab() {
                 </div>
               ))
             ) : (
-              <div className="empty">
-                No timed, high-impact US releases available in this window.
-              </div>
+              <div className="empty">No timed, high-impact US releases available in this window.</div>
             )}
           </>
         )}
         <p className="footnote">
-          Free calendar data by <a href="https://www.financecalendar.com" target="_blank" rel="noopener noreferrer">Finance Calendar</a>.
-          Coverage is selective; consensus is generally unavailable. Check the linked official source before trading.
+          Primary data by{' '}
+          <a href="https://www.financecalendar.com" target="_blank" rel="noopener noreferrer">
+            Finance Calendar
+          </a>
+          ; fallback schedule by{' '}
+          <a
+            href="https://www.bls.gov/schedule/news_release/bls.ics"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            U.S. Bureau of Labor Statistics
+          </a>
+          . Coverage is selective. Check the linked official source before trading.
         </p>
       </Card>
     </div>
