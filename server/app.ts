@@ -20,6 +20,8 @@ import { armPriceAlert, disarmPriceAlert } from './alerts.ts';
 import { calendar } from './calendar.ts';
 import { vapidKey } from './notifications.ts';
 import { publicMode, isOwner } from './identity.ts';
+import { accountMode } from './account-policy.ts';
+import { accountSession, handleAccounts } from './accounts.ts';
 import { ResearchRequestError, enrichResearchDataset, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
 const json = (res: ServerResponse, data: unknown, status = 200) => {
   res.writeHead(status, {
@@ -76,12 +78,18 @@ function checkOrigin(req: IncomingMessage, expectedHost: string, gatewayProtecte
 }
 export async function handler(req: IncomingMessage, res: ServerResponse) {
   writeSecurityHeaders(res);
-  res.setHeader('x-fluxdesk-access-mode', publicMode() ? 'social-v1' : 'private-v1');
+  res.setHeader('x-fluxdesk-access-mode', accountMode() ? 'accounts-v1' : publicMode() ? 'social-v1' : 'private-v1');
   let path = '';
   try {
     const access = authenticateGateway(req);
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     path = url.pathname;
+    if (accountMode()) {
+      checkOrigin(req, access.originHost, access.gatewayProtected);
+      if (await handleAccounts(req, res, path, access.originHost)) return;
+      const session = await accountSession(req);
+      access.userId = session ? `account:${session.user.id}` : undefined;
+    }
     if (path.startsWith('/api/')) {
       if (publicMode()) {
         const privateRoute = /^\/api\/(journal|alerts|watchlist|push|research|statarb)(?:\/|$)/.test(path);

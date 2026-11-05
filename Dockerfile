@@ -14,7 +14,7 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --prod --frozen-lockfile
 
 FROM node:22-bookworm-slim
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 DATA_DIR=/data
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 DATA_DIR=/data FLUXDESK_ACCOUNT_AUTH=true
 WORKDIR /app
 # The API needs tsx at runtime; build and test tools stay in the builder.
 # This is a single-process backend, not a horizontally scaled worker cluster.

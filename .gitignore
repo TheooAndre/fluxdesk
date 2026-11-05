@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 data/*.json
+data/accounts.sqlite*
 data/research/
 coverage/
 playwright-report/

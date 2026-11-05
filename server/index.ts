@@ -6,6 +6,8 @@ import { runAlertScanner } from './alerts.ts';
 import { startMarketRefresh } from './market-refresh.ts';
 import { assertRemoteBindingAllowed } from './gateway.ts';
 import { assertDurableDataDirectory } from './persistence.ts';
+import { accountMode } from './account-policy.ts';
+import { initializeAccounts } from './accounts.ts';
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 8787);
 assertRemoteBindingAllowed(host, {
@@ -17,6 +19,8 @@ if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw Error('Invali
 // storage. Fail closed unless DATA_DIR is an actual writable Linux mount.
 if (!['127.0.0.1', '::1', 'localhost'].includes(host))
   await assertDurableDataDirectory();
+process.umask(0o077);
+if (accountMode()) await initializeAccounts();
 await load();
 const stopMarketRefresh = startMarketRefresh();
 startLiquidations();

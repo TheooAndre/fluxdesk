@@ -6,6 +6,7 @@ import { gzip, gunzip } from 'node:zlib';
 import {validateJournal} from '../src/journal/model.ts';
 import { datasetId, type HistoricalDataset } from './research/datasets.ts';
 import { assetIdentity } from './market.ts';
+import { accountBackupBytes, snapshotAccountDatabase, validateAccountBackup } from './account-backup.ts';
 
 const compress = promisify(gzip),
   decompress = promisify(gunzip);
@@ -39,7 +40,7 @@ function receipt(manifest: ArchiveManifest, bytes: Buffer): ArchiveReceipt {
 const digest = (content: string) => createHash('sha256').update(content).digest('hex');
 const userFile = /^users\/[a-f0-9]{64}\/(?:journal|watchlist)\.json$/;
 const allowedPath = (path: string) =>
-  path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' ||
+  path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' || path === 'accounts.sqlite' ||
   userFile.test(path) || /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
 
 function validateFile(file: ArchiveFile): void {
@@ -52,6 +53,7 @@ function validateFile(file: ArchiveFile): void {
     digest(file.content) !== file.sha256
   )
     throw Error('Invalid backup file path or checksum');
+  if (file.path === 'accounts.sqlite') { accountBackupBytes(file.content); return; }
   const value = JSON.parse(file.content) as Record<string, unknown>;
   if (file.path.startsWith('research/')) {
     if (datasetId(value as unknown as HistoricalDataset) !== file.path.slice(18, -5))
@@ -84,7 +86,7 @@ function validateManifest(value: unknown): ArchiveManifest {
     data.createdAt <= 0 ||
     !Array.isArray(data.files) ||
     !data.files.length ||
-    data.files.length > 103 + MAX_USER_DIRS * 2
+    data.files.length > 104 + MAX_USER_DIRS * 2
   )
     throw Error('Invalid backup manifest');
   const seen = new Set<string>();
@@ -181,6 +183,16 @@ export async function createArchive(
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
+  try {
+    const path = join(root, 'accounts.sqlite');
+    await readRegularFile(path, 8 * 1024 * 1024);
+    const content = await snapshotAccountDatabase(path);
+    total += Buffer.byteLength(content);
+    if (total > MAX_BYTES) throw Error('Backup exceeds 16 MiB source limit');
+    files.push({ path: 'accounts.sqlite', content, sha256: digest(content) });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   const users = join(root, 'users');
   try {
     const info = await lstat(users);
@@ -230,6 +242,7 @@ export async function verifyArchive(
 ): Promise<ArchiveReceipt> {
   const bytes = await readRegularFile(file, MAX_ARCHIVE_BYTES);
   const manifest = await unpack(bytes, password);
+  for (const entry of manifest.files) if (entry.path === 'accounts.sqlite') await validateAccountBackup(entry.content);
   requireContents(manifest, options);
   return receipt(manifest, bytes);
 }
@@ -244,6 +257,7 @@ export async function restoreArchive(
 ): Promise<ArchiveReceipt> {
   const bytes = await readRegularFile(file, MAX_ARCHIVE_BYTES);
   const manifest = await unpack(bytes, password);
+  for (const entry of manifest.files) if (entry.path === 'accounts.sqlite') await validateAccountBackup(entry.content);
   requireContents(manifest, options);
   const destination = resolve(target);
   await mkdir(destination, { mode: 0o700 }); // EEXIST is deliberately fatal.
@@ -251,7 +265,7 @@ export async function restoreArchive(
     for (const entry of manifest.files) {
       const path = join(destination, entry.path);
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-      await writeFile(path, entry.content, { mode: 0o600, flag: 'wx' });
+      await writeFile(path, entry.path === 'accounts.sqlite' ? accountBackupBytes(entry.content) : entry.content, { mode: 0o600, flag: 'wx' });
     }
   } catch (error) {
     await rm(destination, { recursive: true, force: true });

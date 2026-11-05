@@ -30,18 +30,19 @@ const JournalTab = lazy(() => import('./components/JournalTab.tsx'));
 const PairsTab = lazy(() => import('./components/PairsTab.tsx'));
 const AlertsTab = lazy(() => import('./components/AlertsTab.tsx'));
 const CalendarTab = lazy(() => import('./components/CalendarTab.tsx'));
+const AccountDialog = lazy(() => import('./components/AccountDialog.tsx'));
 const publicUi = import.meta.env.VITE_FLUXDESK_PUBLIC_MODE === 'true';
-type ProviderAvailability = { discord: boolean; x: boolean };
-function SignInPrompt({ title, providers }: { title: string; providers?: ProviderAvailability }) {
+type ProviderAvailability = { discord: boolean; x: boolean; password?: boolean };
+function SignInPrompt({ title, providers, onSignIn }: { title: string; providers?: ProviderAvailability; onSignIn: () => void }) {
   return <Card title={title}>
     <p>Sign in to keep your journal, alerts and saved markets in your own account.</p>
-    {providers && !providers.discord && !providers.x ?
+    {providers?.password ? <button type="button" onClick={onSignIn}>Sign in or register</button> : providers && !providers.discord && !providers.x ?
       <p className="footnote" role="status">Sign-in is being configured. Market pages and the calendar are available.</p> :
       <div className="row-between mt-3">
         {providers?.discord && <a className="secondary" href="/api/auth/discord">Continue with Discord</a>}
         {providers?.x && <a className="secondary" href="/api/auth/x">Continue with X</a>}
       </div>}
-    <p className="footnote">Each provider has a separate FluxDesk account. Use the same provider to return to your records.</p>
+    {!providers?.password && <p className="footnote">Each provider has a separate FluxDesk account. Use the same provider to return to your records.</p>}
   </Card>;
 }
 const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
@@ -511,6 +512,7 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 function App() {
+  const [accountOpen, setAccountOpen] = useState(false);
   const [overviewPanel, setOverviewPanel] = useState<'chart' | 'categories'>('chart');
   const [booted, setBooted] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -518,6 +520,8 @@ function App() {
     refetchInterval: 60_000, retry: false });
   const signedIn = !publicUi || session.data?.authenticated === true;
   const owner = !publicUi || session.data?.owner === true;
+  const needsOwnerSetup = session.data?.ownerSetupAllowed === true && !signedIn;
+  useEffect(() => { if (needsOwnerSetup) setAccountOpen(true); }, [needsOwnerSetup]);
   const navigation = NAV.filter((x) => owner || !['research', 'statarb'].includes(x.id));
   const { ui, mk, asset, selected } = useDashboard(booted);
   const worker = useQuery({
@@ -568,6 +572,7 @@ function App() {
   }, []);
   return (
     <div className="layout" aria-busy={!booted}>
+      {publicUi && accountOpen && <Suspense fallback={<Loading label="Loading account…"/>}><AccountDialog signedIn={signedIn} registrationOpen={session.data?.registrationOpen === true} ownerSetupAllowed={needsOwnerSetup} onClose={() => setAccountOpen(false)} /></Suspense>}
       <aside className={'sidebar ' + (menu ? 'side-open' : '')}>
         <a className="logo" href="/">
           <span className="logo-icon">
@@ -619,6 +624,7 @@ function App() {
             Workspace <ChevronRight size={14} /> <b>{NAV.find((x) => x.id === ui.tab)?.label}</b>
           </div>
           <div className="top-actions">
+            {publicUi && session.data?.providers.password && <button className="secondary" type="button" onClick={() => setAccountOpen(true)}>{signedIn ? 'Account' : 'Sign in / Register'}</button>}
             {publicUi && !signedIn && (session.data?.providers.discord || session.data?.providers.x) &&
               <a className="secondary" href={session.data.providers.discord ? '/api/auth/discord' : '/api/auth/x'}>Sign in</a>}
             <span className="top-status">
@@ -760,9 +766,9 @@ function App() {
             </Suspense>
           )}
           {ui.tab === 'statarb' && (owner ? <Suspense fallback={<Loading label="Loading stat-arb scanner…"/>}><StatArbScanner/></Suspense> : <Card title="Owner workspace">This tool is available to the owner.</Card>)}
-          {ui.tab === 'journal' && (signedIn ? <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab snapshot={mk.data}/></Suspense> : <SignInPrompt title="Trade journal" providers={session.data?.providers} />)}
+          {ui.tab === 'journal' && (signedIn ? <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab snapshot={mk.data}/></Suspense> : <SignInPrompt title="Trade journal" providers={session.data?.providers} onSignIn={() => setAccountOpen(true)} />)}
           {ui.tab === 'alerts' && (
-            signedIn ? <Suspense fallback={<Loading label="Loading alerts…"/>}><AlertsTab item={selected}/></Suspense> : <SignInPrompt title="Market alerts" providers={session.data?.providers} />
+            signedIn ? <Suspense fallback={<Loading label="Loading alerts…"/>}><AlertsTab item={selected}/></Suspense> : <SignInPrompt title="Market alerts" providers={session.data?.providers} onSignIn={() => setAccountOpen(true)} />
           )}
           {ui.tab === 'calendar' && (
             <Suspense fallback={<Loading label="Loading macro calendar…"/>}><CalendarTab/></Suspense>

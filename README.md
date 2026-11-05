@@ -2,7 +2,11 @@
 
 A **read-only**, self-hosted trading research dashboard. Native iOS app packaging is not required: it is an installable React/Vite progressive web app, with an optional server-side Web Push service. **No exchange API keys or trade execution are used.**
 
-> Scope: personal single-user research dashboard, not a validated alpha engine. The four trading models are deterministic **candidates** and must be properly backtested before relying on them. It is deliberately not a financial-advice product.
+> Scope: research dashboard with isolated personal workspaces, not a validated alpha engine. The four trading models are deterministic **candidates** and must be properly backtested before relying on them. It is deliberately not a financial-advice product.
+
+## Account access
+
+Public market pages and the macro calendar work without an account. Email/password registration protects each person's journal, alerts, push subscriptions and saved markets. Better Auth and SQLite use the existing persistent backend volume; no extra hosted database is required. The owner claims existing records through the protected production setup URL, not ordinary public registration. Recovery uses a saved one-time code. See [account setup and release](docs/account-login.md). Discord/X developer credentials remain optional future integrations.
 
 ## v0.4 release — 24 October 2026
 

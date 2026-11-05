@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { releasePreflight, socialReleasePreflight, RELEASE_PROJECT, RELEASE_TEAM } from '../server/release-preflight.ts';
+import { releasePreflight, socialReleasePreflight, accountReleasePreflight, RELEASE_PROJECT, RELEASE_TEAM } from '../server/release-preflight.ts';
 const snapshot = () => ({
   project: {
     id: RELEASE_PROJECT,
@@ -70,4 +70,19 @@ it('requires social credentials and keeps preview/deployment URLs protected when
   data.project.ssoProtection.deploymentType = 'prod_deployment_urls_and_all_previews';
   data.envs.find((e) => e.key === 'FLUXDESK_X_CLIENT_SECRET')!.type = 'plain';
   expect(socialReleasePreflight(data, 'live').configurationReady).toBe(false);
+});
+
+it('requires account flags and protected setup URLs without requiring OAuth credentials', () => {
+  const data = snapshot();
+  expect(accountReleasePreflight(data).configurationReady).toBe(false);
+  for (const key of ['FLUXDESK_ACCOUNT_AUTH', 'VITE_FLUXDESK_PUBLIC_MODE', 'FLUXDESK_PUBLIC_HOST'])
+    data.envs.push({ key, target: ['production'], type: 'plain' });
+  expect(accountReleasePreflight(data).configurationReady).toBe(true);
+  data.project.ssoProtection.deploymentType = 'prod_deployment_urls_and_all_previews';
+  expect(accountReleasePreflight(data, 'live').configurationReady).toBe(true);
+  data.project.ssoProtection.deploymentType = 'none';
+  expect(accountReleasePreflight(data, 'live').configurationReady).toBe(false);
+  data.project.ssoProtection.deploymentType = 'prod_deployment_urls_and_all_previews';
+  data.envs.find((env) => env.key === 'FLUXDESK_ACCOUNT_AUTH')!.target.push('preview');
+  expect(accountReleasePreflight(data, 'live').configurationReady).toBe(false);
 });
