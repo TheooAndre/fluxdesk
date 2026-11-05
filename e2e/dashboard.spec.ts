@@ -186,7 +186,7 @@ test('alerts retain cached rules after refresh failure and prevent duplicate del
   expect(deletes).toBe(1);
   releaseDelete!();
   await expect(page.locator('.alert-rule')).toHaveCount(0);
-  await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No alert rules. Choose a rule on the left.', { exact: true })).toBeVisible();
   expect(deletes).toBe(1);
   await page.screenshot({ path: test.info().outputPath('alerts-recovered.png'), fullPage: true });
 });
@@ -196,12 +196,12 @@ test('alerts show initial load failure without false empty-state claims and reco
   await page.goto('/');
   await page.getByRole('button', { name: 'Alerts', exact: true }).click();
   await expect(page.getByText(/Alert service temporarily unavailable/)).toBeVisible();
-  await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('No alert rules. Choose a rule on the left.', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Nothing triggered yet.', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Not loaded', { exact: true })).toBeVisible();
   await page.route('**/api/alerts', route => route.fulfill({ json: { alerts: [], events: [] } }));
   await page.getByRole('button', { name: 'Refresh alerts', exact: true }).click();
-  await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No alert rules. Choose a rule on the left.', { exact: true })).toBeVisible();
   await expect(page.getByText('Nothing triggered yet.', { exact: true })).toBeVisible();
 });
 
@@ -696,7 +696,7 @@ test('price range alert validates bounds, saves, reloads and removes', async ({ 
   await page.route('**/api/alerts', async (route) => {
     if (route.request().method() === 'POST') {
       const input = route.request().postDataJSON();
-      expect(input).toEqual({ assetId: 'binance:BTCUSDT', kind: 'price_range', lowerPrice: 90000, upperPrice: 110000 });
+      expect(input).toEqual({ assetId: 'binance:BTCUSDT', kind: 'price_range', lowerPrice: 90000, upperPrice: 110000, repeat: false });
       const alert = { ...input, id: '00000000-0000-4000-8000-000000000001', createdAt: Date.now(), enabled: true };
       rules = [alert]; await route.fulfill({ status: 201, json: { alert } });
     } else await route.fulfill({ json: { alerts: rules, events: [] } });
@@ -717,7 +717,7 @@ test('price range alert validates bounds, saves, reloads and removes', async ({ 
   await expect(page.getByText('BTCUSDT · PRICE RANGE', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Delete alert', exact: true }).click();
-  await expect(page.getByText('No active alerts. Choose a rule on the left.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No alert rules. Choose a rule on the left.', { exact: true })).toBeVisible();
 });
 
 test('price level direction follows the selected level and displays the server-confirmed rule', async ({ page }) => {

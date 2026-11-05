@@ -13,10 +13,10 @@ import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
 import type { AlertKind, AlertCondition, AlertRule, Market } from '../src/types.ts';
-import { snapshot, addAlert, deleteAlert, subscribe, forgetSubscription } from './store.ts';
+import { snapshot, addAlert, deleteAlert, setAlertEnabled, subscribe, forgetSubscription } from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
 import { savedWatchlist, changeWatchlist } from './watchlist.ts';
-import { armPriceAlert } from './alerts.ts';
+import { armPriceAlert, disarmPriceAlert } from './alerts.ts';
 import { calendar } from './calendar.ts';
 import { vapidKey } from './notifications.ts';
 import { ResearchRequestError, enrichResearchDataset, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
@@ -91,7 +91,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
             : path === '/api/alerts'
               ? ['GET', 'POST']
           : path.startsWith('/api/alerts/')
-            ? ['DELETE']
+            ? ['DELETE', 'PUT']
             : path === '/api/push/subscribe'
               ? ['POST', 'DELETE']
               : ['GET'];
@@ -250,11 +250,23 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         } else condition = { kind, threshold };
       }
       const a: AlertRule = {
-        id: randomUUID(), assetId, ...condition, enabled: true, createdAt: Date.now(),
+        id: randomUUID(), assetId, ...condition, enabled: true, repeat: o.repeat === true, createdAt: Date.now(),
       };
+      if (o.repeat !== undefined && typeof o.repeat !== 'boolean') throw Error('Invalid repeat option');
       await addAlert(a);
       if (a.kind === 'price' && a.referencePrice !== undefined) armPriceAlert(a.id, a.referencePrice);
       return json(res, { alert: a }, 201);
+    }
+    if (path.startsWith('/api/alerts/') && req.method === 'PUT') {
+      const id = path.slice('/api/alerts/'.length);
+      if (!/^[a-f0-9-]{36}$/.test(id)) throw Error('Invalid alert ID');
+      const { enabled } = await body(req);
+      if (typeof enabled !== 'boolean') throw Error('Invalid alert status');
+      const alert = await setAlertEnabled(id, enabled);
+      if (!alert) return json(res, { error: 'Alert not found' }, 404);
+      // On manual reactivation, seed from the next observation to avoid a stale crossing.
+      disarmPriceAlert(id);
+      return json(res, { alert });
     }
     if (path.startsWith('/api/alerts/') && req.method === 'DELETE') {
       const id = path.slice('/api/alerts/'.length);

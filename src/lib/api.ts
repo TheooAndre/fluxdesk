@@ -181,6 +181,12 @@ export const api = {
       coverage: string;
     }>(`/api/liquidations?asset=${encodeURIComponent(asset)}&minutes=5`),
   createAlert: (data: AlertInput) => postResearch<{ alert: AlertRule }>('/api/alerts', data, 20_000),
+  setAlertEnabled: (id: string, enabled: boolean) =>
+    request<{ alert: AlertRule }>(`/api/alerts/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    }),
   deleteAlert: (id: string) => request<void>(`/api/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   unsubscribe: (endpoint: string) =>
     request<void>(

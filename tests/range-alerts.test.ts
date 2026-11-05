@@ -91,7 +91,7 @@ it('rejects missing, equal, reversed, nonnumeric and out-of-budget bounds before
   expect(store.snapshot().alerts).toHaveLength(0);
 });
 it('arms on first observation and delivers each outward boundary without outside repeats', async () => {
-  await create();
+  await create({ repeat: true });
   await sample(100);
   expect(feed.deliver).not.toHaveBeenCalled();
   await sample(110);
@@ -105,7 +105,7 @@ it('arms on first observation and delivers each outward boundary without outside
   expect(feed.deliver.mock.calls[1]![0].message).toContain('price crossed below 90');
 });
 it('persists independent boundary cooldowns and rearms same-side crossings after five minutes', async () => {
-  await create();
+  await create({ repeat: true });
   await sample(100);
   await sample(120);
   await store.load();
@@ -123,6 +123,36 @@ it('persists independent boundary cooldowns and rearms same-side crossings after
   await sample(100);
   await sample(120);
   expect(feed.deliver).toHaveBeenCalledTimes(3);
+});
+it('disables a one-time rule atomically on trigger, and a manual reactivation seeds the next quote', async () => {
+  const { alert } = await (await create()).json();
+  expect(alert).toMatchObject({ repeat: false, enabled: true });
+  await sample(100);
+  await sample(120);
+  expect(store.snapshot().alerts[0]).toMatchObject({ enabled: false, repeat: false });
+  expect(feed.deliver).toHaveBeenCalledTimes(1);
+  await store.load();
+  await sample(80);
+  expect(feed.deliver).toHaveBeenCalledTimes(1);
+  const update = await fetch(origin + '/api/alerts/' + alert.id, {
+    method: 'PUT', headers: { origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled: true }),
+  });
+  expect(update.status).toBe(200);
+  expect((await update.json()).alert).toMatchObject({ enabled: true });
+  await sample(120); // first quote after reactivation arms the rule
+  expect(feed.deliver).toHaveBeenCalledTimes(1);
+  await sample(100);
+  await sample(120);
+  expect(feed.deliver).toHaveBeenCalledTimes(2);
+  expect(store.snapshot().alerts[0]).toMatchObject({ enabled: false });
+  expect((await fetch(origin + '/api/alerts/' + alert.id, {
+    method: 'PUT', headers: { origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled: 'yes' }),
+  })).status).toBe(400);
+});
+it('rejects nonboolean repeat mode', async () => {
+  expect((await create({ repeat: 'false' })).status).toBe(400);
 });
 it('does not fire on initial outside values or missing feeds; observes a full gap across the range', async () => {
   await create();

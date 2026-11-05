@@ -15,6 +15,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
     [threshold, setThreshold] = useState('100'),
     [lowerPrice, setLowerPrice] = useState(''),
     [upperPrice, setUpperPrice] = useState(''),
+    [repeat, setRepeat] = useState(false),
     [message, setMessage] = useState('');
   const create = useMutation({
     mutationFn: api.createAlert,
@@ -31,6 +32,11 @@ function AlertsTab({ item }: { item: Market | undefined }) {
   const remove = useMutation({
     mutationFn: api.deleteAlert,
     onSuccess: () => void client.invalidateQueries({ queryKey: ['alerts'] }),
+  });
+  const toggle = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => api.setAlertEnabled(id, enabled),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['alerts'] }),
+    onError: (e) => setMessage(e.message),
   });
   const push = usePushNotifications();
   const direction = priceAlertDirection(item?.price ?? NaN, Number(threshold));
@@ -141,6 +147,13 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                   ? 'Alerts when price reaches or crosses above the upper bound or below the lower bound. Checks about once a minute; brief moves between checks may be missed. First observation arms the rule. Re-entry rearms it, with a 5-minute cooldown per boundary.'
                   : 'Checks about once a minute. Reaching or crossing the chosen level triggers an alert; brief moves between checks may be missed. Same-direction repeats have a 5-minute cooldown.'}
           </p>
+          <label className="field">
+            <span>
+              <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />{' '}
+              Keep active after each trigger
+            </span>
+            <small>{repeat ? 'Repeat when the condition triggers again (with the existing cooldown).' : 'Disable after the first trigger. Reactivate this rule any time.'}</small>
+          </label>
           <button
             className="primary full"
             disabled={
@@ -159,8 +172,8 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               item &&
               create.mutate(
                 kind === 'price_range'
-                  ? { assetId: item.id, kind, lowerPrice: Number(lowerPrice), upperPrice: Number(upperPrice) }
-                  : { assetId: item.id, kind, threshold: Number(threshold) },
+                  ? { assetId: item.id, kind, lowerPrice: Number(lowerPrice), upperPrice: Number(upperPrice), repeat }
+                  : { assetId: item.id, kind, threshold: Number(threshold), repeat },
               )
             }
           >
@@ -195,11 +208,11 @@ function AlertsTab({ item }: { item: Market | undefined }) {
             </div>
           )}
         </Card>
-        <Card title="Active rules" aside={<Pill>{rules.data ? `${rules.data.alerts.length} rules` : 'Not loaded'}</Pill>}>
+        <Card title="Alert rules" aside={<Pill>{rules.data ? `${rules.data.alerts.length} rules` : 'Not loaded'}</Pill>}>
           <button
             type="button"
             className="secondary"
-            disabled={rules.isFetching || create.isPending || remove.isPending}
+            disabled={rules.isFetching || create.isPending || remove.isPending || toggle.isPending}
             onClick={() => void rules.refetch()}
           >
             {rules.isFetching ? 'Refreshing alerts…' : 'Refresh alerts'}
@@ -229,16 +242,22 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                           ? `Price ${x.direction ?? 'above'} ${price(x.threshold)}`
                           : `≥ ${money(x.threshold)} / 5m`}
                   </small>
+                  <small>{x.enabled ? (x.repeat ? 'Active · repeats' : 'Active · one time') : 'Disabled · reactivate to monitor again'}</small>
                 </div>
+                <button type="button" className="secondary"
+                  disabled={toggle.isPending || rules.isFetching || rules.isError || !navigator.onLine}
+                  onClick={() => toggle.mutate({ id: x.id, enabled: !x.enabled })}>
+                  {x.enabled ? 'Disable' : 'Reactivate'}
+                </button>
                 <button aria-label="Delete alert" className="icon-btn"
-                  disabled={remove.isPending || rules.isFetching || rules.isError || !navigator.onLine}
+                  disabled={remove.isPending || toggle.isPending || rules.isFetching || rules.isError || !navigator.onLine}
                   onClick={() => remove.mutate(x.id)}>
                   <X size={18} />
                 </button>
               </div>
             ))
           ) : (
-            <div className="empty">No active alerts. Choose a rule on the left.</div>
+            <div className="empty">No alert rules. Choose a rule on the left.</div>
           )}
           {remove.error && <ErrorText error={remove.error} />}
           <h4 className="mt-6 mb-2">Recent triggers</h4>
