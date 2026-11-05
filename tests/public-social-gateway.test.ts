@@ -95,7 +95,7 @@ describe('public market and private account gateway', () => {
     const destination = new URL(begin.location!);
     expect(destination.searchParams.get('code_challenge_method')).toBe('S256');
     expect(destination.searchParams.get('redirect_uri')).toBe(`https://${HOST}/api/auth/callback/${provider}`);
-    expect(destination.searchParams.get('scope')).toBe(provider === 'discord' ? 'identify' : 'users.read');
+    expect(destination.searchParams.get('scope')).toBe(provider === 'discord' ? 'identify' : 'tweet.read users.read');
     const attempt = begin.cookies.find((x) => x.startsWith('__Host-fd-oauth='))!.split(';')[0]!;
     const invalid = await call(port, `/api/auth/callback/${provider}?state=wrong&code=code&iss=https%3A%2F%2Fdiscord.com`, { cookie: attempt });
     expect(invalid.location).toBe('/?auth=failed');

@@ -9,7 +9,7 @@ Register confidential web applications with the providers and set these exact ca
 | Provider | Registered redirect URI | Requested scope |
 | --- | --- | --- |
 | Discord | `https://fluxdesk-terminal.vercel.app/api/auth/callback/discord` | `identify` |
-| X | `https://fluxdesk-terminal.vercel.app/api/auth/callback/x` | `users.read` |
+| X | `https://fluxdesk-terminal.vercel.app/api/auth/callback/x` | `tweet.read users.read` (X requires both for `/2/users/me`) |
 
 Use X's Web App (confidential) OAuth 2.0 configuration. Keep provider client secrets and the new 32-byte-or-longer random session signing secret in Vercel's production-only sensitive/encrypted environment settings. Do not place them in source, chat, or a `VITE_` variable. Record the immutable numeric provider user ID for the account that owns the existing journal, using `discord:<id>` or `x:<id>` for `FLUXDESK_OWNER_SUB`. The provider's visible username is not a safe owner identifier. The owner must keep using that same provider to reach legacy journal, alerts, watchlist and push subscriptions. Discord and X identities are separate accounts; linking/migration is not implemented.
 

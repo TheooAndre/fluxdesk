@@ -21,7 +21,7 @@ const settings = {
     authorize: 'https://x.com/i/oauth2/authorize',
     token: 'https://api.x.com/2/oauth2/token',
     profile: 'https://api.x.com/2/users/me',
-    scope: 'users.read',
+    scope: 'tweet.read users.read',
     id: 'FLUXDESK_X_CLIENT_ID',
     secret: 'FLUXDESK_X_CLIENT_SECRET',
   },

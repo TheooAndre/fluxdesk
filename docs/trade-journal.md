@@ -35,9 +35,9 @@ Search/filter by date range, selected day, account, setup and status. Breakdown 
 - Generic single-leg CSV template supports dated entry/exit, quantity/prices, fees/funding/risk, account/setup/tags/notes. Deterministic row IDs make repeated identical CSV imports duplicate-aware. Vendor-specific CSV layouts require mapping; they are not guessed. JSON handles multi-leg/partial-fill records.
 - Filtered CSV summary is spreadsheet-safe (formula-prefix escaping) and for analysis, not restoration. Full JSON is the portable restore format.
 - 2000 trades, 3660 daily notes, 4 MiB stored journal / import. Trade and note mutations are bounded to 128 KiB; other API requests keep their existing 16 KiB limit. The journal stays below the gateway's 8 MiB response cap. JSON export is compact so a complete stored journal fits its import bound.
-- The encrypted backup CLI now includes and validates `journal.json`. Existing pre-journal backups remain valid; take a new computer backup after saving journal data. The total encrypted archive source budget remains 16 MiB across all application data and datasets.
+- The encrypted backup CLI includes and validates the owner's `journal.json` and all bounded social-account journal files under `users/`. Existing pre-journal backups remain valid; take a new computer backup after saving journal data. The total encrypted archive source budget remains 16 MiB across all application data and datasets.
 
-Endpoints: GET `/api/journal`; POST/DELETE `/api/journal/trades`; POST `/api/journal/day`; POST `/api/journal/import`. All use the existing gateway/origin protections. The single-owner journal is shared between the owner's authorized devices; it is not a multi-user brokerage account system.
+Endpoints: GET `/api/journal`; POST/DELETE `/api/journal/trades`; POST `/api/journal/day`; POST `/api/journal/import`. All use the gateway/origin protections. In social mode, the owner retains the legacy journal and each Discord or X account has its own isolated journal, shared only across that account's authorized devices. Provider identities are separate; account linking is not implemented. See [public social access](public-social-access.md) for the staged release.
 
 ## Open positions and review workflow
 
