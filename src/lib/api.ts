@@ -1,5 +1,6 @@
 import type { JournalData, JournalTrade, JournalDay } from '../journal/model.ts';
 import type { ScanConfig, ScanJob } from '../../server/statarb-scanner.ts';
+import type { CalendarSourceCheck } from '../../server/calendar.ts';
 import type {
   AlertEvent,
   AlertRule,
@@ -73,8 +74,15 @@ const postResearch = <T>(url: string, payload: unknown, timeoutMs = 90_000, erro
     errorPrefix,
   );
 export const api = {
-  session: () => get<{ authenticated: boolean; accountId: string | null; provider: 'discord' | 'x' | null;
-    name: string | null; owner: boolean; providers: { discord: boolean; x: boolean } }>('/api/auth/session'),
+  session: () =>
+    get<{
+      authenticated: boolean;
+      accountId: string | null;
+      provider: 'discord' | 'x' | null;
+      name: string | null;
+      owner: boolean;
+      providers: { discord: boolean; x: boolean };
+    }>('/api/auth/session'),
   signOut: () => request<{ authenticated: false }>('/api/auth/logout', { method: 'POST' }),
   health: (signal?: AbortSignal) => get<unknown>('/api/health', signal),
   importJournal: (data: JournalData) =>
@@ -170,8 +178,9 @@ export const api = {
     get<{
       configured: boolean;
       events: EconomicEvent[];
-      source?: 'financecalendar' | 'bls' | 'xoomar' | 'cached' | 'unavailable';
+      source?: 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
       staleSources?: string[];
+      sources?: CalendarSourceCheck[];
       message?: string;
     }>('/api/calendar'),
   liquidations: (asset: string) =>

@@ -1,10 +1,18 @@
-import { afterEach, expect, it, vi } from 'vitest';
-import { calendar, parseCalendar } from '../server/calendar.ts';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { parseCalendar } from '../server/calendar.ts';
 import { parseBlsCalendar } from '../server/bls-calendar.ts';
+import { parseBeaCalendar } from '../server/bea-calendar.ts';
 import { parseXoomarCalendar } from '../server/xoomar-calendar.ts';
+
+beforeEach(() => {
+  vi.resetModules();
+  vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', 'test-only-calendar-key');
+});
+const calendar = async () => (await import('../server/calendar.ts')).calendar();
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
@@ -62,31 +70,39 @@ it('fails closed on truncated pages or malformed responses', () => {
   expect(() => parseCalendar({ total: 1, events: [null] })).toThrow('malformed');
 });
 
-it('fetches the free endpoint without a key and caches the result', async () => {
+it('authenticates with a header, checks backups and bounds cached recovery', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-25T00:00:00Z'));
-  const fetcher = vi.fn(async (input: string) => {
+  const fetcher = vi.fn(async (input: string, options?: RequestInit) => {
     const url = new URL(input);
     if (url.origin === 'https://www.bls.gov') throw new Error('BLS offline');
     if (url.origin === 'https://xoomar.com') throw new Error('XOOMAR offline');
+    if (url.origin === 'https://www.bea.gov') throw new Error('BEA offline');
     expect(url.origin).toBe('https://www.financecalendar.com');
     expect(url.searchParams.get('country')).toBe('US');
     expect(url.searchParams.get('impact')).toBe('high');
     expect(url.searchParams.has('api_key')).toBe(false);
+    expect(options?.headers).toMatchObject({ 'X-API-Key': 'test-only-calendar-key' });
+    expect(options?.redirect).toBe('error');
     return Response.json({ total: 1, events: [event] });
   });
   vi.stubGlobal('fetch', fetcher);
   const response = await calendar();
   expect(response.events).toHaveLength(1);
   expect((await calendar()).events).toHaveLength(1);
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher).toHaveBeenCalledTimes(4);
   vi.advanceTimersByTime(11 * 60_000);
   fetcher.mockRejectedValueOnce(new Error('offline'));
   const unavailable = await calendar();
   expect(unavailable.message).toContain('showing earlier results');
   expect(unavailable.events).toHaveLength(1);
   expect((await calendar()).message).toContain('unavailable');
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(8);
+  vi.advanceTimersByTime(2 * 60 * 60_000);
+  fetcher.mockRejectedValueOnce(new Error('offline'));
+  const expired = await calendar();
+  expect(expired.source).toBe('unavailable');
+  expect(expired.events).toEqual([]);
 });
 
 const blsIcs = `BEGIN:VCALENDAR\r
@@ -130,18 +146,22 @@ it('parses only timed, selected BLS releases and converts Eastern time across DS
 it('uses the official partial schedule and marks the failed primary source', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-04T00:00:00Z'));
-  const fetcher = vi.fn(async (input: string) =>
-    input.includes('financecalendar.com')
-      ? new Response('unauthorized', { status: 401 })
-      : new Response(blsIcs, { status: 200, headers: { 'content-type': 'text/calendar' } }),
-  );
+  const fetcher = vi.fn(async (input: string) => {
+    if (input.includes('financecalendar.com')) return new Response('unauthorized', { status: 401 });
+    if (!input.includes('bls.gov')) return new Response('unavailable', { status: 503 });
+    return new Response(blsIcs, { status: 200, headers: { 'content-type': 'text/calendar' } });
+  });
   vi.stubGlobal('fetch', fetcher);
   const response = await calendar();
-  expect(response).toMatchObject({ configured: true, source: 'bls', staleSources: ['financecalendar'] });
+  expect(response).toMatchObject({
+    configured: true,
+    source: 'bls',
+    staleSources: ['financecalendar', 'bea', 'xoomar'],
+  });
   expect(response.events).toHaveLength(1);
   expect(response.message).toContain('partial official BLS');
   expect((await calendar()).events).toHaveLength(1);
-  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(fetcher).toHaveBeenCalledTimes(4);
 });
 
 it('validates the attributed third-source schedule and rejects stale or untimed rows', () => {
@@ -186,6 +206,7 @@ it('uses XOOMAR after both first sources reject and reports the source flags', a
   const fetcher = vi.fn(async (input: string) => {
     if (input.includes('financecalendar.com')) return new Response('unauthorized', { status: 401 });
     if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
+    if (input.includes('bea.gov')) return new Response('unavailable', { status: 503 });
     expect(input).toBe('https://xoomar.com/api/markets/calendar');
     return Response.json({
       updatedAt: '2026-11-09T12:00:00Z',
@@ -204,8 +225,97 @@ it('uses XOOMAR after both first sources reject and reports the source flags', a
   expect(response).toMatchObject({
     configured: true,
     source: 'xoomar',
-    staleSources: ['financecalendar', 'bls'],
+    staleSources: ['financecalendar', 'bls', 'bea'],
   });
   expect(response.events).toHaveLength(1);
+  expect(fetcher).toHaveBeenCalledTimes(4);
+});
+
+const beaIcs = `BEGIN:VCALENDAR\r
+VERSION:2.0\r
+BEGIN:VEVENT\r
+UID:bea-gdp\r
+SUMMARY:Gross Domestic Product\\, 3rd Quarter (Second Estima\r
+ te)\r
+DTSTART;VALUE=DATE-TIME:20261112T133000Z\r
+URL:https://www.bea.gov/news/schedule\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:bea-pce\r
+SUMMARY:Personal Income and Outlays\\, October\r
+DTSTART;TZID=America/New_York:20261113T083000\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:regional\r
+SUMMARY:Gross Domestic Product by State\r
+DTSTART:20261113T133000Z\r
+END:VEVENT\r
+END:VCALENDAR`;
+
+it('validates the official BEA schedule, folded lines, UTC and Eastern times', () => {
+  const now = Date.parse('2026-11-05T00:00:00Z');
+  const events = parseBeaCalendar(beaIcs, now);
+  expect(events.map((event) => event.time)).toEqual(['2026-11-12T13:30:00.000Z', '2026-11-13T13:30:00.000Z']);
+  expect(events[0]).toMatchObject({
+    title: 'Gross Domestic Product, 3rd Quarter (Second Estimate)',
+    forecast: '',
+    sourceName: 'U.S. Bureau of Economic Analysis',
+  });
+  expect(parseBeaCalendar(beaIcs.replace('20261112T133000Z', '20260230T133000Z'), now)).toHaveLength(1);
+  expect(parseBeaCalendar(beaIcs.replace('20261112T133000Z', '20261112'), now)).toHaveLength(1);
+  expect(() => parseBeaCalendar(beaIcs.replace('END:VCALENDAR', ''), now)).toThrow('malformed');
+});
+
+it('keeps an empty official backup available and skips an unconfigured keyed provider', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-05T00:00:00Z'));
+  vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', '');
+  const fetcher = vi.fn(async (input: string, options?: RequestInit) => {
+    expect(input).not.toContain('financecalendar.com');
+    if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
+    if (input.includes('bea.gov')) {
+      expect(options?.headers).toMatchObject({
+        accept: 'text/calendar',
+        'user-agent': expect.stringContaining('FluxDesk/'),
+      });
+      return new Response('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR');
+    }
+    return Response.json({ updatedAt: '2026-11-05T00:00:00Z', data: [] });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const result = await calendar();
+  expect(result).toMatchObject({ source: 'xoomar', events: [], staleSources: ['bls'] });
+  expect(result.sources).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: 'financecalendar', status: 'not_configured' }),
+      expect.objectContaining({ id: 'bea', status: 'live', eventCount: 0 }),
+      expect.objectContaining({ id: 'bls', status: 'unavailable', message: 'HTTP 403' }),
+    ]),
+  );
   expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+it('serves official BLS and BEA schedules if the broad feed fails and redacts credential errors', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-05T00:00:00Z'));
+  const secret = 'test-only-secret-not-for-response';
+  vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', secret);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      if (input.includes('financecalendar.com')) throw Error(`header value ${secret} rejected`);
+      if (input.includes('bls.gov')) return new Response(blsIcs);
+      if (input.includes('bea.gov')) return new Response(beaIcs);
+      return new Response('unavailable', { status: 503 });
+    }),
+  );
+  const result = await calendar();
+  expect(result.source).toBe('official');
+  expect(result.events).toHaveLength(3);
+  expect(result.events.map((event) => event.id)).toEqual(['bls:bls-cpi', 'bea:bea-gdp', 'bea:bea-pce']);
+  expect(JSON.stringify(result)).not.toContain(secret);
+  expect(result.sources[0]).toMatchObject({
+    status: 'unavailable',
+    message: 'Request or response validation failed',
+  });
 });

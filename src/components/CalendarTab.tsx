@@ -37,12 +37,32 @@ function CalendarTab() {
             {feed.data.source === 'bls' && (
               <p className="footnote">Source: official BLS schedule · partial coverage</p>
             )}
+            {(feed.data.source === 'bea' || feed.data.source === 'official') && (
+              <p className="footnote">
+                Source: official {feed.data.source === 'official' ? 'BLS and BEA' : 'BEA'} schedule · partial
+                coverage
+              </p>
+            )}
             {feed.data.source === 'xoomar' && (
               <p className="footnote">Source: XOOMAR US schedule · verify release times with the agency</p>
             )}
             {feed.data.staleSources?.length ? (
               <p className="footnote">Unavailable source: {feed.data.staleSources.join(', ')}</p>
             ) : null}
+            {feed.data.sources && (
+              <ul className="footnote" aria-label="Calendar source availability">
+                {feed.data.sources.map((source) => (
+                  <li key={source.id}>
+                    {source.name}:{' '}
+                    {source.status === 'live'
+                      ? `available · ${source.eventCount} upcoming releases`
+                      : source.status === 'not_configured'
+                        ? 'optional source not enabled'
+                        : `unavailable · ${source.message}`}
+                  </li>
+                ))}
+              </ul>
+            )}
             {feed.data?.events.length ? (
               feed.data.events.map((e) => (
                 <div className="event" key={e.id}>
@@ -125,19 +145,23 @@ function CalendarTab() {
           </>
         )}
         <p className="footnote">
-          Primary data by{' '}
+          Optional data by{' '}
           <a href="https://www.financecalendar.com" target="_blank" rel="noopener noreferrer">
             Finance Calendar
           </a>
-          ; fallback schedule by{' '}
+          ; official schedules by{' '}
           <a
             href="https://www.bls.gov/schedule/news_release/bls.ics"
             target="_blank"
             rel="noopener noreferrer"
           >
             U.S. Bureau of Labor Statistics
+          </a>{' '}
+          and{' '}
+          <a href="https://www.bea.gov/news/schedule/icalendar" target="_blank" rel="noopener noreferrer">
+            U.S. Bureau of Economic Analysis
           </a>
-          ; third source by{' '}
+          ; additional schedule by{' '}
           <a href="https://xoomar.com/markets/api/calendar" target="_blank" rel="noopener noreferrer">
             XOOMAR
           </a>
