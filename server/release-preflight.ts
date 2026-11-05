@@ -85,3 +85,31 @@ export function socialReleasePreflight(input: unknown, phase: 'staging' | 'live'
   return { schemaVersion: 1, phase, configurationReady: blockers.length === 0, blockers,
     limitation: 'Metadata only: verify actual values, OAuth callbacks, owner mapping, backend isolation, preview protection, health, and durable data before opening the domain.' };
 }
+
+/** Password accounts do not require OAuth provider credentials. */
+export function accountReleasePreflight(input: unknown, phase: 'staging' | 'live' = 'staging') {
+  const data = object(input), project = object(data.project), protection = object(project.ssoProtection);
+  const blockers: string[] = [];
+  if (project.id !== RELEASE_PROJECT || project.accountId !== RELEASE_TEAM || project.name !== 'fluxdesk')
+    blockers.push('Project/team does not match FluxDesk.');
+  const scope = phase === 'staging' ? 'all' : 'prod_deployment_urls_and_all_previews';
+  if (protection.enabled !== true || protection.deploymentType !== scope)
+    blockers.push('Protect all URLs in staging; retain Standard Protection for generated URLs and previews when live.');
+  if (!['22.x', '24.x'].includes(String(project.nodeVersion))) blockers.push('Verify the supported Node runtime.');
+  if (!Array.isArray(data.envs) || data.hiddenProductionEnvCount !== 0)
+    blockers.push('Complete environment metadata is required.');
+  const envs = Array.isArray(data.envs) ? data.envs.map(object) : [];
+  if (envs.some((env) => 'value' in env || 'decryptedValue' in env)) blockers.push('Remove credential values; metadata only.');
+  for (const key of ['FLUXDESK_BACKEND_URL', 'FLUXDESK_GATEWAY_TOKEN', 'FLUXDESK_ACCOUNT_AUTH', 'VITE_FLUXDESK_PUBLIC_MODE', 'FLUXDESK_PUBLIC_HOST']) {
+    const matches = envs.filter((env) => env.key === key && Array.isArray(env.target) && env.target.includes('production'));
+    if (matches.length !== 1) { blockers.push(`${key}: exactly one production configuration is required.`); continue; }
+    const env = matches[0]!;
+    if (env.gitBranch || !['plain', 'encrypted', 'sensitive'].includes(String(env.type)) ||
+        (key === 'FLUXDESK_GATEWAY_TOKEN' && env.type === 'plain') ||
+        (['FLUXDESK_GATEWAY_TOKEN', 'FLUXDESK_ACCOUNT_AUTH', 'VITE_FLUXDESK_PUBLIC_MODE'].includes(key) &&
+          (env.target as unknown[]).some((target) => target !== 'production')))
+      blockers.push(`${key}: invalid scope or storage type.`);
+  }
+  return { schemaVersion: 1, phase, configurationReady: blockers.length === 0, blockers,
+    limitation: 'Metadata only: verify accounts-v1 backend, persistent database, protected owner bootstrap, private-route denials, public reads and worker progress before opening the domain.' };
+}

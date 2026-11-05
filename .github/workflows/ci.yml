@@ -126,6 +126,10 @@ jobs:
         env:
           VITE_FLUXDESK_PUBLIC_MODE: 'true'
         run: pnpm exec playwright test e2e/public-access.spec.ts --project=chromium
+      - name: Registration, protected owner setup and recovery on desktop and mobile
+        env:
+          VITE_FLUXDESK_PUBLIC_MODE: 'true'
+        run: pnpm exec playwright test e2e/local-accounts.spec.ts
       - name: Production HTML hydration and chart startup
         run: pnpm exec playwright test --config playwright.production.config.ts
       - name: Preserve Playwright traces and screenshots

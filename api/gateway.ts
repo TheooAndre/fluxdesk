@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { isIP } from 'node:net';
 import { handleSocialAuth, sessionIdentity, socialMode } from './social-auth.ts';
+import { accountCookie, accountHost, accountMode, ownerSetupProof, ACCOUNT_COOKIE } from '../server/account-policy.ts';
 
 /**
  * Vercel Function gateway for the persistent FluxDesk API.
@@ -101,11 +103,31 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
   const requestedPath = apiPath(req, publicUrl);
   if (!requestedPath) return reply(res, 404, 'Unknown API endpoint');
   publicUrl.searchParams.delete('__fd_route');
-  if (socialMode() && await handleSocialAuth(req, res, requestedPath, publicUrl)) return;
+  // Vercel access-link parameters belong to its protection layer, never the API.
+  publicUrl.searchParams.delete('_vercel_share');
+  if (!accountMode() && socialMode() && await handleSocialAuth(req, res, requestedPath, publicUrl)) return;
   const upstream = backendOrigin();
   if (!upstream) return reply(res, 503, 'Private API backend is not configured');
-  const identity = socialMode() ? sessionIdentity(req) : null;
-  if (socialMode()) {
+  const identity = !accountMode() && socialMode() ? sessionIdentity(req) : null;
+  const setupHost = accountMode() && process.env.VERCEL_ENV === 'production' &&
+    host === process.env.VERCEL_URL && host !== accountHost();
+  if (accountMode()) {
+    if (host !== accountHost() && !setupHost) return reply(res, 403, 'Use the main FluxDesk app');
+    const publicReads = new Set(['health', 'markets', 'calendar', 'perpetual', 'candles', 'asset',
+      'signals', 'pair', 'correlations', 'liquidations']);
+    const authRoutes = new Set(['auth/session', 'auth/register', 'auth/register-owner', 'auth/login',
+      'auth/logout', 'auth/change-password', 'auth/recover']);
+    if (publicReads.has(requestedPath) && req.method !== 'GET') return reply(res, 405, 'Method not allowed');
+    if (requestedPath.startsWith('auth/') && !authRoutes.has(requestedPath))
+      return reply(res, 404, 'Unknown account endpoint');
+    if (requestedPath === 'auth/register-owner' && !setupHost)
+      return reply(res, 403, 'Owner setup requires the protected production setup page');
+    if (!publicReads.has(requestedPath) && !authRoutes.has(requestedPath)) {
+      if (!/^(journal|alerts|watchlist|push|research|statarb)(?:\/|$)/.test(requestedPath))
+        return reply(res, 404, 'Unknown API endpoint');
+      if (!accountCookie(req.headers.cookie)) return reply(res, 401, 'Sign in to use this feature');
+    }
+  } else if (socialMode()) {
     // Only the explicitly listed market/calendar endpoints are anonymously readable.
     const publicReads = new Set(['health', 'markets', 'calendar', 'perpetual', 'candles', 'asset',
       'signals', 'pair', 'correlations', 'liquidations']);
@@ -142,6 +164,14 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
         'content-type': 'application/json',
         'x-fluxdesk-gateway-token': process.env.FLUXDESK_GATEWAY_TOKEN!,
         'x-fluxdesk-public-host': host,
+        ...(accountMode() && accountCookie(req.headers.cookie) ? { cookie: accountCookie(req.headers.cookie)! } : {}),
+        ...(accountMode() && setupHost ? {
+          'x-fluxdesk-owner-setup': ownerSetupProof(host, '/api/' + requestedPath, req.method ?? 'GET'),
+        } : {}),
+        ...(accountMode() && typeof req.headers['x-vercel-forwarded-for'] === 'string' &&
+          isIP(req.headers['x-vercel-forwarded-for']) ? {
+            'x-fluxdesk-client-ip': req.headers['x-vercel-forwarded-for'],
+          } : {}),
         ...(identity ? { 'x-fluxdesk-user-id': identity.sub } : {}),
         ...(origin ? { origin } : {}),
       },
@@ -150,15 +180,22 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
     // No redirects: never forward the secret to any redirected destination.
     if (result.status >= 300 && result.status < 400)
       return reply(res, 502, 'Unexpected backend redirect');
-    if (socialMode() && result.headers.get('x-fluxdesk-access-mode') !== 'social-v1')
+    if (accountMode() && result.headers.get('x-fluxdesk-access-mode') !== 'accounts-v1')
+      return reply(res, 503, 'Account backend has not completed the access upgrade');
+    if (!accountMode() && socialMode() && result.headers.get('x-fluxdesk-access-mode') !== 'social-v1')
       return reply(res, 503, 'Public API backend has not completed the access upgrade');
     const responseBytes = await result.arrayBuffer();
     if (responseBytes.byteLength > MAX_RESPONSE_BYTES)
       return reply(res, 502, 'Backend response exceeds size limit');
+    const cookies = accountMode() ? result.headers.getSetCookie().filter((entry) =>
+      entry.startsWith(ACCOUNT_COOKIE + '=') && /;\s*HttpOnly(?:;|$)/i.test(entry) &&
+      /;\s*Secure(?:;|$)/i.test(entry) && /;\s*Path=\/(?:;|$)/i.test(entry) &&
+      !/;\s*Domain=/i.test(entry)) : [];
     res.writeHead(result.status, {
       'content-type': result.headers.get('content-type') ?? 'application/json; charset=utf-8',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
+      ...(cookies.length ? { 'set-cookie': cookies } : {}),
     });
     res.end(Buffer.from(responseBytes));
   } catch (error) {

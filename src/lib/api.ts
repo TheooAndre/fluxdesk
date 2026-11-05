@@ -78,11 +78,16 @@ export const api = {
     get<{
       authenticated: boolean;
       accountId: string | null;
-      provider: 'discord' | 'x' | null;
+      provider: 'discord' | 'x' | 'password' | null;
       name: string | null;
       owner: boolean;
-      providers: { discord: boolean; x: boolean };
+      providers: { discord: boolean; x: boolean; password?: boolean };
+      registrationOpen?: boolean;
+      ownerSetupAllowed?: boolean;
+      recoveryAvailable?: boolean;
     }>('/api/auth/session'),
+  account: (action: 'register' | 'register-owner' | 'login' | 'change-password' | 'recover', data: Record<string, string>) =>
+    postResearch<{ success: boolean; recoveryCode?: string }>(`/api/auth/${action}`, data, 30_000),
   signOut: () => request<{ authenticated: false }>('/api/auth/logout', { method: 'POST' }),
   health: (signal?: AbortSignal) => get<unknown>('/api/health', signal),
   importJournal: (data: JournalData) =>

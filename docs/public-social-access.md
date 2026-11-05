@@ -1,5 +1,7 @@
 # Public markets and social accounts: release procedure
 
+Email/password accounts are the provider-independent release path; see [account login](account-login.md). The OAuth procedure below is retained for optional future provider setup and is not required for registration.
+
 The production market dashboard and macro calendar can be read without an account. Journal, alerts, push subscriptions and saved markets require a signed Discord or X session. Research and stat-arb remain owner-only. The Northflank API still requires its existing gateway credential for **every** route, including public reads. The Vercel gateway sends a verified provider ID to the API only after it validates its own signed session; OAuth tokens never go to Northflank.
 
 ## Configure accounts without sharing credentials

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { publicMode } from './identity.ts';
+import { accountMode } from './account-policy.ts';
 
 /**
  * Authenticates requests delivered by our HTTPS frontend gateway.
@@ -42,7 +43,9 @@ export function authenticateGateway(
   const originHost = req.headers['x-fluxdesk-public-host'];
   if (typeof originHost !== 'string' || !HOST.test(originHost) || originHost.includes('..'))
     throw new GatewayAuthError('Invalid gateway host');
-  const supplied = req.headers['x-fluxdesk-user-id'];
+  // Local accounts are authenticated from their revocable database session,
+  // never a claimed identity header (including headers from older gateways).
+  const supplied = accountMode() ? undefined : req.headers['x-fluxdesk-user-id'];
   const userId = typeof supplied === 'string' && /^(discord|x):[0-9]{1,30}$/.test(supplied) ? supplied : undefined;
   if (publicMode() && supplied !== undefined && !userId)
     throw new GatewayAuthError('Invalid gateway identity');
