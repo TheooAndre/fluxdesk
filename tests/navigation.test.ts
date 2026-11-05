@@ -39,3 +39,12 @@ it('retains the investment tab deep link when restoring a different selected cry
   expect(useUi.getState().assetId).toBe('binance:SOLUSDT');
   expect(replaceState.mock.calls.at(-1)?.[2]).toContain('tab=investments');
 });
+it('opens the calendar from a macro notification deep link', async () => {
+  const { useUi, restoreAssetFromLocation } = await import('../src/lib/store.ts');
+  const location = new URL('https://example.test/?tab=calendar');
+  vi.stubGlobal('window', { location });
+  vi.stubGlobal('history', { replaceState: vi.fn() });
+  useUi.setState({ tab: 'overview' });
+  restoreAssetFromLocation();
+  expect(useUi.getState().tab).toBe('calendar');
+});

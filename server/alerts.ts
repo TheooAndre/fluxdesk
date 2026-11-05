@@ -2,6 +2,8 @@ import { candles, freshMarkets } from './market.ts';
 import { volumeSpikePct, crossedPriceLevel, priceRangeCrossing } from '../src/engine/stats.ts';
 import { snapshot, triggered } from './store.ts';
 import { deliver } from './notifications.ts';
+import { calendar } from './calendar.ts';
+import type { EconomicEvent } from '../src/types.ts';
 let running = false;
 // Polling only fires on crossings/new closed bars rather than repeatedly alerting on a static price.
 const lastPrice = new Map<string, number>();
@@ -13,6 +15,13 @@ export function disarmPriceAlert(id: string) {
   lastPrice.delete(id);
   seenVolumeBar.delete(id);
 }
+function reported(value: string): string {
+  return value.trim() || 'not supplied by source';
+}
+export function macroReleaseMessage(event: EconomicEvent, now = Date.now()): string {
+  const minutes = Math.max(0, Math.ceil((Date.parse(event.time) - now) / 60_000));
+  return `${event.country} macro in ${minutes}m — ${event.title}. Analyst consensus/forecast: ${reported(event.forecast)}. Previous: ${reported(event.previous)}.`;
+}
 export async function scanAlerts() {
   if (running) return;
   running = true;
@@ -22,8 +31,27 @@ export async function scanAlerts() {
     for (const id of lastPrice.keys()) if (!ids.has(id)) lastPrice.delete(id);
     for (const id of seenVolumeBar.keys()) if (!ids.has(id)) seenVolumeBar.delete(id);
     if (!rules.length) return;
+    const macroRules = rules.filter((rule) => rule.kind === 'macro');
+    if (macroRules.length) {
+      try {
+        const feed = await calendar(), now = Date.now();
+        for (const rule of macroRules) {
+          if (rule.kind !== 'macro') continue;
+          for (const event of feed.events) {
+            const releaseAt = Date.parse(event.time);
+            if (!Number.isFinite(releaseAt) || releaseAt < now || releaseAt - now > rule.leadMinutes * 60_000) continue;
+            const recorded = await triggered(rule, macroReleaseMessage(event, now), undefined, event.id);
+            if (recorded) await deliver(recorded);
+          }
+        }
+      } catch (error) {
+        console.error('Macro alert evaluation failure', error);
+      }
+    }
+    const marketRules = rules.filter((rule) => rule.kind !== 'macro');
+    if (!marketRules.length) return;
     const list = await freshMarkets();
-    for (const rule of rules) {
+    for (const rule of marketRules) {
       const priorPrice = lastPrice.get(rule.id),
         priorBar = seenVolumeBar.get(rule.id);
       let recorded = false;

@@ -38,7 +38,7 @@ export const useUi = create<Ui>((set) => ({
   model: 'all',
   setTab: (tab) => {
     const url = new URL(window.location.href);
-    if (tab === 'investments') url.searchParams.set('tab', tab);
+    if (tab === 'investments' || tab === 'calendar') url.searchParams.set('tab', tab);
     else url.searchParams.delete('tab');
     history.replaceState(null, '', url.pathname + url.search);
     set({ tab });
@@ -71,5 +71,5 @@ export function restoreAssetFromLocation() {
   const id = parameters.get('asset');
   if (id && /^(binance|hyperliquid):[A-Za-z0-9_]{1,32}$/.test(id) && id !== useUi.getState().assetId)
     useUi.getState().setAsset(id);
-  if (requestedTab === 'investments') useUi.getState().setTab('investments');
+  if (requestedTab === 'investments' || requestedTab === 'calendar') useUi.getState().setTab(requestedTab);
 }

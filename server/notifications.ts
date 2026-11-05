@@ -13,7 +13,7 @@ export async function deliver(event: AlertEvent) {
   const payload = JSON.stringify({
     title: 'FluxDesk alert',
     body: event.message,
-    url: `/?asset=${encodeURIComponent(event.assetId)}`,
+    url: event.kind === 'macro' ? '/?tab=calendar' : `/?asset=${encodeURIComponent(event.assetId)}`,
   });
   const subscriptions = snapshotFor(event.ownerId ?? ownerId()).subscriptions;
   let index = 0;
