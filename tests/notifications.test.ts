@@ -46,3 +46,17 @@ it('uses bounded concurrent push delivery and continues after expiration cleanup
     log.mockRestore();
   }
 });
+it('deep-links macro notifications to the calendar', async () => {
+  vi.stubEnv('VAPID_PUBLIC_KEY', 'public');
+  vi.stubEnv('VAPID_PRIVATE_KEY', 'private');
+  mocks.snapshot.mockReturnValue({
+    subscriptions: [{ endpoint: 'https://push.example/1', keys: { p256dh: 'key', auth: 'auth' } }],
+  });
+  mocks.send.mockResolvedValue(undefined);
+  const { deliver } = await import('../server/notifications.ts');
+  await deliver({
+    id: 'macro-event', assetId: 'macro:US', kind: 'macro', time: Date.now(),
+    message: 'US CPI · Consensus/forecast: 3.1% · Previous: 3.0%',
+  });
+  expect(JSON.parse(mocks.send.mock.calls[0]![1])).toMatchObject({ url: '/?tab=calendar' });
+});

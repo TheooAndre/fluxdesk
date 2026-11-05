@@ -16,6 +16,11 @@ type Row = {
 };
 type Payload = { data?: unknown; updatedAt?: unknown; meta?: { sourceAttribution?: unknown } };
 
+function metric(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : '';
+}
+
 export function parseXoomarCalendar(payload: Payload, now = Date.now()): EconomicEvent[] {
   if (!payload || !Array.isArray(payload.data) || typeof payload.updatedAt !== 'string')
     throw Error('XOOMAR calendar response malformed');
@@ -54,9 +59,9 @@ export function parseXoomarCalendar(payload: Payload, now = Date.now()): Economi
       country: 'US',
       title: row.eventName,
       importance: 3,
-      forecast: '',
-      previous: typeof row.previous === 'string' ? row.previous : '',
-      actual: typeof row.actual === 'string' ? row.actual : '',
+      forecast: metric(row.forecast),
+      previous: metric(row.previous),
+      actual: metric(row.actual),
       status: 'confirmed',
       sourceName: 'XOOMAR calendar',
       sourceUrl: XOOMAR_CALENDAR_URL,

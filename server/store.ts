@@ -79,22 +79,27 @@ export function setAlertEnabled(id: string, enabled: boolean, viewer?: string): 
           delete alert.lastTriggeredAboveAt;
           delete alert.lastTriggeredBelowAt;
         }
+        if (alert.kind === 'macro') delete alert.lastTriggeredEventId;
       }
     }
     return structuredClone(alert);
   });
 }
-export function triggered(rule: AlertRule, message: string, boundary?: 'above' | 'below') {
+export function triggered(rule: AlertRule, message: string, boundary?: 'above' | 'below', eventId?: string) {
   return change((next) => {
     const original = next.alerts.find((x) => x.id === rule.id);
     if (!original || !original.enabled) return null;
     const now = Date.now();
     let last = original.lastTriggeredAt;
-    if (original.kind === 'price_range') {
+    if (original.kind === 'macro') {
+      if (!eventId) throw Error('Macro alerts require an event ID');
+      if (original.lastTriggeredEventId === eventId) return null;
+      original.lastTriggeredEventId = eventId;
+    } else if (original.kind === 'price_range') {
       if (!boundary) throw Error('Range alerts require a crossed boundary');
       last = boundary === 'above' ? original.lastTriggeredAboveAt : original.lastTriggeredBelowAt;
     }
-    if (last !== undefined && now - last < 300_000) return null;
+    if (original.kind !== 'macro' && last !== undefined && now - last < 300_000) return null;
     if (original.kind === 'price_range') {
       if (boundary === 'above') original.lastTriggeredAboveAt = now;
       else original.lastTriggeredBelowAt = now;

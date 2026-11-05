@@ -719,6 +719,32 @@ test('price range alert validates bounds, saves, reloads and removes', async ({ 
   await page.getByRole('button', { name: 'Delete alert', exact: true }).click();
   await expect(page.getByText('No alert rules. Choose a rule on the left.', { exact: true })).toBeVisible();
 });
+test('macro alert previews and saves analyst consensus plus previous values', async ({ page }) => {
+  let rules: Record<string, unknown>[] = [];
+  await page.route('**/api/calendar', route => route.fulfill({ json: {
+    configured: true, source: 'xoomar', events: [{
+      id: 'cpi', time: new Date(Date.now() + 86_400_000).toISOString(), country: 'US',
+      title: 'Consumer Price Index', importance: 3, forecast: '3.1%', previous: '3.0%', actual: '',
+    }],
+  } }));
+  await page.route('**/api/alerts', async route => {
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      expect(input).toEqual({ assetId: 'macro:US', kind: 'macro', leadMinutes: 30, repeat: true });
+      const alert = { ...input, id: crypto.randomUUID(), createdAt: Date.now(), enabled: true };
+      rules = [alert]; await route.fulfill({ status: 201, json: { alert } });
+    } else await route.fulfill({ json: { alerts: rules, events: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Alert type', exact: true }).selectOption('macro');
+  await expect(page.getByLabel('Macro alert coverage')).toHaveValue('US high-impact macro releases');
+  await expect(page.getByText(/Consumer Price Index · Consensus\/forecast: 3.1% · Previous: 3.0%/)).toBeVisible();
+  await page.getByRole('combobox', { name: 'Notify before release', exact: true }).selectOption('30');
+  await expect(page.getByLabel('Keep active for future releases')).toBeChecked();
+  await page.getByRole('button', { name: 'Create alert', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toContainText('30m before · consensus/forecast + previous');
+});
 
 test('price level direction follows the selected level and displays the server-confirmed rule', async ({ page }) => {
   const rules: Record<string, unknown>[] = [];

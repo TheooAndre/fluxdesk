@@ -176,7 +176,7 @@ it('validates the attributed third-source schedule and rejects stale or untimed 
         importance: 'high',
         scheduledAt: '2026-11-11T13:30:00Z',
         previous: '3.0%',
-        forecast: null,
+        forecast: '3.1%',
       },
       { source: 'fed', eventName: 'Minor speech', importance: 'low', scheduledAt: '2026-11-11T15:00:00Z' },
     ],
@@ -185,7 +185,7 @@ it('validates the attributed third-source schedule and rejects stale or untimed 
     {
       title: 'Consumer Price Index',
       time: '2026-11-11T13:30:00.000Z',
-      forecast: '',
+      forecast: '3.1%',
       previous: '3.0%',
       licenseCredit: 'Data: XOOMAR',
       rightsCredit: 'Release dates and figures: official agencies.',

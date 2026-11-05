@@ -88,7 +88,7 @@ export type PairStats = {
   note: string;
 };
 export type PairCandidate = { id: string; correlation: number; zScore: number; beta: number; points: number };
-export type AlertKind = 'price' | 'price_range' | 'volume' | 'liquidation';
+export type AlertKind = 'price' | 'price_range' | 'volume' | 'liquidation' | 'macro';
 export type AlertCondition =
   | {
       kind: 'price_range';
@@ -97,7 +97,8 @@ export type AlertCondition =
       lastTriggeredAboveAt?: number;
       lastTriggeredBelowAt?: number;
     }
-  | { kind: Exclude<AlertKind, 'price_range'>; threshold: number; direction?: 'above' | 'below'; referencePrice?: number };
+  | { kind: 'macro'; leadMinutes: 5 | 15 | 30 | 60; lastTriggeredEventId?: string }
+  | { kind: Exclude<AlertKind, 'price_range' | 'macro'>; threshold: number; direction?: 'above' | 'below'; referencePrice?: number };
 export type AlertInput = { assetId: string; repeat?: boolean } & AlertCondition;
 export type AlertRule = AlertCondition & {
   id: string;

@@ -245,12 +245,16 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === '/api/alerts' && req.method === 'POST') {
       const o = await body(req),
         kind = o.kind as AlertKind;
-      if (!['price', 'price_range', 'volume', 'liquidation'].includes(kind)) throw Error('Invalid alert type');
-      const assetId = validatedId(String(o.assetId ?? ''));
+      if (!['price', 'price_range', 'volume', 'liquidation', 'macro'].includes(kind)) throw Error('Invalid alert type');
+      const assetId = kind === 'macro' ? 'macro:US' : validatedId(String(o.assetId ?? ''));
       if (kind === 'liquidation' && !assetId.startsWith('binance:'))
         throw Error('Public market-wide Hyperliquid liquidations are not available from this connector');
       let condition: AlertCondition;
-      if (kind === 'price_range') {
+      if (kind === 'macro') {
+        const leadMinutes = Number(o.leadMinutes);
+        if (![5, 15, 30, 60].includes(leadMinutes)) throw Error('Invalid macro alert lead time');
+        condition = { kind, leadMinutes: leadMinutes as 5 | 15 | 30 | 60 };
+      } else if (kind === 'price_range') {
         if (typeof o.lowerPrice !== 'number' || typeof o.upperPrice !== 'number')
           throw Error('Invalid price range: both bounds must be numbers');
         const lowerPrice = positiveNumber(o.lowerPrice), upperPrice = positiveNumber(o.upperPrice);
@@ -271,7 +275,8 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         } else condition = { kind, threshold };
       }
       const a: AlertRule = {
-        id: randomUUID(), assetId, ...condition, enabled: true, repeat: o.repeat === true, createdAt: Date.now(),
+        id: randomUUID(), assetId, ...condition, enabled: true,
+        repeat: kind === 'macro' ? o.repeat !== false : o.repeat === true, createdAt: Date.now(),
         ...(publicMode() ? { ownerId: access.userId } : {}),
       };
       if (o.repeat !== undefined && typeof o.repeat !== 'boolean') throw Error('Invalid repeat option');
