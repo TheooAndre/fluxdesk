@@ -20,7 +20,7 @@ function reported(value: string): string {
 }
 export function macroReleaseMessage(event: EconomicEvent, now = Date.now()): string {
   const minutes = Math.max(0, Math.ceil((Date.parse(event.time) - now) / 60_000));
-  return `${event.country} macro in ${minutes}m — ${event.title}. Analyst consensus/forecast: ${reported(event.forecast)}. Previous: ${reported(event.previous)}.`;
+  return `${event.country} macro in ${minutes}m — ${event.title}. Analyst consensus: ${reported(event.forecast)}. Provider forecast: ${reported(event.providerForecast ?? '')}. Previous: ${reported(event.previous)}.`;
 }
 export async function scanAlerts() {
   if (running) return;

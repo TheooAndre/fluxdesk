@@ -15,10 +15,10 @@ vi.mock('../server/market.ts', async (original) => ({
 }));
 let server: Server, origin = '', directory = '', now = 0;
 let scanner: typeof import('../server/alerts.ts'), store: typeof import('../server/store.ts');
-function release(id: string, forecast = '3.1%', previous = '3.0%'): EconomicEvent {
+function release(id: string, forecast = '3.1%', previous = '3.0%', providerForecast = '3.2%'): EconomicEvent {
   return {
     id, time: new Date(now + 10 * 60_000).toISOString(), country: 'US', title: 'Consumer Price Index',
-    importance: 3, forecast, previous, actual: '',
+    importance: 3, forecast, providerForecast, previous, actual: '',
   };
 }
 beforeEach(async () => {
@@ -59,21 +59,21 @@ it('delivers consensus and previous values once per release, including simultane
   await create(); await scanner.scanAlerts(); await scanner.scanAlerts();
   expect(feed.deliver).toHaveBeenCalledTimes(1);
   expect(feed.deliver.mock.calls[0]![0].message).toBe(
-    'US macro in 10m — Consumer Price Index. Analyst consensus/forecast: 3.1%. Previous: 3.0%.',
+    'US macro in 10m — Consumer Price Index. Analyst consensus: 3.1%. Provider forecast: 3.2%. Previous: 3.0%.',
   );
-  feed.events = [release('cpi'), { ...release('employment', '180K', '175K'), title: 'Employment Situation' }];
+  feed.events = [release('cpi'), { ...release('employment', '180K', '175K', '182K'), title: 'Employment Situation' }];
   await scanner.scanAlerts();
   expect(feed.deliver).toHaveBeenCalledTimes(2);
-  expect(feed.deliver.mock.calls[1]![0].message).toContain('Analyst consensus/forecast: 180K. Previous: 175K.');
+  expect(feed.deliver.mock.calls[1]![0].message).toContain('Analyst consensus: 180K. Provider forecast: 182K. Previous: 175K.');
   expect(store.snapshot().alerts[0]).toMatchObject({ lastTriggeredEventId: 'employment', enabled: true });
 });
 it('marks unavailable provider values explicitly instead of guessing them', async () => {
-  feed.events = [release('cpi', '', '')];
+  feed.events = [release('cpi', '', '', '')];
   await create({ repeat: false, leadMinutes: 5 });
   feed.events[0]!.time = new Date(now + 4 * 60_000).toISOString();
   await scanner.scanAlerts();
   expect(feed.deliver.mock.calls[0]![0].message).toContain(
-    'Analyst consensus/forecast: not supplied by source. Previous: not supplied by source.',
+    'Analyst consensus: not supplied by source. Provider forecast: not supplied by source. Previous: not supplied by source.',
   );
   expect(store.snapshot().alerts[0]).toMatchObject({ enabled: false, repeat: false });
 });

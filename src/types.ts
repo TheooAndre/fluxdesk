@@ -117,7 +117,10 @@ export type EconomicEvent = {
   country: string;
   title: string;
   importance: 3;
+  /** Survey consensus forecast. */
   forecast: string;
+  /** Provider/model forecast when it is distinct from survey consensus. */
+  providerForecast?: string;
   previous: string;
   actual: string;
   status?: string;
