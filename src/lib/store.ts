@@ -66,8 +66,10 @@ export const useUi = create<Ui>((set) => ({
  * have identical state. Queries are enabled only after this runs. */
 export function restoreAssetFromLocation() {
   if (typeof window === 'undefined') return;
-  if (new URLSearchParams(window.location.search).get('tab') === 'investments') useUi.getState().setTab('investments');
-  const id = new URLSearchParams(window.location.search).get('asset');
+  const parameters = new URLSearchParams(window.location.search);
+  const requestedTab = parameters.get('tab');
+  const id = parameters.get('asset');
   if (id && /^(binance|hyperliquid):[A-Za-z0-9_]{1,32}$/.test(id) && id !== useUi.getState().assetId)
     useUi.getState().setAsset(id);
+  if (requestedTab === 'investments') useUi.getState().setTab('investments');
 }
