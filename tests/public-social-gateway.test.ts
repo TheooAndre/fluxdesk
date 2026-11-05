@@ -108,7 +108,8 @@ describe('public market and private account gateway', () => {
     expect(sessionCookie).toContain('HttpOnly; Secure; SameSite=Lax');
     const session = sessionCookie.split(';')[0]!;
     const info = await call(port, '/api/auth/session', { cookie: session });
-    expect(JSON.parse(info.body)).toMatchObject({ authenticated: true, provider, owner: provider === 'discord' });
+    expect(JSON.parse(info.body)).toMatchObject({ authenticated: true, accountId: `${provider}:111`,
+      provider, owner: provider === 'discord' });
     const journal = await call(port, '/api/journal', { cookie: session, userId: 'discord:999' });
     expect(journal.status).toBe(200);
     const [, forwarded] = mock.mock.calls.at(-1)! as unknown as [URL, RequestInit];

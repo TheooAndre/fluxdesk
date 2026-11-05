@@ -14,7 +14,8 @@ test('public markets/calendar render without fetching private data, then session
     return route.fulfill({ status: 404, json: { error: 'Mock route absent' } });
   });
   await page.route('**/api/auth/session', route => route.fulfill({ json: {
-    authenticated, provider: authenticated ? 'discord' : null, name: authenticated ? 'Owner' : null,
+    authenticated, accountId: authenticated ? 'discord:111' : null,
+    provider: authenticated ? 'discord' : null, name: authenticated ? 'Owner' : null,
     owner: authenticated, providers: { discord: true, x: true },
   } }));
   await page.route('**/api/health', route => {

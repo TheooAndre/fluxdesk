@@ -103,7 +103,8 @@ export async function handleSocialAuth(req: IncomingMessage, res: ServerResponse
     if (req.method !== 'GET') json(res, 405, { error: 'Method not allowed' });
     else {
       const session = sessionIdentity(req);
-      json(res, 200, { authenticated: !!session, provider: session?.provider ?? null,
+      json(res, 200, { authenticated: !!session, accountId: session?.sub ?? null,
+        provider: session?.provider ?? null,
         name: session?.name ?? null, owner: !!session && session.sub === process.env.FLUXDESK_OWNER_SUB,
         providers: { discord: !!providerConfig('discord'), x: !!providerConfig('x') } });
     }
