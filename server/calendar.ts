@@ -1,6 +1,7 @@
 import type { EconomicEvent } from '../src/types.ts';
-import { getJson } from './market.ts';
+import { getJson, UpstreamError } from './market.ts';
 import { fetchBlsCalendar } from './bls-calendar.ts';
+import { fetchBeaCalendar } from './bea-calendar.ts';
 import { fetchXoomarCalendar } from './xoomar-calendar.ts';
 
 const BASE = 'https://www.financecalendar.com/wp-json/fc/v1/calendar';
@@ -33,8 +34,17 @@ type SourceResponse = { events?: unknown; total?: unknown };
 export type CalendarResponse = {
   configured: boolean;
   events: EconomicEvent[];
-  source: 'financecalendar' | 'bls' | 'xoomar' | 'cached' | 'unavailable';
+  source: 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
   staleSources: string[];
+  sources: CalendarSourceCheck[];
+  message?: string;
+};
+export type CalendarSourceCheck = {
+  id: 'financecalendar' | 'bls' | 'bea' | 'xoomar';
+  name: string;
+  status: 'live' | 'unavailable' | 'not_configured';
+  checkedAt: number;
+  eventCount?: number;
   message?: string;
 };
 let cache: { at: number; day: string; value: CalendarResponse } | null = null;
@@ -109,68 +119,120 @@ export function parseCalendar(json: SourceResponse, now = Date.now()): EconomicE
   return events.sort((a, b) => a.time.localeCompare(b.time));
 }
 
-async function refresh(day: string, now: number): Promise<CalendarResponse> {
+type SourceResult = { check: CalendarSourceCheck; events: EconomicEvent[] | null };
+
+async function checkSource(
+  id: CalendarSourceCheck['id'],
+  name: string,
+  fetchEvents: () => Promise<EconomicEvent[]>,
+): Promise<SourceResult> {
   try {
+    const events = await fetchEvents();
+    return { check: { id, name, status: 'live', checkedAt: Date.now(), eventCount: events.length }, events };
+  } catch (error) {
+    // Never return arbitrary exceptions: header validation errors can contain a credential.
+    const message =
+      error instanceof UpstreamError
+        ? `HTTP ${error.status}`
+        : error instanceof Error &&
+            (error.name === 'AbortError' || error.message.endsWith('request timed out'))
+          ? 'Request timed out'
+          : 'Request or response validation failed';
+    return { check: { id, name, status: 'unavailable', checkedAt: Date.now(), message }, events: null };
+  }
+}
+
+async function financeCalendar(day: string, now: number): Promise<SourceResult> {
+  const key = process.env.FLUXDESK_FINANCE_CALENDAR_API_KEY?.trim();
+  if (!key)
+    return {
+      check: {
+        id: 'financecalendar',
+        name: 'Finance Calendar',
+        status: 'not_configured',
+        checkedAt: Date.now(),
+        message: 'Optional API key not configured',
+      },
+      events: null,
+    };
+  return checkSource('financecalendar', 'Finance Calendar', async () => {
+    if (!/^[\x21-\x7e]+$/.test(key)) throw Error('Invalid API key format');
     const url = new URL(BASE);
     url.searchParams.set('country', 'US');
     url.searchParams.set('impact', 'high');
     url.searchParams.set('from', day);
     url.searchParams.set('to', new Date(now + 14 * 86_400_000).toISOString().slice(0, 10));
     url.searchParams.set('limit', '500');
-    const result = await getJson<SourceResponse>(url.href);
+    const result = await getJson<SourceResponse>(url.href, {
+      headers: { 'X-API-Key': key },
+      redirect: 'error',
+    });
+    return parseCalendar(result, now);
+  });
+}
+
+async function refresh(day: string, now: number): Promise<CalendarResponse> {
+  // Check independent schedules together so one denied/slow provider cannot
+  // hide a working backup or multiply the nine-second request deadline.
+  const [finance, bls, bea, xoomar] = await Promise.all([
+    financeCalendar(day, now),
+    checkSource('bls', 'BLS', () => fetchBlsCalendar(now)),
+    checkSource('bea', 'BEA', () => fetchBeaCalendar(now)),
+    checkSource('xoomar', 'XOOMAR', () => fetchXoomarCalendar(now)),
+  ]);
+  const sources = [finance, bls, bea, xoomar].map((result) => result.check);
+  // An optional provider without a key is not an attempted failed request.
+  const staleSources = sources.filter((source) => source.status === 'unavailable').map((source) => source.id);
+  const failures = sources
+    .filter((source) => source.status === 'unavailable')
+    .map((source) => `${source.name}: ${source.message}`)
+    .join('; ');
+  let source: CalendarResponse['source'], events: EconomicEvent[];
+  if (finance.events !== null) {
+    source = 'financecalendar';
+    events = finance.events;
+  } else if (xoomar.events !== null) {
+    source = 'xoomar';
+    events = xoomar.events;
+  } else if (bls.events !== null || bea.events !== null) {
+    source = bls.events !== null && bea.events !== null ? 'official' : bls.events !== null ? 'bls' : 'bea';
+    events = [...(bls.events ?? []), ...(bea.events ?? [])].sort((a, b) => a.time.localeCompare(b.time));
+  } else {
+    const recent = cache?.day === day && now - cache.at < 2 * 60 * 60_000;
     const value: CalendarResponse = {
       configured: true,
-      events: parseCalendar(result, now),
-      source: 'financecalendar',
-      staleSources: [],
+      events: recent
+        ? cache!.value.events
+            .filter((event) => Date.parse(event.time) >= now)
+            .map((event) => ({ ...event, stale: true }))
+        : [],
+      source: recent ? 'cached' : 'unavailable',
+      sources,
+      staleSources,
+      message: `Calendar sources unavailable${recent ? '; showing earlier results (may have changed)' : ''}: ${failures}`,
     };
-    cache = { at: Date.now(), day, value };
-    failure = null;
+    failure = { at: Date.now(), day, value };
     return value;
-  } catch (e) {
-    try {
-      const events = await fetchBlsCalendar(now);
-      const value: CalendarResponse = {
-        configured: true,
-        events,
-        source: 'bls',
-        staleSources: ['financecalendar'],
-        message: `Finance Calendar unavailable: ${(e as Error).message}. Showing a partial official BLS release schedule; Fed and BEA events, forecasts and prior values are not covered.`,
-      };
-      cache = { at: Date.now(), day, value };
-      failure = null;
-      return value;
-    } catch (fallbackError) {
-      try {
-        const events = await fetchXoomarCalendar(now);
-        const value: CalendarResponse = {
-          configured: true,
-          events,
-          source: 'xoomar',
-          staleSources: ['financecalendar', 'bls'],
-          message:
-            'Finance Calendar and BLS unavailable. Showing the attributed XOOMAR US schedule; verify release times with the originating agency.',
-        };
-        cache = { at: Date.now(), day, value };
-        failure = null;
-        return value;
-      } catch (thirdError) {
-        // A bounded last-good response stays visible, but is never represented as fresh.
-        const recent = cache?.day === day && Date.now() - cache.at < 2 * 60 * 60_000;
-        const value: CalendarResponse = {
-          configured: true,
-          events: recent
-            ? cache!.value.events.filter((x) => Date.parse(x.time) >= now).map((x) => ({ ...x, stale: true }))
-            : [],
-          source: recent ? 'cached' : 'unavailable',
-          staleSources: ['financecalendar', 'bls', 'xoomar'],
-          message: `Calendar sources unavailable${recent ? '; showing earlier results (may have changed)' : ''}: Finance Calendar: ${(e as Error).message}; BLS: ${(fallbackError as Error).message}; XOOMAR: ${(thirdError as Error).message}`,
-        };
-        failure = { at: Date.now(), day, value };
-        return value;
-      }
-    }
   }
+  const description =
+    source === 'financecalendar'
+      ? ''
+      : source === 'xoomar'
+        ? 'Showing the attributed XOOMAR US schedule; verify release times with the originating agency.'
+        : `Showing a partial official ${source === 'official' ? 'BLS and BEA' : source.toUpperCase()} release schedule; other agencies, forecasts and prior values are not covered.`;
+  const value: CalendarResponse = {
+    configured: true,
+    events,
+    source,
+    sources,
+    staleSources,
+    message:
+      [failures ? `Unavailable calendar sources: ${failures}.` : '', description].filter(Boolean).join(' ') ||
+      undefined,
+  };
+  cache = { at: Date.now(), day, value };
+  failure = null;
+  return value;
 }
 
 export async function calendar(): Promise<CalendarResponse> {
