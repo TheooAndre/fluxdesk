@@ -138,6 +138,7 @@ function StockEditor({
             <label>
               Thesis status
               <select
+                aria-label="Thesis status"
                 value={draft.status}
                 onChange={(e) => set('status', e.target.value as InvestmentStock['status'])}
               >
@@ -187,6 +188,7 @@ function StockEditor({
             <label key={key}>
               {label}
               <textarea
+                aria-label={label}
                 rows={3}
                 maxLength={key === 'notes' ? 6000 : key === 'thesis' ? 4000 : 3000}
                 value={draft[key]}
@@ -197,6 +199,7 @@ function StockEditor({
           <label>
             Research sources · label | HTTPS URL
             <textarea
+              aria-label="Research sources"
               rows={3}
               value={sources}
               maxLength={22000}
@@ -279,6 +282,7 @@ function PortfolioEditor({
           <label>
             Thesis description
             <textarea
+              aria-label="Thesis description"
               rows={4}
               maxLength={6000}
               value={draft.description}
@@ -288,6 +292,7 @@ function PortfolioEditor({
           <label>
             Fundamental relationships / demand engines
             <textarea
+              aria-label="Fundamental relationships / demand engines"
               rows={5}
               maxLength={8000}
               value={draft.relationships}
@@ -498,6 +503,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
         <label className="investment-select">
           Select investment thesis
           <select
+            aria-label="Select investment thesis"
             value={portfolio?.id ?? ''}
             disabled={busy}
             onChange={(e) => {
