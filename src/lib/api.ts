@@ -1,5 +1,6 @@
 import type { JournalData, JournalTrade, JournalDay } from '../journal/model.ts';
 import type { ScanConfig, ScanJob } from '../../server/statarb-scanner.ts';
+import type { CalendarSourceCheck } from '../../server/calendar.ts';
 import type {
   AlertEvent,
   AlertRule,
@@ -167,8 +168,9 @@ export const api = {
     get<{
       configured: boolean;
       events: EconomicEvent[];
-      source?: 'financecalendar' | 'bls' | 'xoomar' | 'cached' | 'unavailable';
+      source?: 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
       staleSources?: string[];
+      sources?: CalendarSourceCheck[];
       message?: string;
     }>('/api/calendar'),
   liquidations: (asset: string) =>
