@@ -1,7 +1,9 @@
 # Encrypted backup and isolated restore
 
 The application archive tool backs up `state.json` (alerts, events and push
-subscriptions), `watchlist.json`, `journal.json` and up to 100 immutable research datasets.
+subscriptions), the owner's `watchlist.json` and `journal.json`, each social
+account's `users/<hashed-id>/watchlist.json` and `journal.json`, and up to 100
+immutable research datasets.
 It excludes environment files, credentials, temporary files and provider volume
 identity. Dataset filenames and SHA-256 fingerprints are verified before backup
 and again before restore. Archives use AES-256-GCM, a random salt/nonce and a
@@ -41,7 +43,8 @@ checks inclusion and schema validity, not whether a particular trade was saved.
 Successful commands print `filePaths`, `createdAt` and `archiveSha256` alongside
 the file count and dataset IDs. Compare the same archive's receipts on the host
 and computer: the SHA-256 must match your independent `shasum -a 256` result and
-`filePaths` must include `journal.json`. Receipts contain metadata only, never
+`filePaths` must include `journal.json` and the expected social account paths
+after those accounts have saved records. Receipts contain metadata only, never
 journal contents, passwords or subscription keys. They are not a substitute for
 the actual isolated restore. Use the updated CLI on both machines; earlier
 revisions do not support this option or the expanded receipt.
@@ -61,11 +64,12 @@ a live cloud volume.
 
 ## Scope and limits
 
-- Passive backups capture atomic state/watchlist files and immutable datasets
+- Passive backups capture atomic state/journal/watchlist files and immutable datasets
   individually; they are not a global transaction across all resources.
 - The bounded tool supports a 16 MiB uncompressed manifest/source budget and
-  100 datasets. An oversized or corrupted archive fails instead of producing a
-  partial backup. Larger archives require a separate streaming-volume backup.
+  100 datasets and 100 hashed user directories. An oversized or corrupted
+  archive fails instead of producing a partial backup. Larger archives require
+  a separate streaming-volume backup.
 - Copy the encrypted `.fdbackup` file to an independent offsite destination;
   keeping it only on the same volume does not provide disaster recovery.
 - Destination selected by owner: an encrypted copy on the owner’s computer.

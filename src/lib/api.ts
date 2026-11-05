@@ -73,6 +73,9 @@ const postResearch = <T>(url: string, payload: unknown, timeoutMs = 90_000, erro
     errorPrefix,
   );
 export const api = {
+  session: () => get<{ authenticated: boolean; accountId: string | null; provider: 'discord' | 'x' | null;
+    name: string | null; owner: boolean; providers: { discord: boolean; x: boolean } }>('/api/auth/session'),
+  signOut: () => request<{ authenticated: false }>('/api/auth/logout', { method: 'POST' }),
   health: (signal?: AbortSignal) => get<unknown>('/api/health', signal),
   importJournal: (data: JournalData) =>
     postResearch<{ imported: number; skipped: number }>('/api/journal/import', data),

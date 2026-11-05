@@ -30,6 +30,20 @@ const JournalTab = lazy(() => import('./components/JournalTab.tsx'));
 const PairsTab = lazy(() => import('./components/PairsTab.tsx'));
 const AlertsTab = lazy(() => import('./components/AlertsTab.tsx'));
 const CalendarTab = lazy(() => import('./components/CalendarTab.tsx'));
+const publicUi = import.meta.env.VITE_FLUXDESK_PUBLIC_MODE === 'true';
+type ProviderAvailability = { discord: boolean; x: boolean };
+function SignInPrompt({ title, providers }: { title: string; providers?: ProviderAvailability }) {
+  return <Card title={title}>
+    <p>Sign in to keep your journal, alerts and saved markets in your own account.</p>
+    {providers && !providers.discord && !providers.x ?
+      <p className="footnote" role="status">Sign-in is being configured. Market pages and the calendar are available.</p> :
+      <div className="row-between mt-3">
+        {providers?.discord && <a className="secondary" href="/api/auth/discord">Continue with Discord</a>}
+        {providers?.x && <a className="secondary" href="/api/auth/x">Continue with X</a>}
+      </div>}
+    <p className="footnote">Each provider has a separate FluxDesk account. Use the same provider to return to your records.</p>
+  </Card>;
+}
 const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'overview', label: 'Markets', icon: BarChart3 },
   { id: 'signals', label: 'Entry models', icon: Zap },
@@ -500,6 +514,11 @@ function App() {
   const [overviewPanel, setOverviewPanel] = useState<'chart' | 'categories'>('chart');
   const [booted, setBooted] = useState(false);
   const [offline, setOffline] = useState(false);
+  const session = useQuery({ queryKey: ['session'], queryFn: api.session, enabled: publicUi,
+    refetchInterval: 60_000, retry: false });
+  const signedIn = !publicUi || session.data?.authenticated === true;
+  const owner = !publicUi || session.data?.owner === true;
+  const navigation = NAV.filter((x) => owner || !['research', 'statarb'].includes(x.id));
   const { ui, mk, asset, selected } = useDashboard(booted);
   const worker = useQuery({
     queryKey: ['passive-health'],
@@ -512,7 +531,7 @@ function App() {
     refetchOnReconnect: 'always',
     retry: 1,
   });
-  const watchlist = useWatchlist(booted && ui.tab === 'overview');
+  const watchlist = useWatchlist(booted && ui.tab === 'overview' && signedIn);
   useEffect(() => {
     restoreAssetFromLocation();
     setBooted(true);
@@ -561,7 +580,7 @@ function App() {
         </a>
         <div className="nav-label">WORKSPACE</div>
         <nav aria-label="Main navigation">
-          {NAV.map((x) => (
+          {navigation.map((x) => (
             <button
               key={x.id}
               className={'nav-link ' + (ui.tab === x.id ? 'current' : '')}
@@ -577,6 +596,10 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          {publicUi && (session.data?.authenticated ? <button className="secondary" type="button"
+            onClick={() => void api.signOut().then(() => window.location.reload())}>
+            Sign out · {session.data.name || session.data.provider}
+          </button> : <span className="small-label">Public market view</span>)}
           <div className="notice tiny-notice">
             <ShieldAlert size={16} /> Research only · No auto-trading
           </div>
@@ -596,6 +619,8 @@ function App() {
             Workspace <ChevronRight size={14} /> <b>{NAV.find((x) => x.id === ui.tab)?.label}</b>
           </div>
           <div className="top-actions">
+            {publicUi && !signedIn && (session.data?.providers.discord || session.data?.providers.x) &&
+              <a className="secondary" href={session.data.providers.discord ? '/api/auth/discord' : '/api/auth/x'}>Sign in</a>}
             <span className="top-status">
               <span className={'live-dot ' + (degraded ? 'error-dot' : '')} />
               {degraded ? 'Updates need attention' : workerStatus ? 'Feeds + worker · ~10s' : 'Checking updates'}
@@ -684,12 +709,12 @@ function App() {
           {ui.tab === 'overview' && (
             <div className="content-stack">
               <TerminalLayouts />
-              <Suspense fallback={<Loading label="Loading saved markets…" />}>
+              {signedIn ? <Suspense fallback={<Loading label="Loading saved markets…" />}>
                 <Watchlist assets={mk.data?.assets ?? []} ids={watchlist.assetIds} now={now}
                   loading={watchlist.query.isPending} error={watchlist.change.error ?? watchlist.query.error}
                   disabled={offline || watchlist.change.isPending} onSelect={ui.setAsset}
                   onRemove={(id) => watchlist.change.mutate({ id, add: false })} />
-              </Suspense>
+              </Suspense> : null}
               <Snapshot assets={mk.data?.assets ?? []} benchmark={benchmark} isUsd={ui.benchmark === 'USD'} />
               <div className="overview-tabs" role="group" aria-label="Market workspace view">
                 <button className={overviewPanel === 'chart' ? 'active' : ''} aria-pressed={overviewPanel === 'chart'} onClick={() => setOverviewPanel('chart')}>Chart</button>
@@ -713,7 +738,7 @@ function App() {
                 isUsd={ui.benchmark === 'USD'}
                 selectedId={ui.assetId}
                 watchlistIds={watchlist.assetIds}
-                watchlistDisabled={offline || watchlist.query.isPending || watchlist.query.isError || watchlist.change.isPending}
+                watchlistDisabled={!signedIn || offline || watchlist.query.isPending || watchlist.query.isError || watchlist.change.isPending}
                 onToggleWatchlist={(id) => watchlist.change.mutate({ id, add: !watchlist.assetIds.includes(id) })}
               />
             </div>
@@ -734,18 +759,18 @@ function App() {
               <PairsTab key={ui.assetId} item={selected} assets={mk.data?.assets ?? []} />
             </Suspense>
           )}
-          {ui.tab === 'statarb' && <Suspense fallback={<Loading label="Loading stat-arb scanner…"/>}><StatArbScanner/></Suspense>}
-          {ui.tab === 'journal' && <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab snapshot={mk.data}/></Suspense>}
+          {ui.tab === 'statarb' && (owner ? <Suspense fallback={<Loading label="Loading stat-arb scanner…"/>}><StatArbScanner/></Suspense> : <Card title="Owner workspace">This tool is available to the owner.</Card>)}
+          {ui.tab === 'journal' && (signedIn ? <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab snapshot={mk.data}/></Suspense> : <SignInPrompt title="Trade journal" providers={session.data?.providers} />)}
           {ui.tab === 'alerts' && (
-            <Suspense fallback={<Loading label="Loading alerts…"/>}><AlertsTab item={selected}/></Suspense>
+            signedIn ? <Suspense fallback={<Loading label="Loading alerts…"/>}><AlertsTab item={selected}/></Suspense> : <SignInPrompt title="Market alerts" providers={session.data?.providers} />
           )}
           {ui.tab === 'calendar' && (
             <Suspense fallback={<Loading label="Loading macro calendar…"/>}><CalendarTab/></Suspense>
           )}
           {ui.tab === 'research' && (
-            <Suspense fallback={<Loading label="Loading Strategy Lab…"/>}>
+            owner ? <Suspense fallback={<Loading label="Loading Strategy Lab…"/>}>
               <StrategyLab initialAssetId={ui.assetId} offline={offline}/>
-            </Suspense>
+            </Suspense> : <Card title="Owner workspace">This tool is available to the owner.</Card>
           )}
           <footer className="app-footer">
             Data: Binance USDⓈ-M & Hyperliquid perps · Market data may be delayed or unavailable · No
@@ -754,7 +779,7 @@ function App() {
         </main>
       </div>
       <div className="bottom-nav" role="navigation" aria-label="Mobile navigation">
-        {NAV.map((x) => (
+        {navigation.map((x) => (
           <button key={x.id} className={ui.tab === x.id ? 'active' : ''} onClick={() => ui.setTab(x.id)}>
             <x.icon size={20} />
             <span>

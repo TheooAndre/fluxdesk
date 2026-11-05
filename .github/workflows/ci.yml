@@ -122,6 +122,10 @@ jobs:
           retention-days: 7
       - name: E2E browser and mobile flows (mocked market APIs)
         run: pnpm e2e
+      - name: Public shell and social account boundary (mocked API)
+        env:
+          VITE_FLUXDESK_PUBLIC_MODE: 'true'
+        run: pnpm exec playwright test e2e/public-access.spec.ts --project=chromium
       - name: Production HTML hydration and chart startup
         run: pnpm exec playwright test --config playwright.production.config.ts
       - name: Preserve Playwright traces and screenshots

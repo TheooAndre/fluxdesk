@@ -1,10 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { handleSocialAuth, sessionIdentity, socialMode } from './social-auth.ts';
 
 /**
- * Vercel Function gateway for the private persistent FluxDesk API.
+ * Vercel Function gateway for the persistent FluxDesk API.
  *
  * Requirements:
- *   - Vercel Authentication: ALL deployments, not merely previews.
+ *   - Private mode: Vercel Authentication on all deployments.
+ *   - Social mode: provider sign-in for user data and an explicitly public read allowlist.
  *   - FLUXDESK_BACKEND_URL: HTTPS origin of the persistent backend.
  *   - FLUXDESK_GATEWAY_TOKEN: SAME 32+ byte secret as the backend.
  *
@@ -87,8 +89,6 @@ async function requestBody(req: GatewayRequest, maxBytes = MAX_BODY_BYTES): Prom
 
 export default async function handler(req: GatewayRequest, res: ServerResponse) {
   res.setHeader('cache-control', 'no-store');
-  const upstream = backendOrigin();
-  if (!upstream) return reply(res, 503, 'Private API backend is not configured');
 
   // Host is supplied by Vercel's routing layer. Never use arbitrary
   // x-forwarded-host or user-controlled query values to choose the backend.
@@ -101,6 +101,21 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
   const requestedPath = apiPath(req, publicUrl);
   if (!requestedPath) return reply(res, 404, 'Unknown API endpoint');
   publicUrl.searchParams.delete('__fd_route');
+  if (socialMode() && await handleSocialAuth(req, res, requestedPath, publicUrl)) return;
+  const upstream = backendOrigin();
+  if (!upstream) return reply(res, 503, 'Private API backend is not configured');
+  const identity = socialMode() ? sessionIdentity(req) : null;
+  if (socialMode()) {
+    // Only the explicitly listed market/calendar endpoints are anonymously readable.
+    const publicReads = new Set(['health', 'markets', 'calendar', 'perpetual', 'candles', 'asset',
+      'signals', 'pair', 'correlations', 'liquidations']);
+    if (publicReads.has(requestedPath)) {
+      if (req.method !== 'GET') return reply(res, 405, 'Method not allowed');
+    } else if (!identity) return reply(res, 401, 'Sign in to use this feature');
+    if ((requestedPath.startsWith('research/') || requestedPath.startsWith('statarb/')) &&
+        identity?.sub !== process.env.FLUXDESK_OWNER_SUB)
+      return reply(res, 403, 'Owner access required');
+  }
   if (!['GET', 'POST', 'DELETE', 'PUT'].includes(req.method ?? ''))
     return reply(res, 405, 'Method not allowed');
 
@@ -127,6 +142,7 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
         'content-type': 'application/json',
         'x-fluxdesk-gateway-token': process.env.FLUXDESK_GATEWAY_TOKEN!,
         'x-fluxdesk-public-host': host,
+        ...(identity ? { 'x-fluxdesk-user-id': identity.sub } : {}),
         ...(origin ? { origin } : {}),
       },
       ...(body === undefined ? {} : { body }),
@@ -134,6 +150,8 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
     // No redirects: never forward the secret to any redirected destination.
     if (result.status >= 300 && result.status < 400)
       return reply(res, 502, 'Unexpected backend redirect');
+    if (socialMode() && result.headers.get('x-fluxdesk-access-mode') !== 'social-v1')
+      return reply(res, 503, 'Public API backend has not completed the access upgrade');
     const responseBytes = await result.arrayBuffer();
     if (responseBytes.byteLength > MAX_RESPONSE_BYTES)
       return reply(res, 502, 'Backend response exceeds size limit');

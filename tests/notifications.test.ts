@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ send: vi.fn(), forget: vi.fn(), snapshot: vi.fn() }));
 vi.mock('web-push', () => ({ default: { setVapidDetails: vi.fn(), sendNotification: mocks.send } }));
-vi.mock('../server/store.ts', () => ({ snapshot: mocks.snapshot, forgetSubscription: mocks.forget }));
+vi.mock('../server/store.ts', () => ({ snapshotFor: mocks.snapshot, forgetSubscription: mocks.forget }));
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.resetModules();

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { releasePreflight, RELEASE_PROJECT, RELEASE_TEAM } from '../server/release-preflight.ts';
+import { releasePreflight, socialReleasePreflight, RELEASE_PROJECT, RELEASE_TEAM } from '../server/release-preflight.ts';
 const snapshot = () => ({
   project: {
     id: RELEASE_PROJECT,
@@ -51,4 +51,23 @@ it('never reflects input values or arbitrary attacker-supplied fields into repor
   for (const value of ['DO-NOT-PRINT-THIS', 'PRIVATE', 'SENSITIVE-INPUT', 'EXTRA'])
     expect(report).not.toContain(value);
   expect(releasePreflight(data).configurationReady).toBe(false);
+});
+
+it('requires social credentials and keeps preview/deployment URLs protected when production becomes public', () => {
+  const data = snapshot();
+  const social = ['FLUXDESK_PUBLIC_MODE', 'VITE_FLUXDESK_PUBLIC_MODE', 'FLUXDESK_PUBLIC_HOST',
+    'FLUXDESK_SESSION_SECRET', 'FLUXDESK_OWNER_SUB', 'FLUXDESK_DISCORD_CLIENT_ID',
+    'FLUXDESK_DISCORD_CLIENT_SECRET', 'FLUXDESK_X_CLIENT_ID', 'FLUXDESK_X_CLIENT_SECRET'];
+  expect(socialReleasePreflight(data).configurationReady).toBe(false);
+  for (const key of social) data.envs.push({ key, target: ['production'], type: 'sensitive' });
+  expect(socialReleasePreflight(data, 'staging').configurationReady).toBe(true);
+  expect(socialReleasePreflight(data, 'live').configurationReady).toBe(false);
+  data.project.ssoProtection.deploymentType = 'prod_deployment_urls_and_all_previews';
+  expect(socialReleasePreflight(data, 'live').configurationReady).toBe(true);
+  expect(socialReleasePreflight(data, 'staging').configurationReady).toBe(false);
+  data.project.ssoProtection.deploymentType = 'preview';
+  expect(socialReleasePreflight(data, 'live').configurationReady).toBe(false);
+  data.project.ssoProtection.deploymentType = 'prod_deployment_urls_and_all_previews';
+  data.envs.find((e) => e.key === 'FLUXDESK_X_CLIENT_SECRET')!.type = 'plain';
+  expect(socialReleasePreflight(data, 'live').configurationReady).toBe(false);
 });

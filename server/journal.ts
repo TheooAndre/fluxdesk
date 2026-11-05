@@ -1,6 +1,7 @@
 import { readFile, stat, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { dataFile } from './identity.ts';
 import {
   validateJournal,
   validateTrade,
@@ -24,25 +25,25 @@ function checked<T>(validator: (input: unknown) => T, input: unknown): T {
     throw new JournalError(e instanceof Error ? e.message : 'Invalid journal input');
   }
 }
-const file = () => resolve(process.env.DATA_DIR ?? 'data', 'journal.json');
+const file = (viewer?: string) => dataFile('journal.json', viewer);
 let writes = Promise.resolve();
-export async function readJournal(): Promise<JournalData> {
+export async function readJournal(viewer?: string): Promise<JournalData> {
   try {
-    if ((await stat(file())).size > 4 * 1024 * 1024) throw Error('Journal size limit exceeded');
-    return validateJournal(JSON.parse(await readFile(file(), 'utf8')));
+    if ((await stat(file(viewer))).size > 4 * 1024 * 1024) throw Error('Journal size limit exceeded');
+    return validateJournal(JSON.parse(await readFile(file(viewer), 'utf8')));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { schemaVersion: 1, trades: [], days: [] };
     throw e;
   }
 }
-async function change<T>(action: (d: JournalData) => T) {
+async function change<T>(action: (d: JournalData) => T, viewer?: string) {
   const task = writes.then(async () => {
-    const d = await readJournal();
+    const d = await readJournal(viewer);
     const result = action(d);
     validateJournal(d);
     const raw = JSON.stringify(d);
     if (Buffer.byteLength(raw) > 4 * 1024 * 1024) throw new JournalError('Journal limit reached (4 MiB)');
-    const path = file();
+    const path = file(viewer);
     await mkdir(dirname(path), { recursive: true });
     const temp = path + '.' + randomUUID() + '.tmp';
     try {
@@ -61,7 +62,7 @@ async function change<T>(action: (d: JournalData) => T) {
   );
   return task;
 }
-export function saveTrade(input: unknown) {
+export function saveTrade(input: unknown, viewer?: string) {
   const t = checked(validateTrade, input);
   return change((d) => {
     const old = d.trades.find((x) => x.id === t.id);
@@ -78,9 +79,9 @@ export function saveTrade(input: unknown) {
     };
     d.trades = old ? d.trades.map((x) => (x.id === old.id ? trade : x)) : [...d.trades, trade];
     return { trade };
-  });
+  }, viewer);
 }
-export function removeTrade(id: string, revision: number) {
+export function removeTrade(id: string, revision: number, viewer?: string) {
   return change((d) => {
     const t = d.trades.find((x) => x.id === id);
     if (!t) throw new JournalError('Trade not found', 404);
@@ -88,9 +89,9 @@ export function removeTrade(id: string, revision: number) {
       throw new JournalError('Trade changed on another device. Reload before deleting.', 409);
     d.trades = d.trades.filter((x) => x.id !== id);
     return { ok: true };
-  });
+  }, viewer);
 }
-export function saveDay(input: unknown) {
+export function saveDay(input: unknown, viewer?: string) {
   const day = checked(validateDay, input);
   return change((d) => {
     const old = d.days.find((x) => x.date === day.date);
@@ -100,9 +101,9 @@ export function saveDay(input: unknown) {
     const next: JournalDay = { ...day, revision: (old?.revision ?? 0) + 1, updatedAt: Date.now() };
     d.days = [...d.days.filter((x) => x.date !== day.date), next];
     return { day: next };
-  });
+  }, viewer);
 }
-export function importJournal(input: unknown) {
+export function importJournal(input: unknown, viewer?: string) {
   const incoming = checked(validateJournal, input);
   return change((d) => {
     let imported = 0,
@@ -147,5 +148,5 @@ export function importJournal(input: unknown) {
       }
     }
     return { imported, skipped };
-  });
+  }, viewer);
 }
