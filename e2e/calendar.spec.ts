@@ -37,4 +37,21 @@ test('free macro feed shows official source and provider credit', async ({ page 
   await expect(page.getByText('Consumer Price Index', { exact: true })).toBeVisible();
   await expect(page.getByText('Source: official BLS schedule · partial coverage')).toBeVisible();
   await expect(page.getByText('Unavailable source: financecalendar')).toBeVisible();
+  await page.route('**/api/calendar', route => route.fulfill({ json: {
+    configured: true, source: 'bea', staleSources: ['bls', 'xoomar'],
+    message: 'Showing a partial official BEA release schedule.',
+    sources: [
+      { id: 'financecalendar', name: 'Finance Calendar', status: 'not_configured', checkedAt: Date.now() },
+      { id: 'bls', name: 'BLS', status: 'unavailable', checkedAt: Date.now(), message: 'HTTP 403' },
+      { id: 'bea', name: 'BEA', status: 'live', checkedAt: Date.now(), eventCount: 0 },
+    ],
+    events: [],
+  } }));
+  await page.getByRole('button', { name: 'Refresh calendar', exact: true }).click();
+  await expect(page.getByText('Source: official BEA schedule · partial coverage')).toBeVisible();
+  const availability = page.getByRole('list', { name: 'Calendar source availability' });
+  await expect(availability.getByText('BEA: available · 0 upcoming releases')).toBeVisible();
+  await expect(availability.getByText('Finance Calendar: optional source not enabled')).toBeVisible();
+  await expect(availability.getByText('BLS: unavailable · HTTP 403')).toBeVisible();
+  await expect(page.getByText('No timed, high-impact US releases available in this window.')).toBeVisible();
 });
