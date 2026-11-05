@@ -46,6 +46,9 @@ function CalendarTab() {
             {feed.data.source === 'xoomar' && (
               <p className="footnote">Source: XOOMAR US schedule · verify release times with the agency</p>
             )}
+            {feed.data.source === 'tradingeconomics' && (
+              <p className="footnote">Source: Trading Economics · survey consensus and proprietary forecast</p>
+            )}
             {feed.data.staleSources?.length ? (
               <p className="footnote">Unavailable source: {feed.data.staleSources.join(', ')}</p>
             ) : null}
@@ -125,8 +128,10 @@ function CalendarTab() {
                     {e.rightsNotice && <small>{e.rightsNotice}</small>}
                   </div>
                   <div className="event-data">
-                    <small>Consensus</small>
+                    <small>Analyst consensus</small>
                     <strong>{e.forecast || '—'}</strong>
+                    <small>Provider forecast</small>
+                    <strong>{e.providerForecast || '—'}</strong>
                   </div>
                   <div className="event-data">
                     <small>Prior</small>
@@ -146,6 +151,10 @@ function CalendarTab() {
         )}
         <p className="footnote">
           Optional data by{' '}
+          <a href="https://tradingeconomics.com/calendar" target="_blank" rel="noopener noreferrer">
+            Trading Economics
+          </a>
+          ,{' '}
           <a href="https://www.financecalendar.com" target="_blank" rel="noopener noreferrer">
             Finance Calendar
           </a>

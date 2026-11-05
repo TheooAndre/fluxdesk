@@ -724,7 +724,7 @@ test('macro alert previews and saves analyst consensus plus previous values', as
   await page.route('**/api/calendar', route => route.fulfill({ json: {
     configured: true, source: 'xoomar', events: [{
       id: 'cpi', time: new Date(Date.now() + 86_400_000).toISOString(), country: 'US',
-      title: 'Consumer Price Index', importance: 3, forecast: '3.1%', previous: '3.0%', actual: '',
+      title: 'Consumer Price Index', importance: 3, forecast: '3.1%', providerForecast: '3.2%', previous: '3.0%', actual: '',
     }],
   } }));
   await page.route('**/api/alerts', async route => {
@@ -739,11 +739,11 @@ test('macro alert previews and saves analyst consensus plus previous values', as
   await page.getByRole('button', { name: 'Alerts', exact: true }).click();
   await page.getByRole('combobox', { name: 'Alert type', exact: true }).selectOption('macro');
   await expect(page.getByLabel('Macro alert coverage')).toHaveValue('US high-impact macro releases');
-  await expect(page.getByText(/Consumer Price Index · Consensus\/forecast: 3.1% · Previous: 3.0%/)).toBeVisible();
+  await expect(page.getByText(/Consumer Price Index · Consensus: 3.1% · Provider forecast: 3.2% · Previous: 3.0%/)).toBeVisible();
   await page.getByRole('combobox', { name: 'Notify before release', exact: true }).selectOption('30');
   await expect(page.getByLabel('Keep active for future releases')).toBeChecked();
   await page.getByRole('button', { name: 'Create alert', exact: true }).click();
-  await expect(page.locator('.alert-rule')).toContainText('30m before · consensus/forecast + previous');
+  await expect(page.locator('.alert-rule')).toContainText('30m before · consensus + forecast + previous');
 });
 
 test('price level direction follows the selected level and displays the server-confirmed rule', async ({ page }) => {

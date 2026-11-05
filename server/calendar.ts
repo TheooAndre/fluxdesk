@@ -3,6 +3,7 @@ import { getJson, UpstreamError } from './market.ts';
 import { fetchBlsCalendar } from './bls-calendar.ts';
 import { fetchBeaCalendar } from './bea-calendar.ts';
 import { fetchXoomarCalendar } from './xoomar-calendar.ts';
+import { fetchTradingEconomicsCalendar } from './trading-economics-calendar.ts';
 
 const BASE = 'https://www.financecalendar.com/wp-json/fc/v1/calendar';
 const TTL = 10 * 60_000;
@@ -34,13 +35,13 @@ type SourceResponse = { events?: unknown; total?: unknown };
 export type CalendarResponse = {
   configured: boolean;
   events: EconomicEvent[];
-  source: 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
+  source: 'tradingeconomics' | 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
   staleSources: string[];
   sources: CalendarSourceCheck[];
   message?: string;
 };
 export type CalendarSourceCheck = {
-  id: 'financecalendar' | 'bls' | 'bea' | 'xoomar';
+  id: 'tradingeconomics' | 'financecalendar' | 'bls' | 'bea' | 'xoomar';
   name: string;
   status: 'live' | 'unavailable' | 'not_configured';
   checkedAt: number;
@@ -171,16 +172,33 @@ async function financeCalendar(day: string, now: number): Promise<SourceResult> 
   });
 }
 
+async function tradingEconomics(now: number): Promise<SourceResult> {
+  const key = process.env.TRADING_ECONOMICS_API_KEY?.trim();
+  if (!key)
+    return {
+      check: {
+        id: 'tradingeconomics', name: 'Trading Economics', status: 'not_configured',
+        checkedAt: Date.now(), message: 'Optional API key not configured',
+      },
+      events: null,
+    };
+  return checkSource('tradingeconomics', 'Trading Economics', async () => {
+    if (!/^[\x21-\x7e]+$/.test(key)) throw Error('Invalid API key format');
+    return fetchTradingEconomicsCalendar(key, now);
+  });
+}
+
 async function refresh(day: string, now: number): Promise<CalendarResponse> {
   // Check independent schedules together so one denied/slow provider cannot
   // hide a working backup or multiply the nine-second request deadline.
-  const [finance, bls, bea, xoomar] = await Promise.all([
+  const [economics, finance, bls, bea, xoomar] = await Promise.all([
+    tradingEconomics(now),
     financeCalendar(day, now),
     checkSource('bls', 'BLS', () => fetchBlsCalendar(now)),
     checkSource('bea', 'BEA', () => fetchBeaCalendar(now)),
     checkSource('xoomar', 'XOOMAR', () => fetchXoomarCalendar(now)),
   ]);
-  const sources = [finance, bls, bea, xoomar].map((result) => result.check);
+  const sources = [economics, finance, bls, bea, xoomar].map((result) => result.check);
   // An optional provider without a key is not an attempted failed request.
   const staleSources = sources.filter((source) => source.status === 'unavailable').map((source) => source.id);
   const failures = sources
@@ -188,7 +206,10 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
     .map((source) => `${source.name}: ${source.message}`)
     .join('; ');
   let source: CalendarResponse['source'], events: EconomicEvent[];
-  if (finance.events !== null) {
+  if (economics.events !== null) {
+    source = 'tradingeconomics';
+    events = economics.events;
+  } else if (finance.events !== null) {
     source = 'financecalendar';
     events = finance.events;
   } else if (xoomar.events !== null) {
@@ -215,7 +236,9 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
     return value;
   }
   const description =
-    source === 'financecalendar'
+    source === 'tradingeconomics'
+      ? 'Showing Trading Economics survey consensus, proprietary forecast and prior values.'
+      : source === 'financecalendar'
       ? ''
       : source === 'xoomar'
         ? 'Showing the attributed XOOMAR US schedule; verify release times with the originating agency.'

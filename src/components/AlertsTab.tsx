@@ -28,7 +28,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
         alert.kind === 'price'
           ? `Alert created: price ${alert.direction} ${price(alert.threshold)}. Monitoring runs on your dashboard server.`
           : alert.kind === 'macro'
-            ? 'Macro alert created. Notifications will include the analyst consensus/forecast and previous value.'
+            ? 'Macro alert created. Notifications will include analyst consensus, provider forecast and previous value.'
           : 'Alert created. Monitoring runs on your dashboard server.',
       );
       void client.invalidateQueries({ queryKey: ['alerts'] });
@@ -123,7 +123,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                 </select>
               </label>
               <div className="notice" role="status">
-                <p><strong>Every notification includes:</strong> analyst consensus/forecast and the previous value.</p>
+                <p><strong>Every notification includes:</strong> analyst consensus, provider forecast and previous value.</p>
                 {macroCalendar.isLoading ? (
                   <small>Loading upcoming releases…</small>
                 ) : macroCalendar.error ? (
@@ -131,7 +131,8 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                 ) : macroCalendar.data?.events.length ? (
                   macroCalendar.data.events.slice(0, 3).map((event) => (
                     <small key={event.id}>
-                      {event.title} · Consensus/forecast: {event.forecast || 'not supplied by source'} · Previous:{' '}
+                      {event.title} · Consensus: {event.forecast || 'not supplied by source'} · Provider forecast:{' '}
+                      {event.providerForecast || 'not supplied by source'} · Previous:{' '}
                       {event.previous || 'not supplied by source'}
                     </small>
                   ))
@@ -186,7 +187,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
             {kind === 'volume'
               ? 'Compares the latest fully closed 5m candle to the previous 20 closed 5m bars.'
               : kind === 'macro'
-                ? 'Uses the latest calendar values at notification time. Forecast means the current analyst consensus; missing provider values are clearly marked rather than guessed.'
+                ? 'Uses the latest calendar values at notification time. Consensus and the provider forecast remain separate; missing values are clearly marked rather than guessed.'
               : kind === 'liquidation'
                 ? 'Binance only. Stream captures at most one forced-liquidation snapshot per symbol per second. Amounts are lower-bound observations, not total liquidations.'
                 : kind === 'price_range'
@@ -289,7 +290,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                   </b>
                   <small>
                     {x.kind === 'macro'
-                      ? `${x.leadMinutes}m before · consensus/forecast + previous`
+                      ? `${x.leadMinutes}m before · consensus + forecast + previous`
                       : x.kind === 'price_range'
                       ? `Below ${price(x.lowerPrice)} or above ${price(x.upperPrice)}`
                       : x.kind === 'volume'

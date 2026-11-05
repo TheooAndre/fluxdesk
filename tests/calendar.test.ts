@@ -3,6 +3,7 @@ import { parseCalendar } from '../server/calendar.ts';
 import { parseBlsCalendar } from '../server/bls-calendar.ts';
 import { parseBeaCalendar } from '../server/bea-calendar.ts';
 import { parseXoomarCalendar } from '../server/xoomar-calendar.ts';
+import { fetchTradingEconomicsCalendar, parseTradingEconomicsCalendar } from '../server/trading-economics-calendar.ts';
 
 beforeEach(() => {
   vi.resetModules();
@@ -200,6 +201,34 @@ it('validates the attributed third-source schedule and rejects stale or untimed 
   ).toThrow('incomplete');
 });
 
+it('keeps survey consensus, provider forecast and previous values separate', () => {
+  const now = Date.parse('2026-11-05T00:00:00Z');
+  expect(parseTradingEconomicsCalendar([{
+    CalendarId: '123', Date: '2026-11-06T13:30:00', Country: 'United States',
+    Event: 'Non Farm Payrolls', Actual: '', Previous: '175K', Forecast: '180K', TEForecast: '182K',
+    Importance: 3, DateSpan: '0', Source: 'U.S. Bureau of Labor Statistics',
+    SourceURL: 'http://www.bls.gov/', URL: '/united-states/non-farm-payrolls',
+  }], now)).toMatchObject([{
+    id: 'tradingeconomics:123', time: '2026-11-06T13:30:00.000Z', title: 'Non Farm Payrolls',
+    forecast: '180K', providerForecast: '182K', previous: '175K', sourceUrl: 'https://www.bls.gov/',
+    eventUrl: 'https://tradingeconomics.com/united-states/non-farm-payrolls',
+  }]);
+  expect(() => parseTradingEconomicsCalendar({}, now)).toThrow('malformed');
+});
+
+it('keeps the Trading Economics credential out of the URL', async () => {
+  const now = Date.parse('2026-11-05T00:00:00Z');
+  const fetcher = vi.fn(async (input: string, options?: RequestInit) => {
+    expect(input).not.toContain('test-trading-economics-key');
+    expect(new URL(input).searchParams.get('importance')).toBe('3');
+    expect(options?.headers).toMatchObject({ Authorization: 'test-trading-economics-key' });
+    return Response.json([]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  expect(await fetchTradingEconomicsCalendar('test-trading-economics-key', now)).toEqual([]);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
 it('uses XOOMAR after both first sources reject and reports the source flags', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-10T00:00:00Z'));
@@ -314,7 +343,7 @@ it('serves official BLS and BEA schedules if the broad feed fails and redacts cr
   expect(result.events).toHaveLength(3);
   expect(result.events.map((event) => event.id)).toEqual(['bls:bls-cpi', 'bea:bea-gdp', 'bea:bea-pce']);
   expect(JSON.stringify(result)).not.toContain(secret);
-  expect(result.sources[0]).toMatchObject({
+  expect(result.sources.find((source) => source.id === 'financecalendar')).toMatchObject({
     status: 'unavailable',
     message: 'Request or response validation failed',
   });

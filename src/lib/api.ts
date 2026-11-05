@@ -186,7 +186,7 @@ export const api = {
     get<{
       configured: boolean;
       events: EconomicEvent[];
-      source?: 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
+      source?: 'tradingeconomics' | 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
       staleSources?: string[];
       sources?: CalendarSourceCheck[];
       message?: string;
