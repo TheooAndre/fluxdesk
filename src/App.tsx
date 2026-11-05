@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { monitorPwaUpdates } from './lib/pwa-updates.ts';
 import { registerSW } from 'virtual:pwa-register';
 import { Activity, BarChart3, Bell, CalendarDays, ChevronRight, Download, FlaskConical, GitCompareArrows, Menu, Radio, Search, ShieldAlert, WifiOff, Zap, ArrowDownUp, RefreshCw, Star, BookOpen } from 'lucide-react';
@@ -31,6 +31,7 @@ const PairsTab = lazy(() => import('./components/PairsTab.tsx'));
 const AlertsTab = lazy(() => import('./components/AlertsTab.tsx'));
 const CalendarTab = lazy(() => import('./components/CalendarTab.tsx'));
 const AccountDialog = lazy(() => import('./components/AccountDialog.tsx'));
+const InvestmentsTab = lazy(() => import('./components/InvestmentsTab.tsx'));
 const publicUi = import.meta.env.VITE_FLUXDESK_PUBLIC_MODE === 'true';
 type ProviderAvailability = { discord: boolean; x: boolean; password?: boolean };
 function SignInPrompt({ title, providers, onSignIn }: { title: string; providers?: ProviderAvailability; onSignIn: () => void }) {
@@ -52,6 +53,7 @@ const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'statarb', label: 'Stat-arb scanner', icon: GitCompareArrows },
   { id: 'journal', label: 'Trade journal', icon: BookOpen },
   { id: 'research', label: 'Strategy Lab', icon: FlaskConical },
+  { id: 'investments', label: 'Investments', icon: BookOpen },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'calendar', label: 'Macro calendar', icon: CalendarDays },
 ];
@@ -512,6 +514,7 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 function App() {
+  const queryClient = useQueryClient();
   const [accountOpen, setAccountOpen] = useState(false);
   const [overviewPanel, setOverviewPanel] = useState<'chart' | 'categories'>('chart');
   const [booted, setBooted] = useState(false);
@@ -522,7 +525,10 @@ function App() {
   const owner = !publicUi || session.data?.owner === true;
   const needsOwnerSetup = session.data?.ownerSetupAllowed === true && !signedIn;
   useEffect(() => { if (needsOwnerSetup) setAccountOpen(true); }, [needsOwnerSetup]);
-  const navigation = NAV.filter((x) => owner || !['research', 'statarb'].includes(x.id));
+  const navigation = NAV.filter((x) => owner || !['research', 'statarb', 'investments'].includes(x.id));
+  useEffect(() => {
+    if (!owner) queryClient.removeQueries({ queryKey: ['investments'] });
+  }, [owner, queryClient]);
   const { ui, mk, asset, selected } = useDashboard(booted);
   const worker = useQuery({
     queryKey: ['passive-health'],
@@ -636,7 +642,7 @@ function App() {
         </header>
         <main>
           <Intro tab={ui.tab} />
-          {!['research','journal','statarb'].includes(ui.tab) && <div className="selector-bar">
+          {!['research','journal','statarb','investments'].includes(ui.tab) && <div className="selector-bar">
             <div className="selected-input">
               <span className="tiny-label">SELECTED ASSET</span>
               <select
@@ -778,6 +784,9 @@ function App() {
               <StrategyLab initialAssetId={ui.assetId} offline={offline}/>
             </Suspense> : <Card title="Owner workspace">This tool is available to the owner.</Card>
           )}
+          {ui.tab === 'investments' && (owner
+            ? <Suspense fallback={<Loading label="Loading investments…"/>}><InvestmentsTab offline={offline}/></Suspense>
+            : <Card title="Owner workspace">This tool is available to the owner.</Card>)}
           <footer className="app-footer">
             Data: Binance USDⓈ-M & Hyperliquid perps · Market data may be delayed or unavailable · No
             execution connected
@@ -797,7 +806,9 @@ function App() {
                     ? 'Pairs'
                     : x.id === 'research'
                       ? 'Lab'
-                      : x.id === 'alerts'
+                    : x.id === 'investments'
+                      ? 'Invest'
+                    : x.id === 'alerts'
                       ? 'Alerts'
                       : 'Macro'}
             </span>

@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { ownerSetupProof, ACCOUNT_COOKIE } from '../server/account-policy.ts';
 import { accountDatabase, closeAccountDatabase } from '../server/account-db.ts';
+import { investmentFixture } from './fixtures/investments.ts';
 
 const SECRET = 'test-only-accounts-gateway-123456789012345';
 const HOST = 'fluxdesk-terminal.vercel.app';
@@ -146,7 +147,7 @@ it('registers the reserved owner with hashed credentials and maps only that acco
 
 it('isolates a friend account, protects owner-only tools and revokes sessions on logout', async () => {
   const registered = await call('auth/register', {
-    name: 'Friend',
+    name: 'Owner',
     email: 'friend@example.test',
     password: PASSWORD,
     owner: true,
@@ -159,6 +160,15 @@ it('isolates a friend account, protects owner-only tools and revokes sessions on
   });
   expect((await call('watchlist', undefined, friendCookie)).body.assetIds).toEqual([]);
   expect((await call('research/datasets', undefined, friendCookie)).response.status).toBe(403);
+  expect((await call('investments')).response.status).toBe(401);
+  expect((await call('investments', undefined, friendCookie)).response.status).toBe(403);
+  expect((await call('investments', investmentFixture(), friendCookie)).response.status).toBe(403);
+  expect((await call('investments', undefined, '', false, { 'x-fluxdesk-user-id': `account:${accountDatabase().owner}` })).response.status).toBe(401);
+  const investments = await call('investments', investmentFixture(), ownerCookie);
+  expect(investments.response.status).toBe(200);
+  expect(investments.body.revision).toBe(1);
+  expect((await call('investments', undefined, ownerCookie)).body).toMatchObject({ portfolios: [{ name: 'Synthetic infrastructure thesis' }] });
+  expect((await call('investments', investmentFixture(), ownerCookie)).response.status).toBe(409);
   expect((await call('watchlist', { assetId: 'binance:ETHUSDT' }, friendCookie)).response.status).toBe(200);
   expect((await call('watchlist', undefined, ownerCookie)).body.assetIds).toEqual(['binance:BTCUSDT']);
   expect(
@@ -226,6 +236,7 @@ it('backs up and restores account credentials and ownership without restoring ol
     target = join(directory, 'restored');
   const created = await createArchive(directory, output, 'test-only encrypted backup password');
   expect(created.filePaths).toContain('accounts.sqlite');
+  expect(created.filePaths).toContain('investments.json');
   await verifyArchive(output, 'test-only encrypted backup password');
   await restoreArchive(output, target, 'test-only encrypted backup password');
   closeAccountDatabase();

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Interval, BenchmarkId, SignalModel } from '../types.ts';
 import type { CategoryFilter } from './categories.ts';
 import { intervalsFor } from '../engine/intervals.ts';
-export type Tab = 'overview' | 'signals' | 'pairs' | 'research' | 'alerts' | 'calendar' | 'journal' | 'statarb';
+export type Tab = 'overview' | 'signals' | 'pairs' | 'research' | 'alerts' | 'calendar' | 'journal' | 'statarb' | 'investments';
 type Ui = {
   tab: Tab;
   assetId: string;
@@ -36,7 +36,13 @@ export const useUi = create<Ui>((set) => ({
   descending: true,
   venue: 'all',
   model: 'all',
-  setTab: (tab) => set({ tab }),
+  setTab: (tab) => {
+    const url = new URL(window.location.href);
+    if (tab === 'investments') url.searchParams.set('tab', tab);
+    else url.searchParams.delete('tab');
+    history.replaceState(null, '', url.pathname + url.search);
+    set({ tab });
+  },
   setAsset: (assetId) => {
     history.replaceState(null, '', `/?asset=${encodeURIComponent(assetId)}`);
     set((old) => ({
@@ -60,6 +66,7 @@ export const useUi = create<Ui>((set) => ({
  * have identical state. Queries are enabled only after this runs. */
 export function restoreAssetFromLocation() {
   if (typeof window === 'undefined') return;
+  if (new URLSearchParams(window.location.search).get('tab') === 'investments') useUi.getState().setTab('investments');
   const id = new URLSearchParams(window.location.search).get('asset');
   if (id && /^(binance|hyperliquid):[A-Za-z0-9_]{1,32}$/.test(id) && id !== useUi.getState().assetId)
     useUi.getState().setAsset(id);

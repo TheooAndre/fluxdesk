@@ -69,6 +69,7 @@ it('allows only account-cookie identity, strips unrelated cookies and validates 
   expect((await call(port, '/api/health?_vercel_share=test-only-access-token')).status).toBe(200);
   expect(String(fetcher.mock.calls[0]![0])).not.toContain('test-only-access-token');
   expect((await call(port, '/api/journal', { 'x-fluxdesk-user-id': 'account:forged' })).status).toBe(401);
+  expect((await call(port, '/api/investments', { 'x-fluxdesk-user-id': 'account:forged' })).status).toBe(401);
   expect(
     (
       await call(port, '/api/journal', {

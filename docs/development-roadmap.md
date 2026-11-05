@@ -1,6 +1,17 @@
 # FluxDesk development list
 
-Updated 4 November 2026. Research only; no order execution or claimed predictive edge.
+Updated 5 November 2026. Research only; no order execution or claimed predictive edge.
+
+## Owner investment workspace
+
+The Investments tab and API are owner-only. It supports separate China/global
+theses, stocks from any country and listing, explicit currencies, editable
+research weights/statuses, memos, source links, chart/news references, safe
+legacy MCGA import, JSON/CSV export and reversible stock archiving. Data persists
+on the existing volume and is included in encrypted backups. Actual MCGA
+allocations and notes are imported privately after owner sign-in; they are not
+committed to this public repository. Validation/release receipts are tracked in
+the owner-investments pull request. See [workspace guide](investments.md).
 
 ## Current milestone: v0.4 cloud terminal
 
