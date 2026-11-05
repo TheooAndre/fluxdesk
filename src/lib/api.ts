@@ -1,6 +1,7 @@
 import type { JournalData, JournalTrade, JournalDay } from '../journal/model.ts';
 import type { ScanConfig, ScanJob } from '../../server/statarb-scanner.ts';
 import type { CalendarSourceCheck } from '../../server/calendar.ts';
+import type { Investments } from '../investments/model.ts';
 import type {
   AlertEvent,
   AlertRule,
@@ -90,6 +91,8 @@ export const api = {
     postResearch<{ success: boolean; recoveryCode?: string }>(`/api/auth/${action}`, data, 30_000),
   signOut: () => request<{ authenticated: false }>('/api/auth/logout', { method: 'POST' }),
   health: (signal?: AbortSignal) => get<unknown>('/api/health', signal),
+  investments: () => get<Investments>('/api/investments'),
+  saveInvestments: (value: Investments) => postResearch<Investments>('/api/investments', value),
   importJournal: (data: JournalData) =>
     postResearch<{ imported: number; skipped: number }>('/api/journal/import', data),
   journal: () => get<JournalData>('/api/journal'),

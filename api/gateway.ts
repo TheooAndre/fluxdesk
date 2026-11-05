@@ -123,7 +123,7 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
     if (requestedPath === 'auth/register-owner' && !setupHost)
       return reply(res, 403, 'Owner setup requires the protected production setup page');
     if (!publicReads.has(requestedPath) && !authRoutes.has(requestedPath)) {
-      if (!/^(journal|alerts|watchlist|push|research|statarb)(?:\/|$)/.test(requestedPath))
+      if (!/^(journal|alerts|watchlist|push|research|statarb|investments)(?:\/|$)/.test(requestedPath))
         return reply(res, 404, 'Unknown API endpoint');
       if (!accountCookie(req.headers.cookie)) return reply(res, 401, 'Sign in to use this feature');
     }
@@ -134,7 +134,7 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
     if (publicReads.has(requestedPath)) {
       if (req.method !== 'GET') return reply(res, 405, 'Method not allowed');
     } else if (!identity) return reply(res, 401, 'Sign in to use this feature');
-    if ((requestedPath.startsWith('research/') || requestedPath.startsWith('statarb/')) &&
+    if ((requestedPath.startsWith('research/') || requestedPath.startsWith('statarb/') || requestedPath === 'investments' || requestedPath.startsWith('investments/')) &&
         identity?.sub !== process.env.FLUXDESK_OWNER_SUB)
       return reply(res, 403, 'Owner access required');
   }
@@ -153,7 +153,7 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
 
   const destination = new URL('/api/' + requestedPath + publicUrl.search, upstream);
   try {
-    const body = await requestBody(req, requestedPath === 'journal/import' ? 4*1024*1024 : requestedPath.startsWith('journal/') ? 131072 : MAX_BODY_BYTES);
+    const body = await requestBody(req, requestedPath === 'investments' ? 1024*1024 : requestedPath === 'journal/import' ? 4*1024*1024 : requestedPath.startsWith('journal/') ? 131072 : MAX_BODY_BYTES);
     const result = await fetch(destination, {
       method: req.method,
       redirect: 'manual',

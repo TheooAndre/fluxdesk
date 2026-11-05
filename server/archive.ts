@@ -7,6 +7,7 @@ import {validateJournal} from '../src/journal/model.ts';
 import { datasetId, type HistoricalDataset } from './research/datasets.ts';
 import { assetIdentity } from './market.ts';
 import { accountBackupBytes, snapshotAccountDatabase, validateAccountBackup } from './account-backup.ts';
+import { validateInvestments } from '../src/investments/model.ts';
 
 const compress = promisify(gzip),
   decompress = promisify(gunzip);
@@ -40,7 +41,7 @@ function receipt(manifest: ArchiveManifest, bytes: Buffer): ArchiveReceipt {
 const digest = (content: string) => createHash('sha256').update(content).digest('hex');
 const userFile = /^users\/[a-f0-9]{64}\/(?:journal|watchlist)\.json$/;
 const allowedPath = (path: string) =>
-  path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' || path === 'accounts.sqlite' ||
+  path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' || path === 'investments.json' || path === 'accounts.sqlite' ||
   userFile.test(path) || /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
 
 function validateFile(file: ArchiveFile): void {
@@ -58,6 +59,8 @@ function validateFile(file: ArchiveFile): void {
   if (file.path.startsWith('research/')) {
     if (datasetId(value as unknown as HistoricalDataset) !== file.path.slice(18, -5))
       throw Error('Backup dataset fingerprint mismatch');
+  } else if (file.path === 'investments.json') {
+    validateInvestments(value);
   } else if (file.path === 'journal.json' || file.path.endsWith('/journal.json')) {
     validateJournal(value);
   } else if (file.path === 'watchlist.json' || file.path.endsWith('/watchlist.json')) {
@@ -86,7 +89,7 @@ function validateManifest(value: unknown): ArchiveManifest {
     data.createdAt <= 0 ||
     !Array.isArray(data.files) ||
     !data.files.length ||
-    data.files.length > 104 + MAX_USER_DIRS * 2
+    data.files.length > 105 + MAX_USER_DIRS * 2
   )
     throw Error('Invalid backup manifest');
   const seen = new Set<string>();
@@ -176,7 +179,7 @@ export async function createArchive(
     validateFile(file);
     files.push(file);
   };
-  for (const name of ['state.json', 'watchlist.json', 'journal.json']) {
+  for (const name of ['state.json', 'watchlist.json', 'journal.json', 'investments.json']) {
     try {
       await collect(name);
     } catch (error) {

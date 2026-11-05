@@ -27,3 +27,15 @@ it('restores a valid deep link after initial UI creation and ignores malformed l
   restoreAssetFromLocation();
   expect(useUi.getState().assetId).toBe('hyperliquid:ETH');
 });
+
+it('retains the investment tab deep link when restoring a different selected crypto asset', async () => {
+  const { useUi, restoreAssetFromLocation } = await import('../src/lib/store.ts');
+  const location = new URL('https://example.test/?asset=binance%3ASOLUSDT&tab=investments');
+  vi.stubGlobal('window', { location });
+  const replaceState = vi.fn();
+  vi.stubGlobal('history', { replaceState });
+  restoreAssetFromLocation();
+  expect(useUi.getState().tab).toBe('investments');
+  expect(useUi.getState().assetId).toBe('binance:SOLUSDT');
+  expect(replaceState.mock.calls.at(-1)?.[2]).toContain('tab=investments');
+});

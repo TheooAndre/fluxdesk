@@ -18,6 +18,8 @@ import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
 import { savedWatchlist, changeWatchlist } from './watchlist.ts';
 import { armPriceAlert, disarmPriceAlert } from './alerts.ts';
 import { calendar } from './calendar.ts';
+import { readInvestments, saveInvestments, InvestmentError } from './investments.ts';
+import { MAX_INVESTMENT_BYTES } from '../src/investments/model.ts';
 import { vapidKey } from './notifications.ts';
 import { publicMode, isOwner } from './identity.ts';
 import { accountMode } from './account-policy.ts';
@@ -92,14 +94,14 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     }
     if (path.startsWith('/api/')) {
       if (publicMode()) {
-        const privateRoute = /^\/api\/(journal|alerts|watchlist|push|research|statarb)(?:\/|$)/.test(path);
+        const privateRoute = /^\/api\/(journal|alerts|watchlist|push|research|statarb|investments)(?:\/|$)/.test(path);
         if (privateRoute && !access.userId) throw new GatewayAuthError('Sign in to use this feature', 401);
-        if (/^\/api\/(research|statarb)(?:\/|$)/.test(path) && !isOwner(access.userId))
+        if (/^\/api\/(research|statarb|investments)(?:\/|$)/.test(path) && !isOwner(access.userId))
           throw new GatewayAuthError('Owner access required', 403);
         if (!privateRoute && req.method !== 'GET') throw new GatewayAuthError('Public route is read only', 403);
       }
       const allowed =
-        path === '/api/statarb/scan' ? ['GET','POST','DELETE'] : path === '/api/journal' ? ['GET'] : path === '/api/journal/trades' ? ['POST','DELETE'] : (path === '/api/journal/day'||path === '/api/journal/import') ? ['POST'] : path === '/api/watchlist'
+        path === '/api/investments' ? ['GET', 'POST'] : path === '/api/statarb/scan' ? ['GET','POST','DELETE'] : path === '/api/journal' ? ['GET'] : path === '/api/journal/trades' ? ['POST','DELETE'] : (path === '/api/journal/day'||path === '/api/journal/import') ? ['POST'] : path === '/api/watchlist'
           ? ['GET', 'POST', 'DELETE']
           : path === '/api/research/datasets'
           ? ['GET', 'POST']
@@ -118,6 +120,8 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       }
     }
     checkOrigin(req, access.originHost, access.gatewayProtected);
+    if (path === '/api/investments') return json(res, req.method === 'GET'
+      ? await readInvestments() : await saveInvestments(await body(req, MAX_INVESTMENT_BYTES)));
     if(path === '/api/statarb/scan'){
       if(req.method==='GET')return json(res,{scan:scanStatus()});
       if(req.method==='DELETE')return json(res,{scan:cancelScan()});
@@ -358,7 +362,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       { error: message },
       error instanceof GatewayAuthError
         ? error.status
-        : error instanceof JournalError || error instanceof ScannerError ? error.status : error instanceof ResearchRequestError
+        : error instanceof JournalError || error instanceof ScannerError || error instanceof InvestmentError ? error.status : error instanceof ResearchRequestError
         ? error.status
         : /Invalid|Unsupported|Choose|threshold|Too |limit|blocked|Cross-origin|requires|not available|large/i.test(
         message,
