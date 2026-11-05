@@ -30,7 +30,10 @@ test('public markets/calendar render without fetching private data, then session
     feeds: ['binance', 'hyperliquid'].map(venue =>
       ({ venue, status: 'live', lastSuccessAt: Date.now(), lastAttemptAt: Date.now(), ageMs: 0, markets: 1 })) } }));
   await page.route('**/api/calendar', route => route.fulfill({ json: { configured: true, events: [], source: 'xoomar' } }));
-  await page.route('**/api/alerts', route => route.fulfill({ json: { alerts: [], events: [] } }));
+  await page.route('**/api/alerts', route => {
+    privateReads.push(route.request().url());
+    return route.fulfill({ json: { alerts: [], events: [] } });
+  });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Market overview' })).toBeVisible();
   await page.getByRole('button', { name: 'Macro calendar' }).click();
