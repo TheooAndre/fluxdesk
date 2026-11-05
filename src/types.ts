@@ -105,10 +105,11 @@ export type AlertRule = AlertCondition & {
   enabled: boolean;
   /** Repeating alerts keep monitoring after a trigger. Missing means one shot. */
   repeat?: boolean;
+  ownerId?: string;
   createdAt: number;
   lastTriggeredAt?: number;
 };
-export type AlertEvent = { id: string; assetId: string; kind: AlertKind; message: string; time: number };
+export type AlertEvent = { id: string; assetId: string; kind: AlertKind; message: string; time: number; ownerId?: string };
 export type EconomicEvent = {
   id: string;
   time: string;

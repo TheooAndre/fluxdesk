@@ -12,6 +12,7 @@ const compress = promisify(gzip),
 const MAGIC = Buffer.from('FDARCHIVE1');
 const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 20 * 1024 * 1024;
+const MAX_USER_DIRS = 100;
 type ArchiveFile = { path: string; sha256: string; content: string };
 export type ArchiveManifest = { schemaVersion: 1; createdAt: number; files: ArchiveFile[] };
 type ArchiveOptions = { requireJournal?: boolean };
@@ -36,8 +37,10 @@ function receipt(manifest: ArchiveManifest, bytes: Buffer): ArchiveReceipt {
   };
 }
 const digest = (content: string) => createHash('sha256').update(content).digest('hex');
+const userFile = /^users\/[a-f0-9]{64}\/(?:journal|watchlist)\.json$/;
 const allowedPath = (path: string) =>
-  path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' || /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
+  path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' ||
+  userFile.test(path) || /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
 
 function validateFile(file: ArchiveFile): void {
   if (
@@ -53,9 +56,9 @@ function validateFile(file: ArchiveFile): void {
   if (file.path.startsWith('research/')) {
     if (datasetId(value as unknown as HistoricalDataset) !== file.path.slice(18, -5))
       throw Error('Backup dataset fingerprint mismatch');
-  } else if (file.path === 'journal.json') {
+  } else if (file.path === 'journal.json' || file.path.endsWith('/journal.json')) {
     validateJournal(value);
-  } else if (file.path === 'watchlist.json') {
+  } else if (file.path === 'watchlist.json' || file.path.endsWith('/watchlist.json')) {
     if (
       !value ||
       value.schemaVersion !== 1 ||
@@ -81,7 +84,7 @@ function validateManifest(value: unknown): ArchiveManifest {
     data.createdAt <= 0 ||
     !Array.isArray(data.files) ||
     !data.files.length ||
-    data.files.length > 103
+    data.files.length > 103 + MAX_USER_DIRS * 2
   )
     throw Error('Invalid backup manifest');
   const seen = new Set<string>();
@@ -150,8 +153,8 @@ async function readRegularFile(path: string, maxBytes = MAX_BYTES): Promise<Buff
   if (bytes.length > maxBytes) throw Error('Backup input exceeds size limit');
   return bytes;
 }
-/** Passive per-file snapshots: state/watchlist are atomically replaced; datasets
- * are immutable. This is not a global transaction across the three resources.
+/** Passive per-file snapshots: application records are atomically replaced; datasets
+ * are immutable. This is not a global transaction across all resources.
  * Secrets, environment files, mounted-volume identity and temporary files are excluded.
  */
 export async function createArchive(
@@ -177,6 +180,26 @@ export async function createArchive(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
+  }
+  const users = join(root, 'users');
+  try {
+    const info = await lstat(users);
+    if (!info.isDirectory() || info.isSymbolicLink())
+      throw Error('User archive directory must not be a symlink');
+    const names = (await readdir(users)).filter((name) => /^[a-f0-9]{64}$/.test(name)).sort();
+    if (names.length > MAX_USER_DIRS) throw Error('Backup exceeds 100 user account limit');
+    for (const name of names) {
+      const path = join(users, name);
+      const child = await lstat(path);
+      if (!child.isDirectory() || child.isSymbolicLink())
+        throw Error('User archive directory must not be a symlink');
+      for (const kind of ['journal.json', 'watchlist.json']) {
+        try { await collect(`users/${name}/${kind}`); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      }
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   const research = join(root, 'research'),
     datasets = join(research, 'datasets');

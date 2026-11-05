@@ -46,3 +46,42 @@ export function releasePreflight(input: unknown) {
       'Metadata only: does not verify credential contents, backend isolation, health, data durability, or authorize promotion.',
   };
 }
+
+/** Staged public release check. A live release retains Standard Protection for previews. */
+export function socialReleasePreflight(input: unknown, phase: 'staging' | 'live' = 'staging') {
+  const data = object(input), project = object(data.project), protection = object(project.ssoProtection);
+  const blockers: string[] = [];
+  if (project.id !== RELEASE_PROJECT || project.accountId !== RELEASE_TEAM || project.name !== 'fluxdesk')
+    blockers.push('Project/team does not match FluxDesk.');
+  const expected = phase === 'staging' ? 'all' : 'prod_deployment_urls_and_all_previews';
+  if (protection.enabled !== true || protection.deploymentType !== expected)
+    blockers.push(phase === 'staging' ? 'Keep all deployments protected during staging.' :
+      'Use Standard Protection: public production domain, protected previews and deployment URLs.');
+  if (!['22.x', '24.x'].includes(String(project.nodeVersion)))
+    blockers.push('Verify the supported Node runtime.');
+  if (!Array.isArray(data.envs) || data.hiddenProductionEnvCount !== 0)
+    blockers.push('Complete environment metadata is required; hidden entries need review.');
+  const envs = Array.isArray(data.envs) ? data.envs.map(object) : [];
+  if (envs.some((e) => 'value' in e || 'decryptedValue' in e))
+    blockers.push('Remove credential values from the input; supply metadata only.');
+  const keys = ['FLUXDESK_BACKEND_URL', 'FLUXDESK_GATEWAY_TOKEN', 'FLUXDESK_PUBLIC_MODE',
+    'VITE_FLUXDESK_PUBLIC_MODE', 'FLUXDESK_PUBLIC_HOST', 'FLUXDESK_SESSION_SECRET',
+    'FLUXDESK_OWNER_SUB', 'FLUXDESK_DISCORD_CLIENT_ID', 'FLUXDESK_DISCORD_CLIENT_SECRET',
+    'FLUXDESK_X_CLIENT_ID', 'FLUXDESK_X_CLIENT_SECRET'];
+  const sensitive = new Set(['FLUXDESK_GATEWAY_TOKEN', 'FLUXDESK_SESSION_SECRET',
+    'FLUXDESK_DISCORD_CLIENT_SECRET', 'FLUXDESK_X_CLIENT_SECRET']);
+  for (const key of keys) {
+    const matches = envs.filter((e) => e.key === key && Array.isArray(e.target) && e.target.includes('production'));
+    if (matches.length !== 1) {
+      blockers.push(`${key}: exactly one production configuration is required.`);
+      continue;
+    }
+    const env = matches[0]!;
+    if ((sensitive.has(key) && !['encrypted', 'sensitive'].includes(String(env.type))) ||
+        (!sensitive.has(key) && !['plain', 'encrypted', 'sensitive'].includes(String(env.type))) ||
+        env.gitBranch || (sensitive.has(key) && (env.target as unknown[]).some((t) => t !== 'production')))
+      blockers.push(`${key}: invalid storage type, branch scope, or production-only secret target.`);
+  }
+  return { schemaVersion: 1, phase, configurationReady: blockers.length === 0, blockers,
+    limitation: 'Metadata only: verify actual values, OAuth callbacks, owner mapping, backend isolation, preview protection, health, and durable data before opening the domain.' };
+}

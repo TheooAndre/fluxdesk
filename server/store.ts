@@ -2,7 +2,8 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AlertRule, AlertEvent } from '../src/types.ts';
-export type PushSubscriptionRecord = { endpoint: string; keys: { p256dh: string; auth: string } };
+import { visibleTo, publicMode } from './identity.ts';
+export type PushSubscriptionRecord = { endpoint: string; keys: { p256dh: string; auth: string }; ownerId?: string };
 export type Store = { alerts: AlertRule[]; events: AlertEvent[]; subscriptions: PushSubscriptionRecord[] };
 const FILE = resolve(process.env.DATA_DIR ?? 'data', 'state.json');
 let data: Store = { alerts: [], events: [], subscriptions: [] };
@@ -18,6 +19,14 @@ export async function load() {
 }
 export function snapshot(): Store {
   return structuredClone(data);
+}
+export function snapshotFor(viewer?: string): Store {
+  const saved = snapshot();
+  return {
+    alerts: saved.alerts.filter((a) => visibleTo(a.ownerId, viewer)),
+    events: saved.events.filter((e) => visibleTo(e.ownerId, viewer)),
+    subscriptions: saved.subscriptions.filter((s) => visibleTo(s.ownerId, viewer)),
+  };
 }
 /** Serialize changes and publish them only after atomic file replacement succeeds. */
 function change<T>(action: (next: Store) => T): Promise<T> {
@@ -47,18 +56,19 @@ function change<T>(action: (next: Store) => T): Promise<T> {
 export function addAlert(alert: AlertRule) {
   const copy = structuredClone(alert);
   return change((next) => {
-    if (next.alerts.length >= 250) throw Error('Alert limit reached');
+    if (next.alerts.length >= 5000) throw Error('Global alert limit reached');
+    if (next.alerts.filter((x) => x.ownerId === copy.ownerId).length >= 250) throw Error('Alert limit reached');
     next.alerts.push(copy);
   });
 }
-export function deleteAlert(id: string) {
+export function deleteAlert(id: string, viewer?: string) {
   return change((next) => {
-    next.alerts = next.alerts.filter((x) => x.id !== id);
+    next.alerts = next.alerts.filter((x) => x.id !== id || !visibleTo(x.ownerId, viewer));
   });
 }
-export function setAlertEnabled(id: string, enabled: boolean): Promise<AlertRule | null> {
+export function setAlertEnabled(id: string, enabled: boolean, viewer?: string): Promise<AlertRule | null> {
   return change((next) => {
-    const alert = next.alerts.find((x) => x.id === id);
+    const alert = next.alerts.find((x) => x.id === id && visibleTo(x.ownerId, viewer));
     if (!alert) return null;
     if (alert.enabled !== enabled) {
       alert.enabled = enabled;
@@ -97,9 +107,15 @@ export function triggered(rule: AlertRule, message: string, boundary?: 'above' |
       kind: rule.kind,
       time: now,
       message,
+      ...(original.ownerId ? { ownerId: original.ownerId } : {}),
     };
     next.events.unshift(event);
-    next.events = next.events.slice(0, 150);
+    const counts = new Map<string | undefined, number>();
+    next.events = next.events.filter((entry) => {
+      const count = counts.get(entry.ownerId) ?? 0;
+      counts.set(entry.ownerId, count + 1);
+      return count < 150;
+    }).slice(0, 5000);
     return event;
   });
 }
@@ -107,11 +123,16 @@ export function subscribe(record: PushSubscriptionRecord) {
   const copy = structuredClone(record);
   return change((next) => {
     // A renewed subscription can retain its endpoint but rotate encryption keys.
-    next.subscriptions = [...next.subscriptions.filter((x) => x.endpoint !== copy.endpoint), copy];
+    const retained = next.subscriptions.filter((x) => x.endpoint !== copy.endpoint);
+    if (retained.length >= 5000 ||
+        retained.filter((x) => x.ownerId === copy.ownerId).length >= 10)
+      throw Error('Push subscription limit reached');
+    next.subscriptions = [...retained, copy];
   });
 }
-export function forgetSubscription(endpoint: string) {
+export function forgetSubscription(endpoint: string, viewer?: string) {
   return change((next) => {
-    next.subscriptions = next.subscriptions.filter((x) => x.endpoint !== endpoint);
+    next.subscriptions = next.subscriptions.filter((x) => x.endpoint !== endpoint ||
+      (publicMode() && viewer !== undefined && !visibleTo(x.ownerId, viewer)));
   });
 }

@@ -101,6 +101,27 @@ it('requires the journal before writing a backup or restore and reports identica
   expect(await restoreArchive(current, f.target, password, options)).toEqual(result);
   expect(await readFile(join(f.target, 'journal.json'), 'utf8')).toBe(await readFile(join(f.source, 'journal.json'), 'utf8'));
 });
+it('includes every bounded social account file in the encrypted backup and rejects unsafe account directories', async () => {
+  const f = await fixture();
+  const id = createHash('sha256').update('x:222').digest('hex');
+  const directory = join(f.source, 'users', id);
+  await mkdir(directory, { recursive: true });
+  const journal = JSON.stringify({ schemaVersion: 1, trades: [], days: [] });
+  const watchlist = JSON.stringify({ schemaVersion: 1, assetIds: ['binance:BTCUSDT'] });
+  await writeFile(join(directory, 'journal.json'), journal);
+  await writeFile(join(directory, 'watchlist.json'), watchlist);
+  const result = await createArchive(f.source, f.file, password);
+  expect(result.filePaths).toContain(`users/${id}/journal.json`);
+  expect(result.filePaths).toContain(`users/${id}/watchlist.json`);
+  expect((await readFile(f.file)).includes(Buffer.from(journal))).toBe(false);
+  await restoreArchive(f.file, f.target, password);
+  expect(await readFile(join(f.target, 'users', id, 'journal.json'), 'utf8')).toBe(journal);
+  expect(await readFile(join(f.target, 'users', id, 'watchlist.json'), 'utf8')).toBe(watchlist);
+  await rm(directory, { recursive: true });
+  await symlink(f.source, directory);
+  await expect(createArchive(f.source, join(f.root, 'unsafe.fdbackup'), password))
+    .rejects.toThrow('User archive directory must not be a symlink');
+});
 it('rejects wrong passwords, corruption and short passwords without creating a restore directory', async () => {
   const f = await fixture();
   await createArchive(f.source, f.file, password);

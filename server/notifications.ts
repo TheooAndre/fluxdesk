@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import type { AlertEvent } from '../src/types.ts';
-import { snapshot, forgetSubscription } from './store.ts';
+import { snapshotFor, forgetSubscription } from './store.ts';
+import { ownerId } from './identity.ts';
 const pub = process.env.VAPID_PUBLIC_KEY ?? '',
   priv = process.env.VAPID_PRIVATE_KEY ?? '';
 if (pub && priv) webpush.setVapidDetails(process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com', pub, priv);
@@ -14,7 +15,7 @@ export async function deliver(event: AlertEvent) {
     body: event.message,
     url: `/?asset=${encodeURIComponent(event.assetId)}`,
   });
-  const subscriptions = snapshot().subscriptions;
+  const subscriptions = snapshotFor(event.ownerId ?? ownerId()).subscriptions;
   let index = 0;
   // Bound per-device transport time and concurrency; one stalled device must not block the others.
   await Promise.all(

@@ -13,12 +13,13 @@ import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
 import type { AlertKind, AlertCondition, AlertRule, Market } from '../src/types.ts';
-import { snapshot, addAlert, deleteAlert, setAlertEnabled, subscribe, forgetSubscription } from './store.ts';
+import { snapshotFor, addAlert, deleteAlert, setAlertEnabled, subscribe, forgetSubscription } from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
 import { savedWatchlist, changeWatchlist } from './watchlist.ts';
 import { armPriceAlert, disarmPriceAlert } from './alerts.ts';
 import { calendar } from './calendar.ts';
 import { vapidKey } from './notifications.ts';
+import { publicMode, isOwner } from './identity.ts';
 import { ResearchRequestError, enrichResearchDataset, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
 const json = (res: ServerResponse, data: unknown, status = 200) => {
   res.writeHead(status, {
@@ -75,12 +76,20 @@ function checkOrigin(req: IncomingMessage, expectedHost: string, gatewayProtecte
 }
 export async function handler(req: IncomingMessage, res: ServerResponse) {
   writeSecurityHeaders(res);
+  res.setHeader('x-fluxdesk-access-mode', publicMode() ? 'social-v1' : 'private-v1');
   let path = '';
   try {
     const access = authenticateGateway(req);
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     path = url.pathname;
     if (path.startsWith('/api/')) {
+      if (publicMode()) {
+        const privateRoute = /^\/api\/(journal|alerts|watchlist|push|research|statarb)(?:\/|$)/.test(path);
+        if (privateRoute && !access.userId) throw new GatewayAuthError('Sign in to use this feature', 401);
+        if (/^\/api\/(research|statarb)(?:\/|$)/.test(path) && !isOwner(access.userId))
+          throw new GatewayAuthError('Owner access required', 403);
+        if (!privateRoute && req.method !== 'GET') throw new GatewayAuthError('Public route is read only', 403);
+      }
       const allowed =
         path === '/api/statarb/scan' ? ['GET','POST','DELETE'] : path === '/api/journal' ? ['GET'] : path === '/api/journal/trades' ? ['POST','DELETE'] : (path === '/api/journal/day'||path === '/api/journal/import') ? ['POST'] : path === '/api/watchlist'
           ? ['GET', 'POST', 'DELETE']
@@ -106,18 +115,18 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       if(req.method==='DELETE')return json(res,{scan:cancelScan()});
       return json(res,{scan:startScan(await body(req))},202);
     }
-    if(path === '/api/journal')return json(res,await readJournal());
+    if(path === '/api/journal')return json(res,await readJournal(access.userId));
     if(path === '/api/journal/trades'){
-      if(req.method==='DELETE')return json(res,await removeTrade(url.searchParams.get('id')??'',Number(url.searchParams.get('revision'))));
-      return json(res,await saveTrade(await body(req,131072)),201);
+      if(req.method==='DELETE')return json(res,await removeTrade(url.searchParams.get('id')??'',Number(url.searchParams.get('revision')), access.userId));
+      return json(res,await saveTrade(await body(req,131072), access.userId),201);
     }
-    if(path === '/api/journal/import')return json(res,await importJournal(await body(req,4*1024*1024)));
-    if(path === '/api/journal/day')return json(res,await saveDay(await body(req,131072)));
+    if(path === '/api/journal/import')return json(res,await importJournal(await body(req,4*1024*1024), access.userId));
+    if(path === '/api/journal/day')return json(res,await saveDay(await body(req,131072), access.userId));
     if (path === '/api/watchlist') {
-      if (req.method === 'GET') return json(res, await savedWatchlist());
+      if (req.method === 'GET') return json(res, await savedWatchlist(access.userId));
       const id = req.method === 'POST' ? (await body(req)).assetId : url.searchParams.get('asset');
       if (typeof id !== 'string') throw Error('Invalid asset identifier');
-      return json(res, await changeWatchlist(validatedId(id), req.method === 'POST'));
+      return json(res, await changeWatchlist(validatedId(id), req.method === 'POST', access.userId));
     }
     if (path === '/api/research/datasets' && req.method === 'GET')
       return json(res, await listResearchDatasets());
@@ -220,7 +229,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     }
     if (path === '/api/calendar') return json(res, await calendar());
     if (path === '/api/alerts' && req.method === 'GET')
-      return json(res, { alerts: snapshot().alerts, events: snapshot().events });
+      return json(res, { alerts: snapshotFor(access.userId).alerts, events: snapshotFor(access.userId).events });
     if (path === '/api/alerts' && req.method === 'POST') {
       const o = await body(req),
         kind = o.kind as AlertKind;
@@ -251,6 +260,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       }
       const a: AlertRule = {
         id: randomUUID(), assetId, ...condition, enabled: true, repeat: o.repeat === true, createdAt: Date.now(),
+        ...(publicMode() ? { ownerId: access.userId } : {}),
       };
       if (o.repeat !== undefined && typeof o.repeat !== 'boolean') throw Error('Invalid repeat option');
       await addAlert(a);
@@ -262,7 +272,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       if (!/^[a-f0-9-]{36}$/.test(id)) throw Error('Invalid alert ID');
       const { enabled } = await body(req);
       if (typeof enabled !== 'boolean') throw Error('Invalid alert status');
-      const alert = await setAlertEnabled(id, enabled);
+      const alert = await setAlertEnabled(id, enabled, access.userId);
       if (!alert) return json(res, { error: 'Alert not found' }, 404);
       // On manual reactivation, seed from the next observation to avoid a stale crossing.
       disarmPriceAlert(id);
@@ -271,7 +281,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path.startsWith('/api/alerts/') && req.method === 'DELETE') {
       const id = path.slice('/api/alerts/'.length);
       if (!/^[a-f0-9-]{36}$/.test(id)) throw Error('Invalid alert ID');
-      await deleteAlert(id);
+      await deleteAlert(id, access.userId);
       return json(res, { ok: true });
     }
     if (path === '/api/push/key') return json(res, { key: vapidKey() });
@@ -279,7 +289,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       const { endpoint } = await body(req);
       if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || endpoint.length > 2048)
         throw Error('Invalid PushSubscription');
-      await forgetSubscription(endpoint);
+      await forgetSubscription(endpoint, access.userId);
       return json(res, { ok: true });
     }
     if (path === '/api/push/subscribe' && req.method === 'POST') {
@@ -294,7 +304,8 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         typeof keys.auth !== 'string'
       )
         throw Error('Invalid PushSubscription');
-      await subscribe({ endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } });
+      await subscribe({ endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth },
+        ...(publicMode() ? { ownerId: access.userId } : {}) });
       return json(res, { ok: true }, 201);
     }
     if (path.startsWith('/api/')) return json(res, { error: 'Unknown endpoint' }, 404);
