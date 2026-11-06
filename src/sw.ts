@@ -16,8 +16,9 @@ self.addEventListener('message', (event) => {
 registerRoute(({ url }) => url.pathname.startsWith('/api/'), new NetworkOnly(), 'GET');
 registerRoute(({ url }) => url.pathname.startsWith('/api/'), new NetworkOnly(), 'POST');
 const pages = new NetworkFirst({ cacheName: 'pages', networkTimeoutSeconds: 3 });
+// The UI uses root query parameters for deep links; caching arbitrary paths would mask real 404 responses.
 registerRoute(
-  ({ request }) => request.mode === 'navigate',
+  ({ request, url }) => request.mode === 'navigate' && url.pathname === '/',
   async ({ event, request }) => {
     try {
       return await pages.handle({ event, request });
