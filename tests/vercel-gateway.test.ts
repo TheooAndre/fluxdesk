@@ -61,18 +61,28 @@ function call(port: number, path: string, method = 'GET', origin?: string, body 
 describe('private Vercel API gateway', () => {
   it('routes API paths without turning unknown files into soft 404s and publishes security metadata', async () => {
     const settings = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8')) as {
-      rewrites: Array<{ source: string; destination: string }>;
-      headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
+      routes: Array<{
+        src?: string;
+        dest?: string;
+        status?: number;
+        handle?: string;
+        headers?: Record<string, string>;
+      }>;
     };
-    expect(settings.rewrites).toEqual([
-      {
-        source: '/api/:path*',
-        destination: '/api/gateway?__fd_route=:path*',
-      },
-    ]);
-    const globalHeaders = Object.fromEntries(
-      settings.headers[0]!.headers.map(({ key, value }) => [key, value]),
+    expect(settings.routes).toEqual(
+      expect.arrayContaining([
+        {
+          src: '/api/(.*)',
+          dest: '/api/gateway?__fd_route=$1',
+        },
+        {
+          src: '/.*',
+          status: 404,
+        },
+      ]),
     );
+    expect(settings.routes).toContainEqual({ handle: 'filesystem' });
+    const globalHeaders = settings.routes.find((route) => route.src === '/(.*)')?.headers ?? {};
     expect(globalHeaders['Content-Security-Policy']).toContain("default-src 'self'");
     expect(globalHeaders['Content-Security-Policy']).toContain("object-src 'none'");
     expect(globalHeaders['Permissions-Policy']).toContain('camera=()');
