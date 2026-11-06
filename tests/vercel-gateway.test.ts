@@ -9,47 +9,82 @@ const servers: Server[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-  await Promise.all(servers.splice(0).map((server) =>
-    new Promise<void>((done, fail) => server.close((e) => e ? fail(e) : done()))));
+  await Promise.all(
+    servers
+      .splice(0)
+      .map((server) => new Promise<void>((done, fail) => server.close((e) => (e ? fail(e) : done())))),
+  );
 });
 
 async function start(query?: Record<string, string | string[]>) {
-  const server = createServer((req, res) => { void gateway(Object.assign(req, { query }), res); });
+  const server = createServer((req, res) => {
+    void gateway(Object.assign(req, { query }), res);
+  });
   servers.push(server);
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
   return (server.address() as AddressInfo).port;
 }
 function call(port: number, path: string, method = 'GET', origin?: string, body = '') {
-  return new Promise<{ status: number; body: string }>((done, fail) => {
-    const req = request({
-      host: '127.0.0.1', port, path, method,
-      headers: {
-        ...(origin ? { origin } : {}),
-        ...(body ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } : {}),
+  return new Promise<{
+    status: number;
+    body: string;
+    headers: Record<string, string | string[] | undefined>;
+  }>((done, fail) => {
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method,
+        headers: {
+          ...(origin ? { origin } : {}),
+          ...(body ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } : {}),
+        },
       },
-    }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (chunk: Buffer) => chunks.push(chunk));
-      res.on('end', () => done({
-        status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8'),
-      }));
-    });
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () =>
+          done({
+            status: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString('utf8'),
+            headers: res.headers,
+          }),
+        );
+      },
+    );
     req.on('error', fail);
     req.end(body);
   });
 }
 
 describe('private Vercel API gateway', () => {
-  it('routes all browser API paths before the SPA fallback using Vite-supported functions', async () => {
+  it('routes API paths without turning unknown files into soft 404s and publishes security metadata', async () => {
     const settings = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8')) as {
       rewrites: Array<{ source: string; destination: string }>;
+      headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
     };
-    expect(settings.rewrites[0]).toEqual({
-      source: '/api/:path*', destination: '/api/gateway?__fd_route=:path*',
-    });
-    expect(settings.rewrites.at(-1)).toEqual({
-      source: '/(.*)', destination: '/index.html',
-    });
+    expect(settings.rewrites).toEqual([
+      {
+        source: '/api/:path*',
+        destination: '/api/gateway?__fd_route=:path*',
+      },
+    ]);
+    const globalHeaders = Object.fromEntries(
+      settings.headers[0]!.headers.map(({ key, value }) => [key, value]),
+    );
+    expect(globalHeaders['Content-Security-Policy']).toContain("default-src 'self'");
+    expect(globalHeaders['Content-Security-Policy']).toContain("object-src 'none'");
+    expect(globalHeaders['Permissions-Policy']).toContain('camera=()');
+    expect(await readFile(new URL('../public/robots.txt', import.meta.url), 'utf8')).toContain(
+      'Disallow: /api/',
+    );
+    expect(await readFile(new URL('../public/.well-known/security.txt', import.meta.url), 'utf8')).toContain(
+      'Contact: https://github.com/TheooAndre/fluxdesk/security/advisories/new',
+    );
+    expect(await readFile(new URL('../public/sitemap.xml', import.meta.url), 'utf8')).toContain(
+      'https://fluxdesk-terminal.vercel.app/',
+    );
   });
 
   it('rejects missing or malicious route metadata before contacting backend', async () => {
@@ -67,13 +102,15 @@ describe('private Vercel API gateway', () => {
   it('routes raw URLs without invoking the platform legacy query getter', async () => {
     vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
     vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
-    const getter = vi.fn(() => { throw Error('Legacy query parser must not run'); });
+    const getter = vi.fn(() => {
+      throw Error('Legacy query parser must not run');
+    });
     const server = createServer((req, res) => {
       Object.defineProperty(req, 'query', { get: getter, configurable: true });
       void gateway(req, res);
     });
     servers.push(server);
-    await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
     const port = (server.address() as AddressInfo).port;
     const mock = vi.fn(async () => Response.json({ ok: true }));
     vi.stubGlobal('fetch', mock);
@@ -83,7 +120,9 @@ describe('private Vercel API gateway', () => {
     expect((await call(port, '/api/gateway?__fd_route=health&__fd_route=health')).status).toBe(404);
     expect(getter).not.toHaveBeenCalled();
     expect(mock).toHaveBeenCalledTimes(2);
-    expect(String((mock.mock.calls[1] as unknown as [URL])[0])).toBe('https://private-api.example.com/api/research/datasets?limit=2');
+    expect(String((mock.mock.calls[1] as unknown as [URL])[0])).toBe(
+      'https://private-api.example.com/api/research/datasets?limit=2',
+    );
   });
 
   it('fails closed without HTTPS backend and strong server-held token', async () => {
@@ -112,7 +151,9 @@ describe('private Vercel API gateway', () => {
     expect(result.status).toBe(200);
     expect(JSON.parse(result.body)).toEqual({ status: 'ok' });
     expect(mock).toHaveBeenCalledTimes(1);
-    expect(String((mock.mock.calls[0] as unknown as [URL])[0])).toBe('https://private-api.example.com' + expected);
+    expect(String((mock.mock.calls[0] as unknown as [URL])[0])).toBe(
+      'https://private-api.example.com' + expected,
+    );
   });
 
   it.each([
@@ -177,8 +218,20 @@ describe('private Vercel API gateway', () => {
     vi.stubGlobal('fetch', mock);
     const port = await start();
     const payload = JSON.stringify({ assetId: 'binance:BTCUSDT', interval: '1h', count: 80 });
-    expect((await call(port, '/api/gateway?__fd_route=research/datasets', 'POST', 'https://attacker.example', payload)).status).toBe(403);
-    expect((await call(port, '/api/gateway?__fd_route=research/datasets', 'POST', undefined, payload)).status).toBe(403);
+    expect(
+      (
+        await call(
+          port,
+          '/api/gateway?__fd_route=research/datasets',
+          'POST',
+          'https://attacker.example',
+          payload,
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (await call(port, '/api/gateway?__fd_route=research/datasets', 'POST', undefined, payload)).status,
+    ).toBe(403);
     expect(mock).not.toHaveBeenCalled();
     const origin = 'https://127.0.0.1:' + port;
     const result = await call(port, '/api/gateway?__fd_route=research/datasets', 'POST', origin, payload);
@@ -192,18 +245,117 @@ describe('private Vercel API gateway', () => {
   it('never follows a backend redirect or reveals upstream errors', async () => {
     vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
     vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('', {
-      status: 302, headers: { location: 'https://attacker.example' },
-    })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('', {
+            status: 302,
+            headers: { location: 'https://attacker.example' },
+          }),
+      ),
+    );
     const port = await start();
     const result = await call(port, '/api/gateway?__fd_route=health');
     expect(result.status).toBe(502);
     expect(result.body).not.toContain('attacker.example');
     expect(result.body).not.toContain(SECRET);
   });
+
+  it('rejects malformed auth JSON before backend work and throttles the attacked account key', async () => {
+    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
+    vi.stubEnv('FLUXDESK_RL_NAME_MAX', '2');
+    const mock = vi.fn(async () => Response.json({ error: 'invalid credentials' }, { status: 401 }));
+    vi.stubGlobal('fetch', mock);
+    const port = await start(),
+      origin = 'https://127.0.0.1:' + port;
+    const malformed = await call(port, '/api/auth/login', 'POST', origin, '{');
+    expect(malformed.status).toBe(400);
+    expect(mock).not.toHaveBeenCalled();
+    const payload = JSON.stringify({ email: 'victim-rate-limit@example.test', password: 'wrong' });
+    expect((await call(port, '/api/auth/login', 'POST', origin, payload)).status).toBe(401);
+    expect((await call(port, '/api/auth/login', 'POST', origin, payload)).status).toBe(401);
+    const limited = await call(port, '/api/auth/login', 'POST', origin, payload);
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+    for (const suffix of ['one', 'two']) {
+      const attempt = await call(
+        port,
+        '/api/auth/register',
+        'POST',
+        origin,
+        JSON.stringify({
+          name: 'same-attacked-name',
+          email: `rotated-${suffix}@example.test`,
+          password: 'wrong',
+        }),
+      );
+      expect(attempt.status).toBe(401);
+    }
+    const rotated = await call(
+      port,
+      '/api/auth/register',
+      'POST',
+      origin,
+      JSON.stringify({
+        name: 'same-attacked-name',
+        email: 'rotated-three@example.test',
+        password: 'wrong',
+      }),
+    );
+    expect(rotated.status).toBe(429);
+    expect(mock).toHaveBeenCalledTimes(4);
+  });
+
+  it('forwards bounded Retry-After but never forwards wildcard API CORS', async () => {
+    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json(
+          { error: 'slow down' },
+          { status: 429, headers: { 'retry-after': '17', 'access-control-allow-origin': '*' } },
+        ),
+      ),
+    );
+    const port = await start(),
+      origin = 'https://127.0.0.1:' + port;
+    const result = await call(
+      port,
+      '/api/auth/login',
+      'POST',
+      origin,
+      JSON.stringify({ email: 'retry-header@example.test', password: 'wrong' }),
+    );
+    expect(result.status).toBe(429);
+    expect(result.headers['retry-after']).toBe('17');
+    expect(result.headers['access-control-allow-origin']).toBeUndefined();
+  });
 });
 
-it('allows bounded journal payloads without widening other API request limits',async()=>{vi.stubEnv('FLUXDESK_GATEWAY_TOKEN',SECRET);vi.stubEnv('FLUXDESK_BACKEND_URL','https://private-api.example.com/');const mock=vi.fn(async()=>Response.json({ok:true}));vi.stubGlobal('fetch',mock);const port=await start(),origin='https://127.0.0.1:'+port;const medium=JSON.stringify({notes:'x'.repeat(20000)});expect((await call(port,'/api/gateway?__fd_route=journal/trades','POST',origin,medium)).status).toBe(200);expect((await call(port,'/api/gateway?__fd_route=alerts','POST',origin,medium)).status).toBe(413);const importBody=JSON.stringify({notes:'x'.repeat(150000)});expect((await call(port,'/api/gateway?__fd_route=journal/import','POST',origin,importBody)).status).toBe(200);expect((await call(port,'/api/gateway?__fd_route=journal/trades','POST',origin,importBody)).status).toBe(413);expect(mock).toHaveBeenCalledTimes(2);});
+it('allows bounded journal payloads without widening other API request limits', async () => {
+  vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
+  vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com/');
+  const mock = vi.fn(async () => Response.json({ ok: true }));
+  vi.stubGlobal('fetch', mock);
+  const port = await start(),
+    origin = 'https://127.0.0.1:' + port;
+  const medium = JSON.stringify({ notes: 'x'.repeat(20000) });
+  expect((await call(port, '/api/gateway?__fd_route=journal/trades', 'POST', origin, medium)).status).toBe(
+    200,
+  );
+  expect((await call(port, '/api/gateway?__fd_route=alerts', 'POST', origin, medium)).status).toBe(413);
+  const importBody = JSON.stringify({ notes: 'x'.repeat(150000) });
+  expect(
+    (await call(port, '/api/gateway?__fd_route=journal/import', 'POST', origin, importBody)).status,
+  ).toBe(200);
+  expect(
+    (await call(port, '/api/gateway?__fd_route=journal/trades', 'POST', origin, importBody)).status,
+  ).toBe(413);
+  expect(mock).toHaveBeenCalledTimes(2);
+});
 
 it('keeps previews read-only on the shared backend while production can save', async () => {
   vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
@@ -211,7 +363,8 @@ it('keeps previews read-only on the shared backend while production can save', a
   vi.stubEnv('VERCEL_ENV', 'preview');
   const mock = vi.fn(async () => Response.json({ ok: true }));
   vi.stubGlobal('fetch', mock);
-  const port = await start(), origin = 'https://127.0.0.1:' + port;
+  const port = await start(),
+    origin = 'https://127.0.0.1:' + port;
   for (const method of ['POST', 'PUT', 'DELETE']) {
     const result = await call(port, '/api/journal/trades', method, origin, '{}');
     expect(result.status).toBe(403);

@@ -171,7 +171,11 @@ export default function AccountDialog({
               their own empty workspace.
             </p>
           ) : registering ? (
-            <p>Your journal, alerts and saved markets stay in your own account.</p>
+            <p>
+              Your journal, alerts and saved markets stay in your own account. Your email is an unverified
+              sign-in identifier; password recovery always requires the separate recovery code shown after
+              registration.
+            </p>
           ) : mode === 'recover' ? (
             <p>Enter the recovery code you saved when you registered or last changed your password.</p>
           ) : signedIn ? (
@@ -290,8 +294,9 @@ export default function AccountDialog({
             </button>
           )}
           <p className="footnote">
-            Use the same email to return to your records. Your password and recovery code are never shown to
-            other users.
+            Use the same email to return to your records. FluxDesk does not claim or verify mailbox ownership,
+            and email alone cannot reset a password. Your password and recovery code are never shown to other
+            users.
           </p>
         </>
       )}

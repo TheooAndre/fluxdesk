@@ -163,11 +163,19 @@ it('isolates a friend account, protects owner-only tools and revokes sessions on
   expect((await call('investments')).response.status).toBe(401);
   expect((await call('investments', undefined, friendCookie)).response.status).toBe(403);
   expect((await call('investments', investmentFixture(), friendCookie)).response.status).toBe(403);
-  expect((await call('investments', undefined, '', false, { 'x-fluxdesk-user-id': `account:${accountDatabase().owner}` })).response.status).toBe(401);
+  expect(
+    (
+      await call('investments', undefined, '', false, {
+        'x-fluxdesk-user-id': `account:${accountDatabase().owner}`,
+      })
+    ).response.status,
+  ).toBe(401);
   const investments = await call('investments', investmentFixture(), ownerCookie);
   expect(investments.response.status).toBe(200);
   expect(investments.body.revision).toBe(1);
-  expect((await call('investments', undefined, ownerCookie)).body).toMatchObject({ portfolios: [{ name: 'Synthetic infrastructure thesis' }] });
+  expect((await call('investments', undefined, ownerCookie)).body).toMatchObject({
+    portfolios: [{ name: 'Synthetic infrastructure thesis' }],
+  });
   expect((await call('investments', investmentFixture(), ownerCookie)).response.status).toBe(409);
   expect((await call('watchlist', { assetId: 'binance:ETHUSDT' }, friendCookie)).response.status).toBe(200);
   expect((await call('watchlist', undefined, ownerCookie)).body.assetIds).toEqual(['binance:BTCUSDT']);
@@ -216,16 +224,32 @@ it('rejects cross-origin mutations and limits repeated credential attempts', asy
       })
     ).response.status,
   ).toBe(400);
-  const statuses = [];
+  const attempts = [];
   for (let i = 0; i < 10; i++)
-    statuses.push(
-      (
-        await call('auth/login', { email: 'absent@example.test', password: PASSWORD }, '', false, {
-          'x-fluxdesk-client-ip': '192.0.2.2',
-        })
-      ).response.status,
+    attempts.push(
+      await call('auth/login', { email: 'absent@example.test', password: PASSWORD }, '', false, {
+        'x-fluxdesk-client-ip': '192.0.2.2',
+      }),
     );
-  expect(statuses).toContain(429);
+  const limited = attempts.find(({ response }) => response.status === 429)?.response;
+  expect(limited).toBeDefined();
+  expect(Number(limited?.headers.get('retry-after'))).toBeGreaterThan(0);
+
+  const malformed = await fetch(base + '/api/auth/login', {
+    method: 'POST',
+    headers: {
+      'x-fluxdesk-gateway-token': SECRET,
+      'x-fluxdesk-public-host': HOST,
+      'x-fluxdesk-client-ip': '192.0.2.44',
+      origin: `https://${HOST}`,
+      'content-type': 'application/json',
+    },
+    body: '{',
+  });
+  expect(malformed.status).toBe(400);
+  expect(await malformed.json()).toEqual({
+    error: 'Account request could not be completed. Check your details and try again.',
+  });
 });
 
 it('backs up and restores account credentials and ownership without restoring old sessions', async () => {

@@ -35,26 +35,26 @@ Production preflight on 24 October confirmed all-deployment authentication but P
 ### SECURITY: No public FluxDesk until ALL checks pass
 
 - [ ] Vercel project has **Vercel Authentication → All Deployments**
-  enabled (including production domains); verify in a private browser.
+      enabled (including production domains); verify in a private browser.
 - [ ] Vercel environment has `FLUXDESK_BACKEND_URL` (publicly reachable
-  HTTPS URL of the persistent API), set as server-side runtime environment.
+      HTTPS URL of the persistent API), set as server-side runtime environment.
 - [ ] Vercel has `FLUXDESK_GATEWAY_TOKEN`, a randomly generated secret of
-  **at least 32 bytes** stored as an encrypted/sensitive server environment
-  variable. **NEVER** prefix it `VITE_`, commit it, or paste it into chat.
+      **at least 32 bytes** stored as an encrypted/sensitive server environment
+      variable. **NEVER** prefix it `VITE_`, commit it, or paste it into chat.
 - [ ] Persistent Node host has that same `FLUXDESK_GATEWAY_TOKEN` in its
-  provider-managed environment and `HOST=0.0.0.0`, `PORT=8787`.
+      provider-managed environment and `HOST=0.0.0.0`, `PORT=8787`.
 - [ ] Persistent Node host has a **durable and writable** `DATA_DIR=/data`.
-  Backups for `state.json` and `research/datasets/` are configured and
-  restore-tested. Replicas must remain at **one** until DB migration.
+      Backups for `state.json` and `research/datasets/` are configured and
+      restore-tested. Replicas must remain at **one** until DB migration.
 - [ ] Backend ingress is HTTPS-only (e.g., provider managed TLS), rate
-  limited and monitored. Do not assume an obscure URL provides security.
+      limited and monitored. Do not assume an obscure URL provides security.
 - [ ] External unauthenticated request to backend `/api/health` returns
-  **401**, not private data. Public routes must also require the gateway.
+      **401**, not private data. Public routes must also require the gateway.
 - [ ] Test that foreign-origin browser POSTs fail with **403** at Vercel.
 - [ ] Test an authorized `/api/health` succeeds through Vercel, and
-  a full research fetch → archive → backtest cycle works.
+      a full research fetch → archive → backtest cycle works.
 - [ ] Verify that fresh and offline iPhone PWA launches behave correctly
-  under the protected origin and do not cache API data.
+      under the protected origin and do not cache API data.
 - [ ] GitHub CI, Lighthouse, audit and deployment approval checks pass.
 
 If `FLUXDESK_BACKEND_URL` or the credential is missing, requests to
@@ -137,6 +137,7 @@ as the only live writer and do not run multiple app replicas.
    hosted end-to-end checks pass.
 
 For convenience, the container entrypoint is:
+
 ```sh
 docker build -t fluxdesk-api .
 docker run --rm --name fluxdesk-api \
@@ -145,6 +146,7 @@ docker run --rm --name fluxdesk-api \
   -v fluxdesk-research:/data -p 127.0.0.1:8787:8787 \
   fluxdesk-api
 ```
+
 **This command binds the container only to the Mac's loopback interface.**
 To provide real external access, first deploy an HTTPS ingress backed by a
 managed container service with persistent disk; do not change the port mapping
@@ -160,8 +162,9 @@ Keep the old Mac/iPhone LAN preview available until cloud acceptance passes.
 - A Vercel Authentication session does **not** authenticate direct calls to
   the separate API host. The gateway uses an independent strong server-held
   credential for that purpose.
-- Vercel's SPA fallback routes deep links to `/index.html`; API function
-  routes must remain separate from this fallback.
+- FluxDesk deep links use query parameters on `/`, so Vercel does not need a
+  catch-all SPA rewrite. Unknown paths and asset-like probes must remain real
+  404 responses; API function routes stay on the explicit `/api/:path*` rewrite.
 - No `VITE_*` environment variable is used for cloud API credentials.
 - Keep preview and production environment secrets separate when multiple
   backend instances are used, so preview cannot change production research
