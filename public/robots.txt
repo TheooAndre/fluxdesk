@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://fluxdesk-terminal.vercel.app/sitemap.xml

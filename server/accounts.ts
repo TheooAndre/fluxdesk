@@ -240,10 +240,13 @@ export async function handleAccounts(
     if (typeof data.name === 'string' && (!data.name.trim() || data.name.length > 80))
       throw Error('Invalid account name');
     const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+    const accountName = typeof data.name === 'string' ? data.name.trim().toLowerCase() : '';
     if (
       needsPassword &&
-      !limit(`identity:${email || accountCookie(req.headers.cookie) || client}`, 10, 60_000)
+      (!limit(`identity:${email || accountCookie(req.headers.cookie) || client}`, 10, 60_000) ||
+        (accountName && !limit(`name:${accountName}`, 8, 60_000)))
     ) {
+      res.setHeader('retry-after', '60');
       json(res, 429, { error: 'Too many account attempts. Try again shortly.' });
       return true;
     }
@@ -275,6 +278,7 @@ export async function handleAccounts(
       ),
     );
     if (!response.ok) {
+      if (response.status === 429) res.setHeader('retry-after', response.headers.get('retry-after') ?? '60');
       json(res, response.status >= 500 ? 503 : response.status, {
         error:
           response.status === 429

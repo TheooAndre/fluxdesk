@@ -1,0 +1,4 @@
+Contact: https://github.com/TheooAndre/fluxdesk/security/advisories/new
+Expires: 2027-11-01T00:00:00Z
+Preferred-Languages: en
+Canonical: https://fluxdesk-terminal.vercel.app/.well-known/security.txt

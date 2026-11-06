@@ -13,7 +13,12 @@ it('loads the emitted Vercel gateway in native Node without a TypeScript resolve
     if (configuration.error) throw Error('Cannot read deployment compiler configuration');
     const parsed = ts.parseJsonConfigFileContent(configuration.config, ts.sys, process.cwd());
     await writeFile(join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
-    for (const path of ['api/gateway.ts', 'api/social-auth.ts', 'server/account-policy.ts']) {
+    for (const path of [
+      'api/gateway.ts',
+      'api/rate-limit.ts',
+      'api/social-auth.ts',
+      'server/account-policy.ts',
+    ]) {
       const target = join(directory, path.replace(/\.ts$/, '.js'));
       await mkdir(dirname(target), { recursive: true });
       const compiled = ts.transpileModule(await readFile(resolve(path), 'utf8'), {
