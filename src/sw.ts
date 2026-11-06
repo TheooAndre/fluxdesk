@@ -17,7 +17,7 @@ registerRoute(({ url }) => url.pathname.startsWith('/api/'), new NetworkOnly(), 
 registerRoute(({ url }) => url.pathname.startsWith('/api/'), new NetworkOnly(), 'POST');
 const pages = new NetworkFirst({ cacheName: 'pages', networkTimeoutSeconds: 3 });
 registerRoute(
-  ({ request }) => request.mode === 'navigate',
+  ({ request, url }) => request.mode === 'navigate' && url.pathname === '/',
   async ({ event, request }) => {
     try {
       return await pages.handle({ event, request });
