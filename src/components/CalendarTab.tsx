@@ -14,7 +14,7 @@ function CalendarTab() {
     <div className="content-stack">
       <div className="section-intro">
         <h2>High-impact economic calendar</h2>
-        <p>Major US releases over the next two weeks, shown in your local timezone.</p>
+        <p>Recent and upcoming major US releases over the next 30 days, shown in your local timezone.</p>
       </div>
       <Card title="Upcoming releases" aside={<Pill tone="red">HIGH IMPACT ONLY</Pill>}>
         <button type="button" disabled={feed.isFetching} onClick={() => void feed.refetch()}>
@@ -47,7 +47,14 @@ function CalendarTab() {
               <p className="footnote">Source: XOOMAR US schedule · verify release times with the agency</p>
             )}
             {feed.data.source === 'tradingeconomics' && (
-              <p className="footnote">Source: Trading Economics · survey consensus and proprietary forecast</p>
+              <p className="footnote">
+                Source: Trading Economics · survey consensus and proprietary forecast
+              </p>
+            )}
+            {feed.data.source === 'showmytrades' && (
+              <p className="footnote">
+                Source: ShowMyTrades · analyst consensus, previous and released actual
+              </p>
             )}
             {feed.data.staleSources?.length ? (
               <p className="footnote">Unavailable source: {feed.data.staleSources.join(', ')}</p>
@@ -90,6 +97,7 @@ function CalendarTab() {
                     <small>
                       {e.country}
                       {e.status === 'estimated' ? ' · Estimated date' : ''}
+                      {e.actual ? ' · Released' : ''}
                       {e.stale ? ' · Source update delayed' : ''}
                     </small>
                     {e.sourceUrl && (
@@ -130,12 +138,18 @@ function CalendarTab() {
                   <div className="event-data">
                     <small>Analyst consensus</small>
                     <strong>{e.forecast || '—'}</strong>
-                    <small>Provider forecast</small>
-                    <strong>{e.providerForecast || '—'}</strong>
+                    <small>Actual</small>
+                    <strong>{e.actual || (Date.parse(e.time) > Date.now() ? 'Pending' : '—')}</strong>
                   </div>
                   <div className="event-data">
-                    <small>Prior</small>
+                    <small>Previous</small>
                     <strong>{e.previous || '—'}</strong>
+                    {e.providerForecast && (
+                      <>
+                        <small>Provider forecast</small>
+                        <strong>{e.providerForecast}</strong>
+                      </>
+                    )}
                   </div>
                   <Pill tone="red">HIGH</Pill>
                 </div>
@@ -150,7 +164,15 @@ function CalendarTab() {
           </>
         )}
         <p className="footnote">
-          Optional data by{' '}
+          Free calendar data by{' '}
+          <a
+            href="https://showmytrades.com/tools/economic-calendar"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            ShowMyTrades
+          </a>
+          ; optional data by{' '}
           <a href="https://tradingeconomics.com/calendar" target="_blank" rel="noopener noreferrer">
             Trading Economics
           </a>
