@@ -87,8 +87,10 @@ export const api = {
       ownerSetupAllowed?: boolean;
       recoveryAvailable?: boolean;
     }>('/api/auth/session'),
-  account: (action: 'register' | 'register-owner' | 'login' | 'change-password' | 'recover', data: Record<string, string>) =>
-    postResearch<{ success: boolean; recoveryCode?: string }>(`/api/auth/${action}`, data, 30_000),
+  account: (
+    action: 'register' | 'register-owner' | 'login' | 'change-password' | 'recover',
+    data: Record<string, string>,
+  ) => postResearch<{ success: boolean; recoveryCode?: string }>(`/api/auth/${action}`, data, 30_000),
   signOut: () => request<{ authenticated: false }>('/api/auth/logout', { method: 'POST' }),
   health: (signal?: AbortSignal) => get<unknown>('/api/health', signal),
   investments: () => get<Investments>('/api/investments'),
@@ -186,7 +188,16 @@ export const api = {
     get<{
       configured: boolean;
       events: EconomicEvent[];
-      source?: 'tradingeconomics' | 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
+      source?:
+        | 'tradingeconomics'
+        | 'showmytrades'
+        | 'financecalendar'
+        | 'bls'
+        | 'bea'
+        | 'official'
+        | 'xoomar'
+        | 'cached'
+        | 'unavailable';
       staleSources?: string[];
       sources?: CalendarSourceCheck[];
       message?: string;

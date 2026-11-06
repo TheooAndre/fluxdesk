@@ -20,7 +20,13 @@ function reported(value: string): string {
 }
 export function macroReleaseMessage(event: EconomicEvent, now = Date.now()): string {
   const minutes = Math.max(0, Math.ceil((Date.parse(event.time) - now) / 60_000));
-  return `${event.country} macro in ${minutes}m — ${event.title}. Analyst consensus: ${reported(event.forecast)}. Provider forecast: ${reported(event.providerForecast ?? '')}. Previous: ${reported(event.previous)}.`;
+  const actual =
+    event.actual.trim() ||
+    (Date.parse(event.time) > now ? 'pending until release' : 'not supplied by source');
+  const provider = event.providerForecast?.trim()
+    ? ` Provider forecast: ${event.providerForecast.trim()}.`
+    : '';
+  return `${event.country} macro in ${minutes}m — ${event.title}. Analyst consensus: ${reported(event.forecast)}. Previous: ${reported(event.previous)}. Actual: ${actual}.${provider}`;
 }
 export async function scanAlerts() {
   if (running) return;
@@ -34,12 +40,14 @@ export async function scanAlerts() {
     const macroRules = rules.filter((rule) => rule.kind === 'macro');
     if (macroRules.length) {
       try {
-        const feed = await calendar(), now = Date.now();
+        const feed = await calendar(),
+          now = Date.now();
         for (const rule of macroRules) {
           if (rule.kind !== 'macro') continue;
           for (const event of feed.events) {
             const releaseAt = Date.parse(event.time);
-            if (!Number.isFinite(releaseAt) || releaseAt < now || releaseAt - now > rule.leadMinutes * 60_000) continue;
+            if (!Number.isFinite(releaseAt) || releaseAt < now || releaseAt - now > rule.leadMinutes * 60_000)
+              continue;
             const recorded = await triggered(rule, macroReleaseMessage(event, now), undefined, event.id);
             if (recorded) await deliver(recorded);
           }

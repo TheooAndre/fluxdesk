@@ -3,7 +3,11 @@ import { parseCalendar } from '../server/calendar.ts';
 import { parseBlsCalendar } from '../server/bls-calendar.ts';
 import { parseBeaCalendar } from '../server/bea-calendar.ts';
 import { parseXoomarCalendar } from '../server/xoomar-calendar.ts';
-import { fetchTradingEconomicsCalendar, parseTradingEconomicsCalendar } from '../server/trading-economics-calendar.ts';
+import {
+  fetchTradingEconomicsCalendar,
+  parseTradingEconomicsCalendar,
+} from '../server/trading-economics-calendar.ts';
+import { fetchShowMyTradesCalendar, parseShowMyTradesCalendar } from '../server/showmytrades-calendar.ts';
 
 beforeEach(() => {
   vi.resetModules();
@@ -74,12 +78,15 @@ it('fails closed on truncated pages or malformed responses', () => {
 it('authenticates with a header, checks backups and bounds cached recovery', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-25T00:00:00Z'));
+  let financeOffline = false;
   const fetcher = vi.fn(async (input: string, options?: RequestInit) => {
     const url = new URL(input);
+    if (url.origin === 'https://showmytrades.com') throw new Error('ShowMyTrades offline');
     if (url.origin === 'https://www.bls.gov') throw new Error('BLS offline');
     if (url.origin === 'https://xoomar.com') throw new Error('XOOMAR offline');
     if (url.origin === 'https://www.bea.gov') throw new Error('BEA offline');
     expect(url.origin).toBe('https://www.financecalendar.com');
+    if (financeOffline) throw new Error('Finance Calendar offline');
     expect(url.searchParams.get('country')).toBe('US');
     expect(url.searchParams.get('impact')).toBe('high');
     expect(url.searchParams.has('api_key')).toBe(false);
@@ -91,16 +98,15 @@ it('authenticates with a header, checks backups and bounds cached recovery', asy
   const response = await calendar();
   expect(response.events).toHaveLength(1);
   expect((await calendar()).events).toHaveLength(1);
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(5);
   vi.advanceTimersByTime(11 * 60_000);
-  fetcher.mockRejectedValueOnce(new Error('offline'));
+  financeOffline = true;
   const unavailable = await calendar();
   expect(unavailable.message).toContain('showing earlier results');
   expect(unavailable.events).toHaveLength(1);
   expect((await calendar()).message).toContain('unavailable');
-  expect(fetcher).toHaveBeenCalledTimes(8);
+  expect(fetcher).toHaveBeenCalledTimes(10);
   vi.advanceTimersByTime(2 * 60 * 60_000);
-  fetcher.mockRejectedValueOnce(new Error('offline'));
   const expired = await calendar();
   expect(expired.source).toBe('unavailable');
   expect(expired.events).toEqual([]);
@@ -148,6 +154,7 @@ it('uses the official partial schedule and marks the failed primary source', asy
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-04T00:00:00Z'));
   const fetcher = vi.fn(async (input: string) => {
+    if (input.includes('showmytrades.com')) return new Response('unavailable', { status: 503 });
     if (input.includes('financecalendar.com')) return new Response('unauthorized', { status: 401 });
     if (!input.includes('bls.gov')) return new Response('unavailable', { status: 503 });
     return new Response(blsIcs, { status: 200, headers: { 'content-type': 'text/calendar' } });
@@ -157,12 +164,12 @@ it('uses the official partial schedule and marks the failed primary source', asy
   expect(response).toMatchObject({
     configured: true,
     source: 'bls',
-    staleSources: ['financecalendar', 'bea', 'xoomar'],
+    staleSources: ['showmytrades', 'financecalendar', 'bea', 'xoomar'],
   });
   expect(response.events).toHaveLength(1);
   expect(response.message).toContain('partial official BLS');
   expect((await calendar()).events).toHaveLength(1);
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(5);
 });
 
 it('validates the attributed third-source schedule and rejects stale or untimed rows', () => {
@@ -203,16 +210,39 @@ it('validates the attributed third-source schedule and rejects stale or untimed 
 
 it('keeps survey consensus, provider forecast and previous values separate', () => {
   const now = Date.parse('2026-11-05T00:00:00Z');
-  expect(parseTradingEconomicsCalendar([{
-    CalendarId: '123', Date: '2026-11-06T13:30:00', Country: 'United States',
-    Event: 'Non Farm Payrolls', Actual: '', Previous: '175K', Forecast: '180K', TEForecast: '182K',
-    Importance: 3, DateSpan: '0', Source: 'U.S. Bureau of Labor Statistics',
-    SourceURL: 'http://www.bls.gov/', URL: '/united-states/non-farm-payrolls',
-  }], now)).toMatchObject([{
-    id: 'tradingeconomics:123', time: '2026-11-06T13:30:00.000Z', title: 'Non Farm Payrolls',
-    forecast: '180K', providerForecast: '182K', previous: '175K', sourceUrl: 'https://www.bls.gov/',
-    eventUrl: 'https://tradingeconomics.com/united-states/non-farm-payrolls',
-  }]);
+  expect(
+    parseTradingEconomicsCalendar(
+      [
+        {
+          CalendarId: '123',
+          Date: '2026-11-06T13:30:00',
+          Country: 'United States',
+          Event: 'Non Farm Payrolls',
+          Actual: '',
+          Previous: '175K',
+          Forecast: '180K',
+          TEForecast: '182K',
+          Importance: 3,
+          DateSpan: '0',
+          Source: 'U.S. Bureau of Labor Statistics',
+          SourceURL: 'http://www.bls.gov/',
+          URL: '/united-states/non-farm-payrolls',
+        },
+      ],
+      now,
+    ),
+  ).toMatchObject([
+    {
+      id: 'tradingeconomics:123',
+      time: '2026-11-06T13:30:00.000Z',
+      title: 'Non Farm Payrolls',
+      forecast: '180K',
+      providerForecast: '182K',
+      previous: '175K',
+      sourceUrl: 'https://www.bls.gov/',
+      eventUrl: 'https://tradingeconomics.com/united-states/non-farm-payrolls',
+    },
+  ]);
   expect(() => parseTradingEconomicsCalendar({}, now)).toThrow('malformed');
 });
 
@@ -229,10 +259,113 @@ it('keeps the Trading Economics credential out of the URL', async () => {
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
+const showMyTradesNow = Date.parse('2026-11-05T12:00:00Z');
+const showMyTradesPayload = {
+  server_time: showMyTradesNow / 1000,
+  server_time_iso: '2026-11-05T12:00:00Z',
+  generated_at: '2026-11-05T11:55:00Z',
+  count: 2,
+  events: [
+    {
+      ts: Date.parse('2026-11-05T11:00:00Z') / 1000,
+      time: '2026-11-05T11:00:00Z',
+      currency: 'USD',
+      impact: 'high',
+      title: 'Initial Jobless Claims',
+      forecast: '220K',
+      previous: '218K',
+      actual: '216K',
+      id: 'usd-initial-jobless-claims.20261105T1100',
+      status: 'scheduled',
+      moved_from: '',
+      confidence: 'official',
+    },
+    {
+      ts: Date.parse('2026-11-06T13:30:00Z') / 1000,
+      time: '2026-11-06T13:30:00Z',
+      currency: 'USD',
+      impact: 'high',
+      title: 'Nonfarm Payrolls',
+      forecast: '180K',
+      previous: '175K',
+      actual: '',
+      id: 'usd-nonfarm-payrolls.20261106T1330',
+      status: 'scheduled',
+      moved_from: '',
+      confidence: 'sources_agree',
+    },
+  ],
+};
+
+it('maps the free calendar consensus, previous and actual values and retains recent releases', () => {
+  expect(parseShowMyTradesCalendar(showMyTradesPayload, showMyTradesNow)).toMatchObject([
+    {
+      id: 'showmytrades:usd-initial-jobless-claims.20261105T1100',
+      forecast: '220K',
+      previous: '218K',
+      actual: '216K',
+      sourceName: 'ShowMyTrades Economic Calendar',
+    },
+    {
+      id: 'showmytrades:usd-nonfarm-payrolls.20261106T1330',
+      forecast: '180K',
+      previous: '175K',
+      actual: '',
+    },
+  ]);
+  expect(() => parseShowMyTradesCalendar({ ...showMyTradesPayload, count: 3 }, showMyTradesNow)).toThrow(
+    'incomplete',
+  );
+  expect(() =>
+    parseShowMyTradesCalendar(
+      { ...showMyTradesPayload, server_time_iso: '2026-11-05T13:00:00Z' },
+      showMyTradesNow,
+    ),
+  ).toThrow('stale or invalid');
+});
+
+it('requests the free high-impact USD calendar without credentials', async () => {
+  const fetcher = vi.fn(async (input: string, options?: RequestInit) => {
+    const url = new URL(input);
+    expect(url.origin).toBe('https://showmytrades.com');
+    expect(url.searchParams.get('currency')).toBe('USD');
+    expect(url.searchParams.get('impact')).toBe('high');
+    expect(url.searchParams.get('days')).toBe('30');
+    expect(options?.redirect).toBe('error');
+    return Response.json({ ...showMyTradesPayload, count: 0, events: [] });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  expect(await fetchShowMyTradesCalendar(showMyTradesNow)).toEqual([]);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('prefers the free consensus feed when paid providers are not configured', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(showMyTradesNow);
+  vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', '');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      if (input.includes('showmytrades.com')) return Response.json(showMyTradesPayload);
+      if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
+      if (input.includes('bea.gov')) return new Response('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR');
+      return Response.json({ updatedAt: '2026-11-05T12:00:00Z', data: [] });
+    }),
+  );
+  const result = await calendar();
+  expect(result).toMatchObject({ source: 'showmytrades' });
+  expect(result.events).toHaveLength(2);
+  expect(result.sources.find((source) => source.id === 'showmytrades')).toMatchObject({
+    status: 'live',
+    eventCount: 2,
+  });
+});
+
 it('uses XOOMAR after both first sources reject and reports the source flags', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-10T00:00:00Z'));
   const fetcher = vi.fn(async (input: string) => {
+    if (input.includes('showmytrades.com')) return new Response('unavailable', { status: 503 });
     if (input.includes('financecalendar.com')) return new Response('unauthorized', { status: 401 });
     if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
     if (input.includes('bea.gov')) return new Response('unavailable', { status: 503 });
@@ -254,10 +387,10 @@ it('uses XOOMAR after both first sources reject and reports the source flags', a
   expect(response).toMatchObject({
     configured: true,
     source: 'xoomar',
-    staleSources: ['financecalendar', 'bls', 'bea'],
+    staleSources: ['showmytrades', 'financecalendar', 'bls', 'bea'],
   });
   expect(response.events).toHaveLength(1);
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(5);
 });
 
 const beaIcs = `BEGIN:VCALENDAR\r
@@ -301,6 +434,7 @@ it('keeps an empty official backup available and skips an unconfigured keyed pro
   vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', '');
   const fetcher = vi.fn(async (input: string, options?: RequestInit) => {
     expect(input).not.toContain('financecalendar.com');
+    if (input.includes('showmytrades.com')) return new Response('unavailable', { status: 503 });
     if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
     if (input.includes('bea.gov')) {
       expect(options?.headers).toMatchObject({
@@ -313,7 +447,7 @@ it('keeps an empty official backup available and skips an unconfigured keyed pro
   });
   vi.stubGlobal('fetch', fetcher);
   const result = await calendar();
-  expect(result).toMatchObject({ source: 'xoomar', events: [], staleSources: ['bls'] });
+  expect(result).toMatchObject({ source: 'xoomar', events: [], staleSources: ['showmytrades', 'bls'] });
   expect(result.sources).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ id: 'financecalendar', status: 'not_configured' }),
@@ -321,7 +455,7 @@ it('keeps an empty official backup available and skips an unconfigured keyed pro
       expect.objectContaining({ id: 'bls', status: 'unavailable', message: 'HTTP 403' }),
     ]),
   );
-  expect(fetcher).toHaveBeenCalledTimes(3);
+  expect(fetcher).toHaveBeenCalledTimes(4);
 });
 
 it('serves official BLS and BEA schedules if the broad feed fails and redacts credential errors', async () => {
@@ -332,6 +466,7 @@ it('serves official BLS and BEA schedules if the broad feed fails and redacts cr
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string) => {
+      if (input.includes('showmytrades.com')) return new Response('unavailable', { status: 503 });
       if (input.includes('financecalendar.com')) throw Error(`header value ${secret} rejected`);
       if (input.includes('bls.gov')) return new Response(blsIcs);
       if (input.includes('bea.gov')) return new Response(beaIcs);

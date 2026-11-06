@@ -4,6 +4,7 @@ import { fetchBlsCalendar } from './bls-calendar.ts';
 import { fetchBeaCalendar } from './bea-calendar.ts';
 import { fetchXoomarCalendar } from './xoomar-calendar.ts';
 import { fetchTradingEconomicsCalendar } from './trading-economics-calendar.ts';
+import { fetchShowMyTradesCalendar, RECENT_RELEASE_WINDOW_MS } from './showmytrades-calendar.ts';
 
 const BASE = 'https://www.financecalendar.com/wp-json/fc/v1/calendar';
 const TTL = 10 * 60_000;
@@ -35,13 +36,22 @@ type SourceResponse = { events?: unknown; total?: unknown };
 export type CalendarResponse = {
   configured: boolean;
   events: EconomicEvent[];
-  source: 'tradingeconomics' | 'financecalendar' | 'bls' | 'bea' | 'official' | 'xoomar' | 'cached' | 'unavailable';
+  source:
+    | 'tradingeconomics'
+    | 'showmytrades'
+    | 'financecalendar'
+    | 'bls'
+    | 'bea'
+    | 'official'
+    | 'xoomar'
+    | 'cached'
+    | 'unavailable';
   staleSources: string[];
   sources: CalendarSourceCheck[];
   message?: string;
 };
 export type CalendarSourceCheck = {
-  id: 'tradingeconomics' | 'financecalendar' | 'bls' | 'bea' | 'xoomar';
+  id: 'tradingeconomics' | 'showmytrades' | 'financecalendar' | 'bls' | 'bea' | 'xoomar';
   name: string;
   status: 'live' | 'unavailable' | 'not_configured';
   checkedAt: number;
@@ -177,8 +187,11 @@ async function tradingEconomics(now: number): Promise<SourceResult> {
   if (!key)
     return {
       check: {
-        id: 'tradingeconomics', name: 'Trading Economics', status: 'not_configured',
-        checkedAt: Date.now(), message: 'Optional API key not configured',
+        id: 'tradingeconomics',
+        name: 'Trading Economics',
+        status: 'not_configured',
+        checkedAt: Date.now(),
+        message: 'Optional API key not configured',
       },
       events: null,
     };
@@ -188,17 +201,22 @@ async function tradingEconomics(now: number): Promise<SourceResult> {
   });
 }
 
+function showMyTrades(now: number): Promise<SourceResult> {
+  return checkSource('showmytrades', 'ShowMyTrades', () => fetchShowMyTradesCalendar(now));
+}
+
 async function refresh(day: string, now: number): Promise<CalendarResponse> {
   // Check independent schedules together so one denied/slow provider cannot
   // hide a working backup or multiply the nine-second request deadline.
-  const [economics, finance, bls, bea, xoomar] = await Promise.all([
+  const [economics, freeCalendar, finance, bls, bea, xoomar] = await Promise.all([
     tradingEconomics(now),
+    showMyTrades(now),
     financeCalendar(day, now),
     checkSource('bls', 'BLS', () => fetchBlsCalendar(now)),
     checkSource('bea', 'BEA', () => fetchBeaCalendar(now)),
     checkSource('xoomar', 'XOOMAR', () => fetchXoomarCalendar(now)),
   ]);
-  const sources = [economics, finance, bls, bea, xoomar].map((result) => result.check);
+  const sources = [economics, freeCalendar, finance, bls, bea, xoomar].map((result) => result.check);
   // An optional provider without a key is not an attempted failed request.
   const staleSources = sources.filter((source) => source.status === 'unavailable').map((source) => source.id);
   const failures = sources
@@ -209,6 +227,9 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
   if (economics.events !== null) {
     source = 'tradingeconomics';
     events = economics.events;
+  } else if (freeCalendar.events !== null) {
+    source = 'showmytrades';
+    events = freeCalendar.events;
   } else if (finance.events !== null) {
     source = 'financecalendar';
     events = finance.events;
@@ -224,7 +245,7 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
       configured: true,
       events: recent
         ? cache!.value.events
-            .filter((event) => Date.parse(event.time) >= now)
+            .filter((event) => Date.parse(event.time) >= now - RECENT_RELEASE_WINDOW_MS)
             .map((event) => ({ ...event, stale: true }))
         : [],
       source: recent ? 'cached' : 'unavailable',
@@ -238,11 +259,13 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
   const description =
     source === 'tradingeconomics'
       ? 'Showing Trading Economics survey consensus, proprietary forecast and prior values.'
-      : source === 'financecalendar'
-      ? ''
-      : source === 'xoomar'
-        ? 'Showing the attributed XOOMAR US schedule; verify release times with the originating agency.'
-        : `Showing a partial official ${source === 'official' ? 'BLS and BEA' : source.toUpperCase()} release schedule; other agencies, forecasts and prior values are not covered.`;
+      : source === 'showmytrades'
+        ? 'Showing the free ShowMyTrades calendar with analyst consensus, previous and released actual values.'
+        : source === 'financecalendar'
+          ? ''
+          : source === 'xoomar'
+            ? 'Showing the attributed XOOMAR US schedule; verify release times with the originating agency.'
+            : `Showing a partial official ${source === 'official' ? 'BLS and BEA' : source.toUpperCase()} release schedule; other agencies, forecasts and prior values are not covered.`;
   const value: CalendarResponse = {
     configured: true,
     events,
@@ -262,9 +285,15 @@ export async function calendar(): Promise<CalendarResponse> {
   const now = Date.now(),
     day = new Date(now).toISOString().slice(0, 10);
   if (cache?.day === day && now - cache.at < TTL)
-    return { ...cache.value, events: cache.value.events.filter((x) => Date.parse(x.time) >= now) };
+    return {
+      ...cache.value,
+      events: cache.value.events.filter((x) => Date.parse(x.time) >= now - RECENT_RELEASE_WINDOW_MS),
+    };
   if (failure?.day === day && now - failure.at < TTL)
-    return { ...failure.value, events: failure.value.events.filter((x) => Date.parse(x.time) >= now) };
+    return {
+      ...failure.value,
+      events: failure.value.events.filter((x) => Date.parse(x.time) >= now - RECENT_RELEASE_WINDOW_MS),
+    };
   if (!pending)
     pending = refresh(day, now).finally(() => {
       pending = null;
