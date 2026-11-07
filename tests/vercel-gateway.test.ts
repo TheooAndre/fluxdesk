@@ -76,7 +76,8 @@ describe('private Vercel API gateway', () => {
           dest: '/api/gateway?__fd_route=$1',
         },
         {
-          src: '/.*',
+          src: '/(.*)',
+          dest: '/404.html',
           status: 404,
         },
       ]),
@@ -94,6 +95,9 @@ describe('private Vercel API gateway', () => {
     );
     expect(await readFile(new URL('../public/sitemap.xml', import.meta.url), 'utf8')).toContain(
       'https://fluxdesk-terminal.vercel.app/',
+    );
+    expect(await readFile(new URL('../public/404.html', import.meta.url), 'utf8')).toContain(
+      'Page not found',
     );
   });
 
