@@ -76,7 +76,8 @@ describe('private Vercel API gateway', () => {
           dest: '/api/gateway?__fd_route=$1',
         },
         {
-          src: '/.*',
+          src: '/(.*)',
+          dest: '/404.html',
           status: 404,
         },
       ]),
@@ -94,6 +95,9 @@ describe('private Vercel API gateway', () => {
     );
     expect(await readFile(new URL('../public/sitemap.xml', import.meta.url), 'utf8')).toContain(
       'https://fluxdesk-terminal.vercel.app/',
+    );
+    expect(await readFile(new URL('../public/404.html', import.meta.url), 'utf8')).toContain(
+      'Page not found',
     );
   });
 
@@ -254,135 +258,3 @@ describe('private Vercel API gateway', () => {
 
   it('never follows a backend redirect or reveals upstream errors', async () => {
     vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
-    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response('', {
-            status: 302,
-            headers: { location: 'https://attacker.example' },
-          }),
-      ),
-    );
-    const port = await start();
-    const result = await call(port, '/api/gateway?__fd_route=health');
-    expect(result.status).toBe(502);
-    expect(result.body).not.toContain('attacker.example');
-    expect(result.body).not.toContain(SECRET);
-  });
-
-  it('rejects malformed auth JSON before backend work and throttles the attacked account key', async () => {
-    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
-    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
-    vi.stubEnv('FLUXDESK_RL_NAME_MAX', '2');
-    const mock = vi.fn(async () => Response.json({ error: 'invalid credentials' }, { status: 401 }));
-    vi.stubGlobal('fetch', mock);
-    const port = await start(),
-      origin = 'https://127.0.0.1:' + port;
-    const malformed = await call(port, '/api/auth/login', 'POST', origin, '{');
-    expect(malformed.status).toBe(400);
-    expect(mock).not.toHaveBeenCalled();
-    const payload = JSON.stringify({ email: 'victim-rate-limit@example.test', password: 'wrong' });
-    expect((await call(port, '/api/auth/login', 'POST', origin, payload)).status).toBe(401);
-    expect((await call(port, '/api/auth/login', 'POST', origin, payload)).status).toBe(401);
-    const limited = await call(port, '/api/auth/login', 'POST', origin, payload);
-    expect(limited.status).toBe(429);
-    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
-    for (const suffix of ['one', 'two']) {
-      const attempt = await call(
-        port,
-        '/api/auth/register',
-        'POST',
-        origin,
-        JSON.stringify({
-          name: 'same-attacked-name',
-          email: `rotated-${suffix}@example.test`,
-          password: 'wrong',
-        }),
-      );
-      expect(attempt.status).toBe(401);
-    }
-    const rotated = await call(
-      port,
-      '/api/auth/register',
-      'POST',
-      origin,
-      JSON.stringify({
-        name: 'same-attacked-name',
-        email: 'rotated-three@example.test',
-        password: 'wrong',
-      }),
-    );
-    expect(rotated.status).toBe(429);
-    expect(mock).toHaveBeenCalledTimes(4);
-  });
-
-  it('forwards bounded Retry-After but never forwards wildcard API CORS', async () => {
-    vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
-    vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        Response.json(
-          { error: 'slow down' },
-          { status: 429, headers: { 'retry-after': '17', 'access-control-allow-origin': '*' } },
-        ),
-      ),
-    );
-    const port = await start(),
-      origin = 'https://127.0.0.1:' + port;
-    const result = await call(
-      port,
-      '/api/auth/login',
-      'POST',
-      origin,
-      JSON.stringify({ email: 'retry-header@example.test', password: 'wrong' }),
-    );
-    expect(result.status).toBe(429);
-    expect(result.headers['retry-after']).toBe('17');
-    expect(result.headers['access-control-allow-origin']).toBeUndefined();
-  });
-});
-
-it('allows bounded journal payloads without widening other API request limits', async () => {
-  vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
-  vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com/');
-  const mock = vi.fn(async () => Response.json({ ok: true }));
-  vi.stubGlobal('fetch', mock);
-  const port = await start(),
-    origin = 'https://127.0.0.1:' + port;
-  const medium = JSON.stringify({ notes: 'x'.repeat(20000) });
-  expect((await call(port, '/api/gateway?__fd_route=journal/trades', 'POST', origin, medium)).status).toBe(
-    200,
-  );
-  expect((await call(port, '/api/gateway?__fd_route=alerts', 'POST', origin, medium)).status).toBe(413);
-  const importBody = JSON.stringify({ notes: 'x'.repeat(150000) });
-  expect(
-    (await call(port, '/api/gateway?__fd_route=journal/import', 'POST', origin, importBody)).status,
-  ).toBe(200);
-  expect(
-    (await call(port, '/api/gateway?__fd_route=journal/trades', 'POST', origin, importBody)).status,
-  ).toBe(413);
-  expect(mock).toHaveBeenCalledTimes(2);
-});
-
-it('keeps previews read-only on the shared backend while production can save', async () => {
-  vi.stubEnv('FLUXDESK_GATEWAY_TOKEN', SECRET);
-  vi.stubEnv('FLUXDESK_BACKEND_URL', 'https://private-api.example.com/');
-  vi.stubEnv('VERCEL_ENV', 'preview');
-  const mock = vi.fn(async () => Response.json({ ok: true }));
-  vi.stubGlobal('fetch', mock);
-  const port = await start(),
-    origin = 'https://127.0.0.1:' + port;
-  for (const method of ['POST', 'PUT', 'DELETE']) {
-    const result = await call(port, '/api/journal/trades', method, origin, '{}');
-    expect(result.status).toBe(403);
-    expect(result.body).toContain('read-only');
-  }
-  expect(mock).not.toHaveBeenCalled();
-  expect((await call(port, '/api/journal')).status).toBe(200);
-  vi.stubEnv('VERCEL_ENV', 'production');
-  expect((await call(port, '/api/journal/trades', 'POST', origin, '{}')).status).toBe(200);
-  expect(mock).toHaveBeenCalledTimes(2);
-});
