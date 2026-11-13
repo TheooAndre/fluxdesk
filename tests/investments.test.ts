@@ -5,9 +5,12 @@ import { tmpdir } from 'node:os';
 import { investmentCsv, parseInvestmentImport, validateInvestments } from '../src/investments/model.ts';
 import { readInvestments, saveInvestments } from '../server/investments.ts';
 import { createArchive, restoreArchive } from '../server/archive.ts';
+import * as stocks from '../server/stock-data.ts';
+import { stockDataFixture } from './fixtures/stock-data.ts';
 import { investmentFixture } from './fixtures/investments.ts';
 let directory = '';
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   if (directory) await rm(directory, { recursive: true, force: true });
   directory = '';
@@ -132,4 +135,27 @@ it('persists atomically, rejects stale concurrent edits, and includes private in
   expect((await saveInvestments(changed)).revision).toBe(2);
   await expect(saveInvestments(saved)).rejects.toMatchObject({ status: 409 });
   expect((await readInvestments()).portfolios[0]!.stocks[0]!.notes).toBe('Second device edit');
+});
+
+it('verifies newly linked listings before saving and preserves research and revisions on provider failure', async () => {
+  directory = await mkdtemp(join(tmpdir(), 'fluxdesk-stock-link-'));
+  vi.stubEnv('DATA_DIR', directory);
+  const original = investmentFixture();
+  await saveInvestments(original);
+  const changed = await readInvestments();
+  changed.portfolios[0]!.stocks[0]!.marketSymbol = '7203.T';
+  const provider = vi.spyOn(stocks, 'stockData').mockRejectedValue(new Error('Provider unavailable'));
+  await expect(saveInvestments(changed)).rejects.toThrow('Provider unavailable');
+  expect((await readInvestments()).revision).toBe(1);
+  provider.mockResolvedValue(stockDataFixture());
+  const saved = await saveInvestments(changed);
+  expect(saved.portfolios[0]!.stocks[0]).toMatchObject({
+    marketSymbol: '7203.T',
+    thesis: 'Synthetic private memo',
+  });
+  expect((await readInvestments()).portfolios[0]!.stocks[0]!.marketSymbol).toBe('7203.T');
+  provider.mockClear();
+  saved.portfolios[0]!.stocks[0]!.notes = 'Updated memo';
+  await saveInvestments(saved);
+  expect(provider).not.toHaveBeenCalled();
 });

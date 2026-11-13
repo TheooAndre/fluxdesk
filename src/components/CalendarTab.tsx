@@ -13,8 +13,7 @@ function CalendarTab() {
   return (
     <div className="content-stack">
       <div className="section-intro">
-        <h2>High-impact economic calendar</h2>
-        <p>Recent and upcoming major US releases over the next 30 days, shown in your local timezone.</p>
+        <span className="small-label">High impact · US · Local time</span>
       </div>
       <Card title="Upcoming releases" aside={<Pill tone="red">HIGH IMPACT ONLY</Pill>}>
         <button type="button" disabled={feed.isFetching} onClick={() => void feed.refetch()}>
@@ -60,18 +59,21 @@ function CalendarTab() {
               <p className="footnote">Unavailable source: {feed.data.staleSources.join(', ')}</p>
             ) : null}
             {feed.data.sources && (
-              <ul className="footnote" aria-label="Calendar source availability">
-                {feed.data.sources.map((source) => (
-                  <li key={source.id}>
-                    {source.name}:{' '}
-                    {source.status === 'live'
-                      ? `available · ${source.eventCount} upcoming releases`
-                      : source.status === 'not_configured'
-                        ? 'optional source not enabled'
-                        : `unavailable · ${source.message}`}
-                  </li>
-                ))}
-              </ul>
+              <details className="help-details">
+                <summary>Sources</summary>
+                <ul className="footnote" aria-label="Calendar source availability">
+                  {feed.data.sources.map((source) => (
+                    <li key={source.id}>
+                      {source.name}:{' '}
+                      {source.status === 'live'
+                        ? `available · ${source.eventCount} upcoming releases`
+                        : source.status === 'not_configured'
+                          ? 'optional source not enabled'
+                          : `unavailable · ${source.message}`}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
             {feed.data?.events.length ? (
               feed.data.events.map((e) => (

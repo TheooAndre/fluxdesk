@@ -72,3 +72,14 @@ it('supports notes, atomic deduplicated imports and revision-aware delete', asyn
     ).status,
   ).toBe(200);
 });
+
+it('accepts a fifty-leg basket above the old 128 KiB transport limit and survives a disk reload', async () => {
+  const t = newTrade('2026-11-13'); t.title = 'Large beta basket';
+  t.legs = Array.from({ length: 50 }, (_, i) => ({ ...structuredClone(t.legs[0]!), assetId: `other:BETA${i}`, fills: Array.from({ length: 25 }, (_, j) => ({ id: `entry-${j}`, kind: 'entry' as const, time: '2026-11-13T10:00:00Z', quantity: 1, price: 100, feeUsd: 0.1 })) }));
+  expect(Buffer.byteLength(JSON.stringify(t))).toBeGreaterThan(131072);
+  const saved = await post('/api/journal/trades', t);
+  expect(saved.status).toBe(201);
+  const data = await (await fetch(origin + '/api/journal')).json();
+  expect(data.trades[0].legs).toHaveLength(50);
+  expect(data.trades[0].legs[49].fills).toHaveLength(25);
+});

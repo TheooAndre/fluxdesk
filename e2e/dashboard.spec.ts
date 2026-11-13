@@ -149,7 +149,8 @@ test('warns when the independent worker stalls despite recent browser market sna
   await expect(page.getByText('RECENT SNAPSHOT')).toHaveCount(2);
   stalled = false;
   await page.reload();
-  await expect(page.getByText(/Background refresh: 20 completed cycles/)).toBeVisible();
+  await page.locator('.data-status-details > summary').click();
+  await expect(page.getByText(/Background refresh: 20 cycles/)).toBeVisible();
 });
 test('alerts retain cached rules after refresh failure and prevent duplicate deletes', async ({ page }) => {
   let rules = [{ id: 'test-rule', assetId: btc.id, kind: 'volume', threshold: 100, enabled: true, createdAt: Date.now() }];
@@ -269,6 +270,7 @@ test('market snapshots poll in background tabs and refresh immediately after res
     if (new URL(request.url()).pathname === '/api/markets') requests++;
   });
   await page.goto('/');
+  await page.locator('.data-status-details > summary').click();
   const refresh = page.getByRole('button', { name: 'Refresh markets' });
   await expect(refresh).toBeEnabled();
   const initial = requests;
@@ -911,6 +913,7 @@ test('journal saves dated fills and daily reviews, reloads and exports with clos
  await page.getByRole('button',{name:'New trade',exact:true}).click();
  await page.getByLabel('Trade title',{exact:true}).fill('BTC disciplined trade');
  await page.getByLabel('Planned risk (USD)',{exact:true}).fill('10');
+ await page.getByText('Costs & sizing', {exact:true}).click();
  await page.getByLabel('Tags (comma separated)',{exact:true}).pressSequentially('mean reversion,crypto');
  await expect(page.getByLabel('Tags (comma separated)',{exact:true})).toHaveValue('mean reversion,crypto');
  await page.getByRole('button',{name:'Add entry fill · leg 1',exact:true}).click();
@@ -918,6 +921,7 @@ test('journal saves dated fills and daily reviews, reloads and exports with clos
  await page.getByRole('button',{name:'Add exit fill · leg 1',exact:true}).click();
  await page.getByLabel('Leg 1 fill 2 quantity',{exact:true}).fill('1');await page.getByLabel('Leg 1 fill 2 price',{exact:true}).fill('110');await page.getByLabel('Leg 1 fill 2 fee',{exact:true}).fill('1');
  await page.getByLabel('Funding cash flow (USD; received + / paid −)',{exact:true}).fill('');await page.getByLabel('Funding cash flow (USD; received + / paid −)',{exact:true}).pressSequentially('-2');await expect(page.getByLabel('Funding cash flow (USD; received + / paid −)',{exact:true})).toHaveValue('-2');
+ await page.getByText('Review & attachments', {exact:true}).click();
  await page.getByLabel('Post-trade review',{exact:true}).fill('Followed the stop and plan.');
  const screenshots=page.getByRole('textbox',{name:'Screenshot/chart HTTPS links (one per line)',exact:true});await screenshots.fill('https://example.com/entry.png');await screenshots.press('Enter');await screenshots.pressSequentially('https://example.com/exit.png');await expect(screenshots).toHaveValue('https://example.com/entry.png\nhttps://example.com/exit.png');
  await page.getByRole('button',{name:'Save trade',exact:true}).click();
@@ -927,7 +931,7 @@ test('journal saves dated fills and daily reviews, reloads and exports with clos
  await page.getByRole('textbox',{name:'Daily plan / risk rules',exact:true}).fill('One good trade only.');await page.getByRole('button',{name:'Save daily note',exact:true}).click();
  await expect(page.getByText('Daily note saved.',{exact:true})).toBeVisible();
  await page.reload();await open();await page.getByLabel('Selected journal date',{exact:true}).fill('2026-10-24');await expect(page.getByRole('textbox',{name:'Daily plan / risk rules',exact:true})).toHaveValue('One good trade only.');
- await page.getByRole('button',{name:'Journal analytics',exact:true}).click();await expect(page.getByText('$6.00',{exact:true}).first()).toBeVisible();
+ await page.getByRole('button',{name:'Analytics',exact:true}).click();await expect(page.getByText('$6.00',{exact:true}).first()).toBeVisible();
  await page.locator('.workspace').screenshot({path:test.info().outputPath('journal-analytics.png')});
  await page.getByRole('button',{name:'P&L calendar',exact:true}).click();await expect(page.getByRole('button',{name:'Journal day 2026-10-24',exact:true})).toContainText('1 trades');
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export complete journal JSON',exact:true}).click();expect((await download).suggestedFilename()).toContain('fluxdesk-journal');
@@ -1142,3 +1146,29 @@ test('delayed journal saves preserve newer edits across navigation and keep othe
   await expect.poll(() => days.find(d => d.date === '2026-10-25')?.revision).toBe(2);
   await expect(plan).toHaveValue('Later daily plan');
 });
+
+ test('journal saves ten beta positions under one thesis and shared invalidation', async ({page}) => {
+ let trades:Record<string,unknown>[]=[];
+ await page.route('**/api/journal',r=>r.fulfill({json:{schemaVersion:1,trades,days:[]}}));
+ await page.route('**/api/journal/trades',r=>{const input=r.request().postDataJSON();const trade={...input,id:'beta-basket',revision:1,createdAt:Date.now(),updatedAt:Date.now()};trades=[trade];return r.fulfill({status:201,json:{trade}});});
+ await page.goto('/'); const mobile=page.getByRole('navigation',{name:'Mobile navigation'});
+ await (await mobile.isVisible()?mobile.getByRole('button',{name:'Journal',exact:true}):page.getByRole('button',{name:'Trade journal',exact:true})).click();
+ await page.getByRole('button',{name:'New trade',exact:true}).click();
+ await page.getByLabel('Trade title',{exact:true}).fill('Ten-leg beta basket');
+ await page.getByLabel('Entry thesis',{exact:true}).fill('Shared beta thesis');
+ await page.getByLabel('Invalidation / exit rules',{exact:true}).fill('BTC loses 60k');
+ await page.getByLabel('Shared target & management',{exact:true}).fill('Exit the basket at the range high');
+ for(let i=1;i<10;i++) await page.getByRole('button',{name:'Add position',exact:true}).click();
+ await expect(page.locator('details.journal-leg')).toHaveCount(10);
+ await page.getByRole('button',{name:'Expand positions',exact:true}).click();
+ await page.getByLabel('Leg 10 contract',{exact:true}).fill('binance:SOLUSDT');
+ await page.screenshot({path:test.info().outputPath('journal-basket.png'),fullPage:true});
+ await page.getByRole('button',{name:'Save trade',exact:true}).click();
+ await expect(page.getByText('Trade saved on your server.',{exact:true})).toBeVisible();
+ expect((trades[0]?.legs as unknown[]).length).toBe(10);
+ expect(trades[0]).toMatchObject({thesis:'Shared beta thesis',invalidation:'BTC loses 60k',plan:'Exit the basket at the range high'});
+ await page.reload();
+ await (await mobile.isVisible()?mobile.getByRole('button',{name:'Journal',exact:true}):page.getByRole('button',{name:'Trade journal',exact:true})).click();
+ await expect(page.locator('.journal-trade')).toContainText('Ten-leg beta basket');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ });

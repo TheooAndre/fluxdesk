@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { stockDataFixture } from '../tests/fixtures/stock-data.ts';
 import { investmentFixture } from '../tests/fixtures/investments.ts';
 import type { Investments } from '../src/investments/model.ts';
 
@@ -34,6 +35,8 @@ async function mocks(page: Page, owner = true, initial?: Investments) {
     }
     return route.fulfill({ json: data });
   });
+  await page.route('**/api/investments/search?**', route => route.fulfill({json: { matches: [{ symbol: '7203.T', name: 'Example Japan Automation', exchange: 'Tokyo', type: 'EQUITY', sector: 'Automation' }] }}));
+  await page.route('**/api/investments/stock?**', route => route.fulfill({json: stockDataFixture(new URL(route.request().url()).searchParams.get('symbol') ?? '7203.T')}));
   return {
     requests: investmentRequests,
     setConflict: (next: boolean) => {
@@ -61,24 +64,27 @@ test('owner creates a global thesis and Japanese stock, persists notes, and arch
   await page.getByLabel('Thesis name', { exact: true }).fill('Global power infrastructure');
   await page.getByLabel('Time horizon', { exact: true }).fill('5 years');
   await page.getByRole('button', { name: 'Save thesis', exact: true }).click();
-  await expect(page.getByText('Saved to your owner account.')).toBeVisible();
+  await expect(page.getByText('Saved.', {exact: true})).toBeVisible();
   await page.getByRole('button', { name: 'Add stock', exact: true }).click();
-  for (const [label, value] of Object.entries({
-    'Company name': 'Example Japan Automation',
-    'Stock ticker': '7203',
-    'Listing exchange': 'TSE',
-    'Company country': 'Japan',
-    'Listing currency': 'JPY',
-    'Economic theme': 'Automation',
-    'Target weight (%)': '15',
-    'Investment thesis': 'Private automation hypothesis',
-    'TradingView reference': 'TSE:7203',
-  }))
-    await page.getByLabel(label, { exact: true }).fill(value);
+  await page.getByLabel('Find a stock or ETF').fill('Toyota');
+  await page.getByRole('button', {name: /7203.T.*Example Japan Automation/}).click();
+  await expect(page.getByLabel('Stock ticker', {exact: true})).toHaveValue('7203.T');
+  await expect(page.getByLabel('Listing currency', {exact: true})).toHaveValue('JPY');
+  await page.getByLabel('Target weight (%)', {exact: true}).fill('15');
+  await page.getByLabel('Investment thesis', {exact: true}).fill('Private automation hypothesis');
   await page.getByRole('button', { name: 'Save stock', exact: true }).click();
   await expect(page.getByRole('button', { name: /Example Japan Automation/ })).toBeVisible();
   await expect(page.getByText('Private automation hypothesis', { exact: true })).toBeVisible();
-  await expect(page.getByText('TSE:7203 · JPY · Japan')).toBeVisible();
+  await expect(page.getByText('Tokyo:7203.T · JPY · Japan')).toBeVisible();
+  await expect(page.locator('.stock-quote-price')).toContainText('3,000 JPY');
+  await page.getByRole('button', {name:'News',exact:true}).click();
+  await expect(page.getByRole('link', {name:/Example Japan Automation opens a new factory/})).toBeVisible();
+  await page.getByRole('button', {name:'Company',exact:true}).click();
+  await expect(page.getByText('Synthetic issuer profile for UI testing.')).toBeVisible();
+  await page.getByRole('button', {name:'Overview',exact:true}).click();
+  await expect(page.getByRole('img', {name:/7203.T six-month daily closing prices in JPY/})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({path: test.info().outputPath('investments-desktop-mobile.png'), fullPage:true});
   expect(await page.locator('iframe[title^="TradingView"]').count()).toBe(0);
   await page.reload();
   await expect(page.getByText('Private automation hypothesis', { exact: true })).toBeVisible();
@@ -86,7 +92,7 @@ test('owner creates a global thesis and Japanese stock, persists notes, and arch
   await expect(page.getByText('No stocks match this view.')).toBeVisible();
   await page.getByLabel('Show archived stocks').check();
   await page.getByRole('button', { name: /Example Japan Automation/ }).click();
-  await page.getByRole('button', { name: 'Restore archived stock', exact: true }).click();
+  await page.getByRole('button', { name: 'Restore stock', exact: true }).click();
   await page.getByLabel('Show archived stocks').uncheck();
   await expect(page.getByRole('button', { name: /Example Japan Automation/ })).toBeVisible();
 });
@@ -103,7 +109,7 @@ test('failed concurrent save keeps the owner draft and reload does not erase it'
   await expect(page.getByLabel('Investment thesis', { exact: true })).toHaveValue(
     'Unsaved revised economic thesis',
   );
-  await page.getByRole('button', { name: 'Reload investments', exact: true }).click();
+  await page.getByRole('button', { name: 'Reload', exact: true }).click();
   await expect(page.getByLabel('Investment thesis', { exact: true })).toHaveValue(
     'Unsaved revised economic thesis',
   );
@@ -158,10 +164,20 @@ test('legacy MCGA import preserves existing global theses and rejects duplicate 
   await page.getByRole('button', { name: 'Import theses to owner account' }).click();
   await page.getByLabel('Select investment thesis', { exact: true }).selectOption('mcga-v2-20261019');
   await expect(page.getByText('Synthetic historical memo', { exact: true })).toBeVisible();
-  await expect(page.getByText('Research review: 2026-10-19')).toBeVisible();
+  await expect(page.getByText('Reviewed: 2026-10-19')).toBeVisible();
   await expect(page.getByLabel('Select investment thesis', { exact: true }).locator('option')).toHaveCount(2);
   await page.getByLabel('Import investment file').setInputFiles(file);
   await page.getByRole('button', { name: 'Import theses to owner account' }).click();
   await expect(page.getByRole('alert')).toContainText('already imported');
   await expect(page.getByLabel('Select investment thesis', { exact: true }).locator('option')).toHaveCount(2);
 });
+
+ test('failed ticker lookup preserves the memo and reports unavailable data without inventing a match', async ({ page }) => {
+  await mocks(page, true, investmentFixture());
+  await page.route('**/api/investments/search?**', route => route.fulfill({status:502,json:{error:'Yahoo Finance unavailable (HTTP 429)'}}));
+  await page.goto('/'); await openInvestments(page);
+  await page.getByRole('button', {name:'Link listing',exact:true}).click();
+  await page.getByLabel('Find a stock or ETF').fill('Example');
+  await expect(page.getByRole('alert')).toContainText('Yahoo Finance unavailable');
+  await expect(page.getByLabel('Investment thesis',{exact:true})).toHaveValue('Synthetic private memo');
+ });

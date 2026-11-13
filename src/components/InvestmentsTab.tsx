@@ -12,6 +12,8 @@ import {
   type Investments,
   type InvestmentStock,
 } from '../investments/model.ts';
+import StockLookup from './StockLookup.tsx';
+import StockMarketPanel from './StockMarketPanel.tsx';
 import './InvestmentsTab.css';
 
 const QUERY_KEY = ['investments'] as const;
@@ -41,7 +43,11 @@ function StockEditor({
   const [sources, setSources] = useState(stock.sources.map((s) => `${s.label} | ${s.url}`).join('\n'));
   const [error, setError] = useState('');
   const set = <K extends keyof InvestmentStock>(key: K, value: InvestmentStock[K]) =>
-    setDraft((old) => ({ ...old, [key]: value }));
+    setDraft((old) => ({
+      ...old,
+      [key]: value,
+      ...(['symbol', 'exchange', 'currency'].includes(key) ? { marketSymbol: '' } : {}),
+    }));
   function submit(event: FormEvent) {
     event.preventDefault();
     setError('');
@@ -54,65 +60,106 @@ function StockEditor({
           if (split < 1) throw Error('Use one source per line: label | https://…');
           return { label: row.slice(0, split).trim(), url: row.slice(split + 1).trim() };
         });
+      if (!stock.name && !draft.marketSymbol) throw Error('Select a stock from search results first');
       onSave({ ...draft, sources: rows });
     } catch (cause) {
       setError(message(cause));
     }
   }
   return (
-    <Card title={stock.name ? `Edit ${stock.name}` : 'Add a stock from any market'}>
+    <Card title={stock.name ? `Edit ${stock.name}` : 'Add stock'}>
       <form className="investment-form" onSubmit={submit}>
         <fieldset disabled={pending}>
+          <StockLookup
+            disabled={pending}
+            onSelect={(listing) => {
+              const exchange = (
+                {
+                  NasdaqGS: 'NASDAQ',
+                  NasdaqGM: 'NASDAQ',
+                  NasdaqCM: 'NASDAQ',
+                  NYSE: 'NYSE',
+                  'Hong Kong': 'HKEX',
+                } as Record<string, string>
+              )[listing.exchange];
+              setDraft((old) => ({
+                ...old,
+                marketSymbol: listing.symbol,
+                name: listing.name,
+                symbol: listing.symbol,
+                exchange: listing.exchange,
+                currency: listing.currency,
+                country: listing.country || 'Unknown',
+                theme: old.theme || listing.sector || 'Other',
+                referenceSymbol: exchange
+                  ? `${exchange}:${listing.symbol.replace(/\.HK$/, '').replace(/-/g, '.')}`
+                  : '',
+              }));
+            }}
+          />
+          {draft.marketSymbol && (
+            <div className="stock-linked" role="status">
+              <strong>{draft.marketSymbol}</strong>
+              <span>
+                {draft.name} · {draft.exchange} · {draft.currency}
+              </span>
+            </div>
+          )}
+          <details className="editor-details" open={!draft.marketSymbol && !!stock.name}>
+            <summary>Listing details</summary>
+            <div className="investment-fields">
+              <label>
+                Company name
+                <input
+                  required
+                  maxLength={120}
+                  value={draft.name}
+                  onChange={(e) => set('name', e.target.value)}
+                />
+              </label>
+              <label>
+                Stock ticker
+                <input
+                  required
+                  maxLength={40}
+                  placeholder="AAPL, 0700, BRK.B…"
+                  value={draft.symbol}
+                  onChange={(e) => set('symbol', e.target.value)}
+                />
+              </label>
+              <label>
+                Listing exchange
+                <input
+                  required
+                  maxLength={60}
+                  placeholder="NASDAQ, HKEX, XETRA…"
+                  value={draft.exchange}
+                  onChange={(e) => set('exchange', e.target.value)}
+                />
+              </label>
+              <label>
+                Company country
+                <input
+                  required
+                  maxLength={60}
+                  placeholder="Any country"
+                  value={draft.country}
+                  onChange={(e) => set('country', e.target.value)}
+                />
+              </label>
+              <label>
+                Listing currency
+                <input
+                  required
+                  maxLength={8}
+                  placeholder="USD, EUR, HKD…"
+                  value={draft.currency}
+                  onChange={(e) => set('currency', e.target.value.toUpperCase())}
+                />
+              </label>
+            </div>
+          </details>
           <div className="investment-fields">
-            <label>
-              Company name
-              <input
-                required
-                maxLength={120}
-                value={draft.name}
-                onChange={(e) => set('name', e.target.value)}
-              />
-            </label>
-            <label>
-              Stock ticker
-              <input
-                required
-                maxLength={40}
-                placeholder="AAPL, 0700, BRK.B…"
-                value={draft.symbol}
-                onChange={(e) => set('symbol', e.target.value)}
-              />
-            </label>
-            <label>
-              Listing exchange
-              <input
-                required
-                maxLength={60}
-                placeholder="NASDAQ, HKEX, XETRA…"
-                value={draft.exchange}
-                onChange={(e) => set('exchange', e.target.value)}
-              />
-            </label>
-            <label>
-              Company country
-              <input
-                required
-                maxLength={60}
-                placeholder="Any country"
-                value={draft.country}
-                onChange={(e) => set('country', e.target.value)}
-              />
-            </label>
-            <label>
-              Listing currency
-              <input
-                required
-                maxLength={8}
-                placeholder="USD, EUR, HKD…"
-                value={draft.currency}
-                onChange={(e) => set('currency', e.target.value.toUpperCase())}
-              />
-            </label>
             <label>
               Economic theme
               <input
@@ -147,34 +194,39 @@ function StockEditor({
                 ))}
               </select>
             </label>
-            <label>
-              TradingView reference
-              <input
-                maxLength={100}
-                placeholder="NASDAQ:AAPL"
-                value={draft.referenceSymbol}
-                onChange={(e) => set('referenceSymbol', e.target.value)}
-              />
-            </label>
-            <label>
-              Broker instrument URL
-              <input
-                type="url"
-                maxLength={2048}
-                placeholder="https://…"
-                value={draft.brokerUrl}
-                onChange={(e) => set('brokerUrl', e.target.value)}
-              />
-            </label>
-            <label>
-              Last research review
-              <input
-                type="date"
-                value={draft.reviewedAt}
-                onChange={(e) => set('reviewedAt', e.target.value)}
-              />
-            </label>
           </div>
+          <details className="editor-details">
+            <summary>Chart, broker & review date</summary>
+            <div className="investment-fields">
+              <label>
+                TradingView reference
+                <input
+                  maxLength={100}
+                  placeholder="NASDAQ:AAPL"
+                  value={draft.referenceSymbol}
+                  onChange={(e) => set('referenceSymbol', e.target.value)}
+                />
+              </label>
+              <label>
+                Broker instrument URL
+                <input
+                  type="url"
+                  maxLength={2048}
+                  placeholder="https://…"
+                  value={draft.brokerUrl}
+                  onChange={(e) => set('brokerUrl', e.target.value)}
+                />
+              </label>
+              <label>
+                Last research review
+                <input
+                  type="date"
+                  value={draft.reviewedAt}
+                  onChange={(e) => set('reviewedAt', e.target.value)}
+                />
+              </label>
+            </div>
+          </details>
           {(
             [
               ['thesis', 'Investment thesis'],
@@ -212,15 +264,13 @@ function StockEditor({
             </p>
           )}
           <div className="investment-actions">
-            <button type="submit">{pending ? 'Saving…' : 'Save stock'}</button>
+            <button type="submit" disabled={!stock.name && !draft.marketSymbol}>
+              {pending ? 'Saving…' : 'Save stock'}
+            </button>
             <button type="button" className="secondary" onClick={onCancel}>
               Cancel editing
             </button>
           </div>
-          <p className="footnote">
-            Save before leaving this tab. Target weights are research allocations. Statuses are your review
-            decisions.
-          </p>
         </fieldset>
       </form>
     </Card>
@@ -290,9 +340,9 @@ function PortfolioEditor({
             />
           </label>
           <label>
-            Fundamental relationships / demand engines
+            Relationships / demand engines
             <textarea
-              aria-label="Fundamental relationships / demand engines"
+              aria-label="Relationships / demand engines"
               rows={5}
               maxLength={8000}
               value={draft.relationships}
@@ -348,17 +398,14 @@ function StockMedia({ stock }: { stock: InvestmentStock }) {
   };
   return (
     <>
-      <p className="footnote">
-        Reference: <strong>{stock.referenceSymbol}</strong>. It may be a different listing or currency from{' '}
-        {stock.exchange}:{stock.symbol}. TradingView coverage and exchange delays apply.
-      </p>
+      <p className="footnote">{stock.referenceSymbol} · reference listing; exchange delays apply.</p>
       <p className="investment-links">
         <a
           href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(stock.referenceSymbol)}`}
           target="_blank"
           rel="noopener noreferrer"
         >
-          Open reference chart on TradingView ↗
+          Open in TradingView ↗
         </a>
       </p>
       {loaded ? (
@@ -378,12 +425,9 @@ function StockMedia({ stock }: { stock: InvestmentStock }) {
         </div>
       ) : (
         <div className="investment-media-prompt">
-          <p>
-            Loading chart and news sends this reference symbol to TradingView. Your weights and notes stay in
-            FluxDesk.
-          </p>
+          <p>Loads from TradingView using this symbol.</p>
           <button type="button" className="secondary" onClick={() => setLoaded(true)}>
-            Load chart and news
+            Load TradingView
           </button>
         </div>
       )}
@@ -414,7 +458,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
       setStockDraft(null);
       setPortfolioDraft(null);
       setImported(null);
-      setReceipt('Saved to your owner account.');
+      setReceipt('Saved.');
     },
     onError: (cause) => setError(message(cause)),
   });
@@ -491,17 +535,9 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
     );
   return (
     <div className="investments-workspace content-stack">
-      <div className="investment-banner">
-        <div>
-          <span className="tiny-label">OWNER RESEARCH / GLOBAL EQUITIES</span>
-          <h2>Investment thesis desk</h2>
-          <p>Keep the China thesis alongside stock ideas from any country, exchange or economic theme.</p>
-        </div>
-        <span className="pill pill-green">Private · owner only</span>
-      </div>
       <div className="investment-actions">
         <label className="investment-select">
-          Select investment thesis
+          Thesis
           <select
             aria-label="Select investment thesis"
             value={portfolio?.id ?? ''}
@@ -555,7 +591,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
           disabled={busy || !!stockDraft || !!portfolioDraft}
           onClick={() => input.current?.click()}
         >
-          Import MCGA / JSON
+          Import
         </button>
         <button
           type="button"
@@ -566,7 +602,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
             void query.refetch();
           }}
         >
-          Reload investments
+          Reload
         </button>
         <button
           type="button"
@@ -576,7 +612,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
             download('fluxdesk-investments.json', JSON.stringify(data, null, 2), 'application/json')
           }
         >
-          Export all JSON
+          Export JSON
         </button>
         <input
           ref={input}
@@ -655,6 +691,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
       {portfolio && (
         <>
           <Card
+            className="investment-summary"
             title={portfolio.name}
             aside={
               <button
@@ -672,45 +709,42 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
               </button>
             }
           >
-            <p className="investment-description">
-              {portfolio.description ||
-                'Add the economic rationale and evidence that would change your view.'}
-            </p>
-            <p className="small-label">
-              {portfolio.horizon ? `Horizon: ${portfolio.horizon} · ` : ''}
-              {portfolio.researchAsOf
-                ? `Research as of ${portfolio.researchAsOf}`
-                : 'Research date not recorded'}
-            </p>
+            <details className="investment-context">
+              <summary>
+                Thesis{portfolio.horizon ? ` · ${portfolio.horizon}` : ''}{' '}
+                <span className="small-label">· Owner only</span>
+              </summary>
+              <p className="investment-description">{portfolio.description || 'No thesis description.'}</p>
+              {portfolio.researchAsOf && (
+                <p className="small-label">Research as of {portfolio.researchAsOf}</p>
+              )}
+            </details>
           </Card>
           <div className="metric-grid investment-metrics">
             <div className="metric">
-              <span>Active stock ideas</span>
+              <span>Stocks</span>
               <strong>{active.length}</strong>
               <small>{new Set(active.map((s) => s.country)).size} countries</small>
             </div>
             <div className="metric">
-              <span>Target allocation</span>
+              <span>Target weight</span>
               <strong>{weight(allocated)}</strong>
-              <small>Research weights, not broker holdings</small>
             </div>
             <div className="metric">
-              <span>Unallocated target</span>
+              <span>Unallocated</span>
               <strong>{weight(Math.max(0, 100 - allocated))}</strong>
-              <small>Not a measured cash balance</small>
             </div>
             <div className="metric">
               <span>Positions ≥ 7%</span>
               <strong>
                 {weight(active.filter((s) => s.targetWeight >= 7).reduce((n, s) => n + s.targetWeight, 0))}
               </strong>
-              <small>Concentration in this thesis</small>
             </div>
           </div>
           <div className="investment-grid">
             <div className="content-stack">
               <Card
-                title="Stocks and economic exposure"
+                title="Stocks"
                 aside={
                   <button
                     type="button"
@@ -798,11 +832,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
                     </tbody>
                   </table>
                 </div>
-                {!visible.length && (
-                  <p className="footnote">
-                    No stocks match this view. Add any listed stock or adjust the filters.
-                  </p>
-                )}
+                {!visible.length && <p className="footnote">No stocks match this view.</p>}
                 <button
                   type="button"
                   className="subtle"
@@ -817,7 +847,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
                   Export thesis CSV
                 </button>
               </Card>
-              <Card title="Target exposure by economic theme">
+              <Card title="Theme weights">
                 <div className="investment-exposure">
                   {exposure.map(([label, value]) => (
                     <div key={label}>
@@ -829,13 +859,9 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
                     </div>
                   ))}
                 </div>
-                <p className="footnote">
-                  All active positions in this thesis. Economic exposure can overlap; this is not statistical
-                  correlation.
-                </p>
               </Card>
               {portfolio.relationships && (
-                <Card title="Fundamental relationships">
+                <Card title="Relationships">
                   <p className="investment-description">{portfolio.relationships}</p>
                 </Card>
               )}
@@ -851,8 +877,14 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
                 />
               ) : stock ? (
                 <>
+                  <StockMarketPanel
+                    key={stock.id + (stock.marketSymbol ?? '')}
+                    stock={stock}
+                    offline={offline}
+                    onLink={() => setStockDraft(stock)}
+                  />
                   <Card
-                    title={`${stock.name} · investment memo`}
+                    title={`${stock.name} · thesis`}
                     aside={
                       <button
                         type="button"
@@ -866,9 +898,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
                   >
                     <div className="investment-actions">
                       <span className="pill">{stock.status}</span>
-                      <span className="small-label">
-                        Research review: {stock.reviewedAt || 'not recorded'}
-                      </span>
+                      <span className="small-label">Reviewed: {stock.reviewedAt || 'not recorded'}</span>
                     </div>
                     {(
                       [
@@ -905,16 +935,15 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
                       disabled={busy}
                       onClick={() => saveStock({ ...stock, archived: !stock.archived })}
                     >
-                      {stock.archived ? 'Restore archived stock' : 'Archive stock'}
+                      {stock.archived ? 'Restore stock' : 'Archive stock'}
                     </button>
-                    <p className="footnote">
-                      Archived stocks retain their notes and can be restored. Review statuses are manual;
-                      quotes and headlines never change them automatically.
-                    </p>
                   </Card>
-                  <Card title="Reference chart and company news">
-                    <StockMedia key={stock.id + stock.referenceSymbol} stock={stock} />
-                  </Card>
+                  {stock.referenceSymbol && (
+                    <details className="card editor-details">
+                      <summary>TradingView chart</summary>
+                      <StockMedia key={stock.id + stock.referenceSymbol} stock={stock} />
+                    </details>
+                  )}
                 </>
               ) : (
                 <Card title="Build your investment memo">
@@ -927,20 +956,16 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
       )}
       {!portfolio && !portfolioDraft && (
         <Card title="Bring your China thesis into FluxDesk">
-          <p>
-            Import the original MCGA HTML dashboard to preserve its stock list, target weights, statuses and
-            research memos. You can also create a new thesis and add stocks from any country.
-          </p>
-          <p className="footnote">
-            Import reads the embedded portfolio data without running the HTML. Portfolio data is private
-            server data and is never bundled into the public site.
-          </p>
+          <p>Import your MCGA / FluxDesk JSON, or create a thesis.</p>
         </Card>
       )}
-      <p className="footnote">
-        Research workspace only. No broker connection or order execution. Listing currencies are kept
-        separate; no portfolio value or FX-adjusted performance is inferred from target weights.
-      </p>
+      <details className="help-details">
+        <summary>Research limits</summary>
+        <p className="footnote">
+          Weights are research allocations. Quotes use the linked listing currency. Review statuses are
+          manual; no broker or FX-adjusted portfolio valuation is connected.
+        </p>
+      </details>
     </div>
   );
 }

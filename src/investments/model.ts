@@ -1,3 +1,4 @@
+import { stockSymbol } from './market-data.ts';
 export const INVESTMENT_STATUSES = [
   'Review',
   'Buy',
@@ -18,6 +19,7 @@ export type InvestmentStock = {
   targetWeight: number;
   status: InvestmentStatus;
   referenceSymbol: string;
+  marketSymbol?: string;
   brokerUrl: string;
   thesis: string;
   catalysts: string;
@@ -107,6 +109,7 @@ export function validateInvestmentStock(input: unknown): InvestmentStock {
     targetWeight: v.targetWeight,
     status: v.status as InvestmentStatus,
     referenceSymbol,
+    marketSymbol: v.marketSymbol ? stockSymbol(v.marketSymbol) : '',
     brokerUrl: investmentUrl(v.brokerUrl),
     thesis: text(v.thesis, 'investment thesis', 4000),
     catalysts: text(v.catalysts, 'catalysts', 3000),

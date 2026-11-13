@@ -1,3 +1,5 @@
+export const MAX_JOURNAL_LEGS = 50;
+export const MAX_JOURNAL_TRADE_BYTES = 1024 * 1024;
 export type JournalFill = {
   id: string;
   kind: 'entry' | 'exit';
@@ -184,8 +186,8 @@ export function validateTrade(input: unknown): JournalTrade {
     })
   )
     throw Error('Use HTTPS screenshot links (up to six)');
-  if (!Array.isArray(t.legs) || t.legs.length < 1 || t.legs.length > 4)
-    throw Error('A trade requires one to four legs');
+  if (!Array.isArray(t.legs) || t.legs.length < 1 || t.legs.length > MAX_JOURNAL_LEGS)
+    throw Error(`A trade requires 1–${MAX_JOURNAL_LEGS} legs`);
   for (const l of t.legs) {
     if (
       !l ||

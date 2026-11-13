@@ -367,8 +367,11 @@ it('allows bounded journal payloads without widening other API request limits', 
   ).toBe(200);
   expect(
     (await call(port, '/api/gateway?__fd_route=journal/trades', 'POST', origin, importBody)).status,
-  ).toBe(413);
-  expect(mock).toHaveBeenCalledTimes(2);
+  ).toBe(200);
+  expect((await call(port, '/api/gateway?__fd_route=journal/day', 'POST', origin, importBody)).status).toBe(413);
+  const oversized = JSON.stringify({ notes: 'x'.repeat(1024 * 1024) });
+  expect((await call(port, '/api/gateway?__fd_route=journal/trades', 'POST', origin, oversized)).status).toBe(413);
+  expect(mock).toHaveBeenCalledTimes(3);
 });
 
 it('keeps previews read-only on the shared backend while production can save', async () => {

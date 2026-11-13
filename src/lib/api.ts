@@ -1,3 +1,4 @@
+import type { StockMatch, StockData } from '../investments/market-data.ts';
 import type { JournalData, JournalTrade, JournalDay } from '../journal/model.ts';
 import type { ScanConfig, ScanJob } from '../../server/statarb-scanner.ts';
 import type { CalendarSourceCheck } from '../../server/calendar.ts';
@@ -93,6 +94,8 @@ export const api = {
   ) => postResearch<{ success: boolean; recoveryCode?: string }>(`/api/auth/${action}`, data, 30_000),
   signOut: () => request<{ authenticated: false }>('/api/auth/logout', { method: 'POST' }),
   health: (signal?: AbortSignal) => get<unknown>('/api/health', signal),
+  searchStocks: (q: string, signal?: AbortSignal) => get<{ matches: StockMatch[] }>('/api/investments/search?' + new URLSearchParams({ q }), signal),
+  stockData: (symbol: string, signal?: AbortSignal) => get<StockData>('/api/investments/stock?' + new URLSearchParams({ symbol }), signal, 30_000),
   investments: () => get<Investments>('/api/investments'),
   saveInvestments: (value: Investments) => postResearch<Investments>('/api/investments', value),
   importJournal: (data: JournalData) =>

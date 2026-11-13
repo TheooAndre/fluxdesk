@@ -19,7 +19,10 @@ function AlertsTab({ item }: { item: Market | undefined }) {
     [message, setMessage] = useState('');
   const rules = useQuery({ queryKey: ['alerts'], queryFn: api.alerts, refetchInterval: 15_000 });
   const macroCalendar = useQuery({
-    queryKey: ['calendar'], queryFn: api.calendar, enabled: kind === 'macro', staleTime: 10 * 60_000,
+    queryKey: ['calendar'],
+    queryFn: api.calendar,
+    enabled: kind === 'macro',
+    staleTime: 10 * 60_000,
   });
   const create = useMutation({
     mutationFn: api.createAlert,
@@ -29,7 +32,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
           ? `Alert created: price ${alert.direction} ${price(alert.threshold)}. Monitoring runs on your dashboard server.`
           : alert.kind === 'macro'
             ? 'Macro alert created. Notifications will include analyst consensus, provider forecast and previous value.'
-          : 'Alert created. Monitoring runs on your dashboard server.',
+            : 'Alert created. Monitoring runs on your dashboard server.',
       );
       void client.invalidateQueries({ queryKey: ['alerts'] });
     },
@@ -48,12 +51,6 @@ function AlertsTab({ item }: { item: Market | undefined }) {
   const direction = priceAlertDirection(item?.price ?? NaN, Number(threshold));
   return (
     <div className="content-stack">
-      <div className="section-intro">
-        <h2>Market and macro alerts</h2>
-        <p>
-          Price levels and ranges, volume and liquidation events, plus high-impact US macro releases.
-        </p>
-      </div>
       <div className="cols-2">
         <Card title="Create alert">
           {kind === 'macro' ? (
@@ -115,7 +112,10 @@ function AlertsTab({ item }: { item: Market | undefined }) {
             <>
               <label className="field">
                 Notify before release
-                <select value={leadMinutes} onChange={(e) => setLeadMinutes(e.target.value as typeof leadMinutes)}>
+                <select
+                  value={leadMinutes}
+                  onChange={(e) => setLeadMinutes(e.target.value as typeof leadMinutes)}
+                >
                   <option value="5">5 minutes before</option>
                   <option value="15">15 minutes before</option>
                   <option value="30">30 minutes before</option>
@@ -123,7 +123,10 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                 </select>
               </label>
               <div className="notice" role="status">
-                <p><strong>Every notification includes:</strong> analyst consensus, provider forecast and previous value.</p>
+                <p>
+                  <strong>Every notification includes:</strong> analyst consensus, provider forecast and
+                  previous value.
+                </p>
                 {macroCalendar.isLoading ? (
                   <small>Loading upcoming releases…</small>
                 ) : macroCalendar.error ? (
@@ -131,8 +134,8 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                 ) : macroCalendar.data?.events.length ? (
                   macroCalendar.data.events.slice(0, 3).map((event) => (
                     <small key={event.id}>
-                      {event.title} · Consensus: {event.forecast || 'not supplied by source'} · Provider forecast:{' '}
-                      {event.providerForecast || 'not supplied by source'} · Previous:{' '}
+                      {event.title} · Consensus: {event.forecast || 'not supplied by source'} · Provider
+                      forecast: {event.providerForecast || 'not supplied by source'} · Previous:{' '}
                       {event.previous || 'not supplied by source'}
                     </small>
                   ))
@@ -183,27 +186,32 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               />
             </label>
           )}
-          <p className="footnote">
-            {kind === 'volume'
-              ? 'Compares the latest fully closed 5m candle to the previous 20 closed 5m bars.'
-              : kind === 'macro'
-                ? 'Uses the latest calendar values at notification time. Consensus and the provider forecast remain separate; missing values are clearly marked rather than guessed.'
-              : kind === 'liquidation'
-                ? 'Binance only. Stream captures at most one forced-liquidation snapshot per symbol per second. Amounts are lower-bound observations, not total liquidations.'
-                : kind === 'price_range'
-                  ? 'Alerts when price reaches or crosses above the upper bound or below the lower bound. Checks about once a minute; brief moves between checks may be missed. First observation arms the rule. Re-entry rearms it, with a 5-minute cooldown per boundary.'
-                  : 'Checks about once a minute. Reaching or crossing the chosen level triggers an alert; brief moves between checks may be missed. Same-direction repeats have a 5-minute cooldown.'}
-          </p>
+          <details className="help-details">
+            <summary>Trigger details</summary>
+            <p className="footnote">
+              {kind === 'volume'
+                ? 'Compares the latest fully closed 5m candle to the previous 20 closed 5m bars.'
+                : kind === 'macro'
+                  ? 'Uses the latest calendar values at notification time. Consensus and the provider forecast remain separate; missing values are clearly marked rather than guessed.'
+                  : kind === 'liquidation'
+                    ? 'Binance only. Stream captures at most one forced-liquidation snapshot per symbol per second. Amounts are lower-bound observations, not total liquidations.'
+                    : kind === 'price_range'
+                      ? 'Alerts when price reaches or crosses above the upper bound or below the lower bound. Checks about once a minute; brief moves between checks may be missed. First observation arms the rule. Re-entry rearms it, with a 5-minute cooldown per boundary.'
+                      : 'Checks about once a minute. Reaching or crossing the chosen level triggers an alert; brief moves between checks may be missed. Same-direction repeats have a 5-minute cooldown.'}
+            </p>
+          </details>
           <label className="field">
             <span>
               <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />{' '}
               {kind === 'macro' ? 'Keep active for future releases' : 'Keep active after each trigger'}
             </span>
-            <small>{repeat
-              ? kind === 'macro'
-                ? 'Alert once for each new high-impact release.'
-                : 'Repeat when the condition triggers again (with the existing cooldown).'
-              : 'Disable after the first trigger. Reactivate this rule any time.'}</small>
+            <small>
+              {repeat
+                ? kind === 'macro'
+                  ? 'Alert once for each new high-impact release.'
+                  : 'Repeat when the condition triggers again (with the existing cooldown).'
+                : 'Disable after the first trigger. Reactivate this rule any time.'}
+            </small>
           </label>
           <button
             className="primary full"
@@ -216,19 +224,30 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               (kind === 'macro'
                 ? ![5, 15, 30, 60].includes(Number(leadMinutes))
                 : kind === 'price_range'
-                ? ![Number(lowerPrice), Number(upperPrice)].every(
-                    (value) => Number.isFinite(value) && value > 0 && value <= 1e15,
-                  ) || Number(lowerPrice) >= Number(upperPrice)
-                : !Number.isFinite(Number(threshold)) || Number(threshold) <= 0)
+                  ? ![Number(lowerPrice), Number(upperPrice)].every(
+                      (value) => Number.isFinite(value) && value > 0 && value <= 1e15,
+                    ) || Number(lowerPrice) >= Number(upperPrice)
+                  : !Number.isFinite(Number(threshold)) || Number(threshold) <= 0)
             }
             onClick={() => {
               if (kind === 'macro') {
-                create.mutate({ assetId: 'macro:US', kind, leadMinutes: Number(leadMinutes) as 5 | 15 | 30 | 60, repeat });
+                create.mutate({
+                  assetId: 'macro:US',
+                  kind,
+                  leadMinutes: Number(leadMinutes) as 5 | 15 | 30 | 60,
+                  repeat,
+                });
               } else if (item) {
                 create.mutate(
                   kind === 'price_range'
-                  ? { assetId: item.id, kind, lowerPrice: Number(lowerPrice), upperPrice: Number(upperPrice), repeat }
-                  : { assetId: item.id, kind, threshold: Number(threshold), repeat },
+                    ? {
+                        assetId: item.id,
+                        kind,
+                        lowerPrice: Number(lowerPrice),
+                        upperPrice: Number(upperPrice),
+                        repeat,
+                      }
+                    : { assetId: item.id, kind, threshold: Number(threshold), repeat },
                 );
               }
             }}
@@ -264,7 +283,10 @@ function AlertsTab({ item }: { item: Market | undefined }) {
             </div>
           )}
         </Card>
-        <Card title="Alert rules" aside={<Pill>{rules.data ? `${rules.data.alerts.length} rules` : 'Not loaded'}</Pill>}>
+        <Card
+          title="Alert rules"
+          aside={<Pill>{rules.data ? `${rules.data.alerts.length} rules` : 'Not loaded'}</Pill>}
+        >
           <button
             type="button"
             className="secondary"
@@ -275,40 +297,62 @@ function AlertsTab({ item }: { item: Market | undefined }) {
           </button>
           {rules.error && <ErrorText error={rules.error} />}
           {rules.error && rules.data && (
-            <p role="status">Refresh failed. Showing the last loaded rules and triggers; their status may have changed.</p>
+            <p role="status">
+              Refresh failed. Showing the last loaded rules and triggers; their status may have changed.
+            </p>
           )}
           {rules.isLoading ? (
             <Loading />
-          ) : !rules.data ? (
-            null
-          ) : rules.data?.alerts.length ? (
+          ) : !rules.data ? null : rules.data?.alerts.length ? (
             rules.data.alerts.map((x) => (
               <div className="alert-rule" key={x.id}>
                 <div>
                   <b>
-                    {x.kind === 'macro' ? 'US · MACRO' : `${x.assetId.split(':')[1]} · ${x.kind === 'price_range' ? 'PRICE RANGE' : x.kind.toUpperCase()}`}
+                    {x.kind === 'macro'
+                      ? 'US · MACRO'
+                      : `${x.assetId.split(':')[1]} · ${x.kind === 'price_range' ? 'PRICE RANGE' : x.kind.toUpperCase()}`}
                   </b>
                   <small>
                     {x.kind === 'macro'
                       ? `${x.leadMinutes}m before · consensus + forecast + previous`
                       : x.kind === 'price_range'
-                      ? `Below ${price(x.lowerPrice)} or above ${price(x.upperPrice)}`
-                      : x.kind === 'volume'
-                        ? `≥ ${x.threshold}% spike`
-                        : x.kind === 'price'
-                          ? `Price ${x.direction ?? 'above'} ${price(x.threshold)}`
-                          : `≥ ${money(x.threshold)} / 5m`}
+                        ? `Below ${price(x.lowerPrice)} or above ${price(x.upperPrice)}`
+                        : x.kind === 'volume'
+                          ? `≥ ${x.threshold}% spike`
+                          : x.kind === 'price'
+                            ? `Price ${x.direction ?? 'above'} ${price(x.threshold)}`
+                            : `≥ ${money(x.threshold)} / 5m`}
                   </small>
-                  <small>{x.enabled ? (x.repeat ? (x.kind === 'macro' ? 'Active · every new release' : 'Active · repeats') : 'Active · one time') : 'Disabled · reactivate to monitor again'}</small>
+                  <small>
+                    {x.enabled
+                      ? x.repeat
+                        ? x.kind === 'macro'
+                          ? 'Active · every new release'
+                          : 'Active · repeats'
+                        : 'Active · one time'
+                      : 'Disabled · reactivate to monitor again'}
+                  </small>
                 </div>
-                <button type="button" className="secondary"
+                <button
+                  type="button"
+                  className="secondary"
                   disabled={toggle.isPending || rules.isFetching || rules.isError || !navigator.onLine}
-                  onClick={() => toggle.mutate({ id: x.id, enabled: !x.enabled })}>
+                  onClick={() => toggle.mutate({ id: x.id, enabled: !x.enabled })}
+                >
                   {x.enabled ? 'Disable' : 'Reactivate'}
                 </button>
-                <button aria-label="Delete alert" className="icon-btn"
-                  disabled={remove.isPending || toggle.isPending || rules.isFetching || rules.isError || !navigator.onLine}
-                  onClick={() => remove.mutate(x.id)}>
+                <button
+                  aria-label="Delete alert"
+                  className="icon-btn"
+                  disabled={
+                    remove.isPending ||
+                    toggle.isPending ||
+                    rules.isFetching ||
+                    rules.isError ||
+                    !navigator.onLine
+                  }
+                  onClick={() => remove.mutate(x.id)}
+                >
                   <X size={18} />
                 </button>
               </div>

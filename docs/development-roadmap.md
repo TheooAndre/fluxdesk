@@ -2,6 +2,16 @@
 
 Updated 5 November 2026. Research only; no order execution or claimed predictive edge.
 
+## Global stock data and compact workspace UX
+
+Verified Yahoo listing lookup and a shared market/profile/news pane now serve
+China and other global equities. Existing research entries can link an explicit
+listing without replacing their notes. Journal baskets support 1–50 positions
+with shared thesis/invalidation/target-management, expandable position editors,
+and a 1 MiB trade request limit. The shell collapses diagnostics; secondary
+fields and explanations use disclosures. Owner access remains enforced for
+investment data. See [investment data](investments.md) and [journal](trade-journal.md).
+
 ## Owner investment workspace
 
 The Investments tab and API are owner-only. It supports separate China/global
