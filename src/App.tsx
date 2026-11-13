@@ -425,15 +425,11 @@ function Intro({ tab }: { tab: Tab }) {
   return (
     <div className="welcome">
       <div>
-        <div className="eyebrow">
-          <span className="live-dot" /> QUANT MARKET TERMINAL
-        </div>
+
         <h1>{tab === 'overview' ? 'Market overview' : NAV.find((x) => x.id === tab)?.label}</h1>
 
       </div>
-      <div className="date-box">
-        <Radio size={16} /> Market feeds · 24/7
-      </div>
+
     </div>
   );
 }
@@ -627,7 +623,7 @@ function App() {
             <Menu />
           </button>
           <div className="crumb">
-            Workspace <ChevronRight size={14} /> <b>{NAV.find((x) => x.id === ui.tab)?.label}</b>
+            FluxDesk <ChevronRight size={14} /> <b>{NAV.find((x) => x.id === ui.tab)?.label}</b>
           </div>
           <div className="top-actions">
             {publicUi && session.data?.providers.password && <button className="secondary" type="button" onClick={() => setAccountOpen(true)}>{signedIn ? 'Account' : 'Sign in / Register'}</button>}
@@ -642,7 +638,7 @@ function App() {
         </header>
         <main>
           <Intro tab={ui.tab} />
-          {!['research','journal','statarb','investments'].includes(ui.tab) && <div className="selector-bar">
+          {['overview','signals','pairs'].includes(ui.tab) && <div className="selector-bar">
             <div className="selected-input">
               <span className="tiny-label">SELECTED ASSET</span>
               <select
@@ -683,19 +679,9 @@ function App() {
               require connectivity to the dashboard server.
             </div>
           )}
-          <div className="row-between mb-2">
-            <span className="tiny-label">EXCHANGE FEEDS</span>
-            <button
-              className="subtle"
-              aria-label="Refresh markets"
-              disabled={mk.isFetching || offline}
-              onClick={() => void mk.refetch()}
-            >
-              <RefreshCw size={14} aria-hidden="true" /> {mk.isFetching ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </div>
-          {mk.isError && <ErrorText error={mk.error} />} {(!booted || mk.isLoading) && <Loading />}
-          <div className={`notice worker-status${workerIssue ? ' warning' : ''}`} role={workerIssue ? 'status' : undefined}>
+          {mk.isError && <ErrorText error={mk.error} />}
+          {(!booted || mk.isLoading) && <Loading />}
+          {workerIssue && <div className={`notice worker-status${workerIssue ? ' warning' : ''}`} role={workerIssue ? 'status' : undefined}>
             <Activity size={17} aria-hidden="true" />
             <span>
               {offline
@@ -703,14 +689,30 @@ function App() {
                 : worker.isError
                   ? 'Background refresh status unavailable. Market snapshots may still load.'
                   : workerStatus?.state === 'healthy'
-                    ? `Background refresh: ${workerStatus.cycles} completed cycles; last completed ${Math.floor(workerStatus.completedAgeMs / 1000)}s before this passive check.`
+                    ? `Background refresh: ${workerStatus.cycles} cycles · ${Math.floor(workerStatus.completedAgeMs / 1000)}s ago`
                     : workerStatus?.reason ?? 'Checking passive background refresh status…'}
             </span>
-          </div>
-          {mk.data && (
-            <FeedHealth feeds={mk.data.feeds ?? []} now={now} disconnected={offline || mk.isError} />
-          )}
-          {!selected && mk.data?.assets.length ? (
+          </div>}
+          <details className="data-status-details">
+            <summary><span className={degraded ? 'negative' : 'positive'}>●</span> Data status <span className="small-label">{degraded ? 'Needs attention' : 'Connected'}</span></summary>
+            <div className="data-status-content">
+              <button className="subtle" aria-label="Refresh markets" disabled={mk.isFetching || offline} onClick={() => void mk.refetch()}><RefreshCw size={14} aria-hidden="true" /> {mk.isFetching ? 'Refreshing…' : 'Refresh'}</button>
+              {!workerIssue && <div className={`notice worker-status${workerIssue ? ' warning' : ''}`} role={workerIssue ? 'status' : undefined}>
+            <Activity size={17} aria-hidden="true" />
+            <span>
+              {offline
+                ? 'Background refresh status unavailable while offline.'
+                : worker.isError
+                  ? 'Background refresh status unavailable. Market snapshots may still load.'
+                  : workerStatus?.state === 'healthy'
+                    ? `Background refresh: ${workerStatus.cycles} cycles · ${Math.floor(workerStatus.completedAgeMs / 1000)}s ago`
+                    : workerStatus?.reason ?? 'Checking passive background refresh status…'}
+            </span>
+          </div>}
+              {mk.data && <FeedHealth feeds={mk.data.feeds ?? []} now={now} disconnected={offline || mk.isError} />}
+            </div>
+          </details>
+          {['overview','signals','pairs'].includes(ui.tab) && !selected && mk.data?.assets.length ? (
             <div className="notice warning selection-warning">
               <span>The selected contract is unavailable in the current snapshot.</span>
               <button className="secondary" onClick={() => ui.setAsset(mk.data.assets[0]!.id)}>

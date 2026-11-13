@@ -49,6 +49,7 @@ test('free macro feed shows official source and provider credit', async ({ page 
   } }));
   await page.getByRole('button', { name: 'Refresh calendar', exact: true }).click();
   await expect(page.getByText('Source: official BEA schedule · partial coverage')).toBeVisible();
+  await page.getByText('Sources', {exact:true}).click();
   const availability = page.getByRole('list', { name: 'Calendar source availability' });
   await expect(availability.getByText('BEA: available · 0 upcoming releases')).toBeVisible();
   await expect(availability.getByText('Finance Calendar: optional source not enabled')).toBeVisible();

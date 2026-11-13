@@ -161,6 +161,10 @@ it('isolates a friend account, protects owner-only tools and revokes sessions on
   expect((await call('watchlist', undefined, friendCookie)).body.assetIds).toEqual([]);
   expect((await call('research/datasets', undefined, friendCookie)).response.status).toBe(403);
   expect((await call('investments')).response.status).toBe(401);
+  for (const route of ['investments/search?q=AAPL', 'investments/stock?symbol=AAPL']) {
+    expect((await call(route)).response.status).toBe(401);
+    expect((await call(route, undefined, friendCookie)).response.status).toBe(403);
+  }
   expect((await call('investments', undefined, friendCookie)).response.status).toBe(403);
   expect((await call('investments', investmentFixture(), friendCookie)).response.status).toBe(403);
   expect(

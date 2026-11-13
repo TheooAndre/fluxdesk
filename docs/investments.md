@@ -47,3 +47,33 @@ manual. CSV exports neutralize spreadsheet-formula prefixes.
 
 Validation uses synthetic portfolios and accounts. Do not create real owner
 credentials or alter journal records for deployment checks.
+
+## Verified stock data
+
+Adding a stock starts with company/ticker search. Choose the exact Yahoo Finance
+listing (exchange and symbol suffix included); FluxDesk verifies its identity,
+stock/ETF type, currency and price before linking. `marketSymbol` is optional for
+backward-compatible imports. Existing manual entries use **Link listing** once;
+no company-name guess silently attaches another exchange or an ADR. Changing
+listing fields clears the link. The selected company, listing and currency are
+filled automatically; a missing issuer country is labelled Unknown.
+
+The same market pane serves every linked China/global stock: timestamped quotes,
+six-month daily history, market cap, valuation ratios, dividends, analyst targets
+and consensus, company profile and stock-specific headlines. **Overview**, **News**
+and **Company** keep this compact. Owner theses/statuses remain manual; publisher
+news and analyst opinions do not overwrite research or become a generated thesis.
+
+All provider calls run on the existing authenticated backend. Only search text and
+listing symbols reach Yahoo; portfolio weights, notes, broker links and account
+identifiers do not. Anonymous provider cookies/crumbs stay process-local. Routes
+`/api/investments/search?q=...` and `/api/investments/stock?symbol=...` inherit the
+owner-only checks. New links are verified on save, with a maximum of 20 distinct
+new links per request. Editing existing notes needs no provider call.
+
+This uses Yahoo's public, unofficial endpoints without an API key or a paid
+subscription. Availability and exchange delays apply. Quotes refresh at most
+once per minute; search/news/fundamentals use bounded process-local caches.
+The quote time and native currency are always displayed. Missing fundamentals,
+failed news and failed quote refreshes are shown explicitly. The backend never
+substitutes another listing, currency-converted quote or fabricated metric.

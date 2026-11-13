@@ -3,14 +3,9 @@ import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promis
 import { resolve } from 'node:path';
 import { MAX_INVESTMENT_BYTES, validateInvestments, type Investments } from '../src/investments/model.ts';
 
-export class InvestmentError extends Error {
-  constructor(
-    message: string,
-    readonly status = 400,
-  ) {
-    super(message);
-  }
-}
+import { InvestmentError } from './investment-error.ts';
+import { stockData } from './stock-data.ts';
+export { InvestmentError } from './investment-error.ts';
 const path = () => resolve(process.env.DATA_DIR ?? 'data', 'investments.json');
 let writes = Promise.resolve();
 export async function readInvestments(): Promise<Investments> {
@@ -34,6 +29,18 @@ export async function saveInvestments(input: unknown): Promise<Investments> {
     const old = await readInvestments();
     if (old.revision !== next.revision)
       throw new InvestmentError('Investments changed on another device. Reload before saving.', 409);
+    const prior = new Map(old.portfolios.flatMap((p) => p.stocks.map((s) => [s.id, s.marketSymbol])));
+    const links = [
+      ...new Set(
+        next.portfolios
+          .flatMap((p) => p.stocks)
+          .filter((s) => s.marketSymbol && prior.get(s.id) !== s.marketSymbol)
+          .map((s) => s.marketSymbol!),
+      ),
+    ];
+    if (links.length > 20) throw new InvestmentError('Link at most 20 new listings per save');
+    for (let i = 0; i < links.length; i += 4)
+      await Promise.all(links.slice(i, i + 4).map((symbol) => stockData(symbol)));
     const value: Investments = { ...next, revision: old.revision + 1 };
     const raw = JSON.stringify(value);
     if (Buffer.byteLength(raw) > MAX_INVESTMENT_BYTES)

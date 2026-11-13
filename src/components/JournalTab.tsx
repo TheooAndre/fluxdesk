@@ -238,12 +238,13 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
   }, {});
   return (
     <div className="content-stack workspace">
-      <Card title="Crypto trade journal">
+      <Card title="Journal">
         <div className="workspace-controls">
           <label>
-            Selected journal date
+            Date
             <input
               type="date"
+              aria-label="Selected journal date"
               value={date}
               onChange={(e) => {
                 if (e.target.value) {
@@ -280,10 +281,10 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
         )}
         <div className="workspace-controls">
           <button onClick={() => setView('trades')} aria-pressed={view === 'trades'}>
-            Trade log
+            Trades
           </button>
           <button onClick={() => setView('analytics')} aria-pressed={view === 'analytics'}>
-            Journal analytics
+            Analytics
           </button>
           <button onClick={() => setView('positions')} aria-pressed={view === 'positions'}>
             Open positions

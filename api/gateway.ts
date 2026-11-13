@@ -27,6 +27,8 @@ type GatewayRequest = IncomingMessage & {
   query?: Record<string, string | string[]>;
 };
 const MAX_BODY_BYTES = 16_384;
+// Match the persistent API limit without importing client code into the Vercel function.
+const MAX_JOURNAL_TRADE_BYTES = 1024 * 1024;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 function reply(res: ServerResponse, code: number, message: string) {
@@ -211,7 +213,9 @@ export default async function handler(req: GatewayRequest, res: ServerResponse) 
         ? 1024 * 1024
         : requestedPath === 'journal/import'
           ? 4 * 1024 * 1024
-          : requestedPath.startsWith('journal/')
+          : requestedPath === 'journal/trades'
+            ? MAX_JOURNAL_TRADE_BYTES
+            : requestedPath.startsWith('journal/')
             ? 131072
             : MAX_BODY_BYTES,
     );

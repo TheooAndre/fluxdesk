@@ -100,3 +100,23 @@
 .chart-workspace .chart-caption, .chart-workspace .notice, .chart-workspace details { grid-column: 1 / -1; }
 .chart-scale-controls { grid-column: 2; grid-row: 2; display: flex; justify-content: flex-end; gap: 4px; border-top: 1px solid #34465b; padding: 4px 0; }
 .chart-scale-controls button { min-height: 36px; }
+/* Quiet terminal shell; diagnostics stay accessible without crowding each workspace. */
+.data-status-details { margin: 0 0 18px; border-bottom: 1px solid #253744; color: #a8bdce; font-size: 12px; }
+.data-status-details > summary { display: flex; align-items: center; gap: 9px; padding: 11px 0; width: fit-content; cursor: pointer; }
+.data-status-details > summary::after { content: '⌄'; color: #91a6b8; }
+.data-status-content { padding-bottom: 14px; }
+.data-status-content .feed-health { margin-bottom: 0; }
+.welcome { margin-bottom: 20px; }
+.welcome h1 { font-size: 25px; font-weight: 650; letter-spacing: -0.6px; }
+.card { border-radius: 10px; box-shadow: none; }
+.card-head { margin-bottom: 14px; }
+.card-head h3 { font-size: 14px; font-weight: 600; }
+.nav-link { font-weight: 500; }
+.tiny-label { letter-spacing: 0.8px; }
+button, input, select, textarea { accent-color: #62dab1; }
+summary:focus-visible, .stock-search-result:focus-visible { outline: 2px solid #62dab1; outline-offset: 3px; }
+@media (max-width: 850px) { .topbar .crumb { font-size: 12px; } .welcome { margin-bottom: 14px; } .welcome h1 { font-size: 22px; } }
+
+.editor-details { border: 1px solid #2b3e50; border-radius: 8px; margin: 12px 0; padding: 0 14px; min-width: 0; }
+.editor-details > summary { cursor: pointer; padding: 13px 0; color: #afc4d5; font-size: 12px; }
+.editor-details[open] { padding-bottom: 14px; }

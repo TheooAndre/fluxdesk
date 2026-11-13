@@ -222,3 +222,21 @@ it('recovers the mutation queue after a failed read without reporting a false sa
   await saveTrade({ ...trade(), title: 'recovered' });
   expect((await readJournal()).trades).toHaveLength(2);
 });
+
+it('persists and reimports a ten-position beta basket with one shared plan and correct aggregate P&L', async () => {
+  await setup();
+  const t = trade();
+  t.thesis = 'Shared beta'; t.invalidation = 'BTC loses the range'; t.plan = 'Exit the basket at the same target';
+  t.legs = Array.from({ length: 10 }, (_, i) => ({ ...structuredClone(t.legs[0]!), assetId: `other:BETA${i}` }));
+  expect(validateTrade(t).legs).toHaveLength(10);
+  expect(tradeMetrics(t).net).toBe(260);
+  await saveTrade(t);
+  const saved = await readJournal();
+  expect(saved.trades[0]).toMatchObject({ thesis: t.thesis, invalidation: t.invalidation, plan: t.plan });
+  expect(saved.trades[0]!.legs).toHaveLength(10);
+  expect(await importJournal(saved)).toMatchObject({ skipped: 1 });
+  t.legs = Array.from({ length: 50 }, (_, i) => ({ ...structuredClone(t.legs[0]!), assetId: `other:BETA${i}` }));
+  expect(validateTrade(t).legs).toHaveLength(50);
+  t.legs.push(structuredClone(t.legs[0]!));
+  expect(() => validateTrade(t)).toThrow('1–50');
+});

@@ -19,6 +19,8 @@ import { savedWatchlist, changeWatchlist } from './watchlist.ts';
 import { armPriceAlert, disarmPriceAlert } from './alerts.ts';
 import { calendar } from './calendar.ts';
 import { readInvestments, saveInvestments, InvestmentError } from './investments.ts';
+import { searchStocks, stockData } from './stock-data.ts';
+import { MAX_JOURNAL_TRADE_BYTES } from '../src/journal/model.ts';
 import { MAX_INVESTMENT_BYTES } from '../src/investments/model.ts';
 import { vapidKey } from './notifications.ts';
 import { publicMode, isOwner } from './identity.ts';
@@ -120,6 +122,8 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       }
     }
     checkOrigin(req, access.originHost, access.gatewayProtected);
+    if (path === '/api/investments/search') return json(res, await searchStocks(url.searchParams.get('q') ?? ''));
+    if (path === '/api/investments/stock') return json(res, await stockData(url.searchParams.get('symbol') ?? ''));
     if (path === '/api/investments') return json(res, req.method === 'GET'
       ? await readInvestments() : await saveInvestments(await body(req, MAX_INVESTMENT_BYTES)));
     if(path === '/api/statarb/scan'){
@@ -130,7 +134,7 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if(path === '/api/journal')return json(res,await readJournal(access.userId));
     if(path === '/api/journal/trades'){
       if(req.method==='DELETE')return json(res,await removeTrade(url.searchParams.get('id')??'',Number(url.searchParams.get('revision')), access.userId));
-      return json(res,await saveTrade(await body(req,131072), access.userId),201);
+      return json(res,await saveTrade(await body(req,MAX_JOURNAL_TRADE_BYTES), access.userId),201);
     }
     if(path === '/api/journal/import')return json(res,await importJournal(await body(req,4*1024*1024), access.userId));
     if(path === '/api/journal/day')return json(res,await saveDay(await body(req,131072), access.userId));
