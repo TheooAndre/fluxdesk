@@ -109,3 +109,89 @@ it('marks unavailable provider values explicitly instead of guessing them', asyn
   );
   expect(store.snapshot().alerts[0]).toMatchObject({ enabled: false, repeat: false });
 });
+
+it('waits for published actual data, then sends actual, consensus and previous without a countdown', async () => {
+  await create({ timing: 'release', leadMinutes: 0 });
+  await scanner.scanAlerts();
+  expect(feed.deliver).not.toHaveBeenCalled();
+  now += 10 * 60_000;
+  await scanner.scanAlerts();
+  expect(feed.deliver).not.toHaveBeenCalled();
+  for (const actual of ['', '—', 'N/A', 'pending', 'pending 1m']) {
+    feed.events[0]!.actual = actual;
+    await scanner.scanAlerts();
+  }
+  expect(feed.deliver).not.toHaveBeenCalled();
+  feed.events[0]!.actual = '0.0%';
+  await scanner.scanAlerts();
+  expect(feed.deliver).toHaveBeenCalledTimes(1);
+  expect(feed.deliver.mock.calls[0]![0].message).toBe(
+    'US macro released — Consumer Price Index. Actual: 0.0%. Analyst consensus: 3.1%. Previous: 3.0%. Provider forecast: 3.2%.',
+  );
+  await scanner.scanAlerts();
+  expect(feed.deliver).toHaveBeenCalledTimes(1);
+});
+
+it('persists deduplication across simultaneous releases, reordered feeds and scanner reloads', async () => {
+  await create({ timing: 'release' });
+  feed.events.push({ ...release('core-cpi'), title: 'Core CPI' });
+  now += 11 * 60_000;
+  for (const event of feed.events) event.actual = '3.0%';
+  await scanner.scanAlerts();
+  feed.events.reverse();
+  await scanner.scanAlerts();
+  await store.load();
+  scanner = await import('../server/alerts.ts');
+  await scanner.scanAlerts();
+  expect(feed.deliver).toHaveBeenCalledTimes(2);
+  const alert = store.snapshot().alerts[0]!;
+  expect(alert.kind === 'macro' && alert.triggeredEvents).toHaveLength(2);
+});
+
+it('does not send stale, future, expired or pre-activation actuals', async () => {
+  await create({ timing: 'release' });
+  const event = feed.events[0]!;
+  event.actual = '3.2%';
+  await scanner.scanAlerts();
+  now += 11 * 60_000;
+  event.stale = true;
+  await scanner.scanAlerts();
+  event.stale = false;
+  event.time = new Date(now - 12 * 60_000).toISOString();
+  await scanner.scanAlerts();
+  event.time = new Date(now - 7 * 3600_000).toISOString();
+  await scanner.scanAlerts();
+  expect(feed.deliver).not.toHaveBeenCalled();
+});
+
+it('supports hour/day reminders, rejects unsupported timing, and keeps release and reminder rules independent', async () => {
+  for (const leadMinutes of [120, 240, 720, 1440])
+    expect((await create({ timing: 'before', leadMinutes })).status).toBe(201);
+  expect((await create({ timing: 'bad' })).status).toBe(400);
+  expect((await create({ timing: 'before', leadMinutes: 0 })).status).toBe(400);
+  await create({ timing: 'release', repeat: false });
+  await scanner.scanAlerts();
+  expect(feed.deliver).toHaveBeenCalledTimes(4);
+  now += 10 * 60_000;
+  feed.events[0]!.actual = '3.2%';
+  await scanner.scanAlerts();
+  expect(feed.deliver).toHaveBeenCalledTimes(5);
+  expect(store.snapshot().alerts.at(-1)).toMatchObject({ enabled: false, repeat: false });
+});
+
+it('preserves legacy reminder timing and deduplicates multiple recurring reminders', async () => {
+  await store.addAlert({
+    id: 'legacy',
+    assetId: 'macro:US',
+    kind: 'macro',
+    leadMinutes: 15,
+    enabled: true,
+    repeat: true,
+    createdAt: now,
+  });
+  feed.events.push(release('other'));
+  await scanner.scanAlerts();
+  await scanner.scanAlerts();
+  expect(feed.deliver).toHaveBeenCalledTimes(2);
+  expect(feed.deliver.mock.calls[0]![0].message).toContain('in 10m');
+});

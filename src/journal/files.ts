@@ -1,4 +1,4 @@
-import { newTrade, validateJournal, type JournalData, type JournalTrade } from './model.ts';
+import { newTrade, tradeMetrics, validateJournal, type JournalData, type JournalTrade } from './model.ts';
 export function downloadJson(name: string, value: unknown, compact = false) {
   const u = URL.createObjectURL(
     new Blob([JSON.stringify(value, null, compact ? undefined : 2)], { type: 'application/json' }),
@@ -130,7 +130,23 @@ export function exportSummaryCsv(trades: JournalTrade[]) {
       .replaceAll('"', '""') +
     '"';
   return [
-    ['date', 'title', 'account', 'strategy', 'assets', 'tags', 'fundingUsd', 'otherCostsUsd', 'review'],
+    [
+      'date',
+      'title',
+      'account',
+      'strategy',
+      'assets',
+      'tags',
+      'fundingUsd',
+      'otherCostsUsd',
+      'review',
+      'mode',
+      'status',
+      'thesis',
+      'invalidation',
+      'management',
+      'lessons',
+    ],
     ...trades.map((t) => [
       t.date,
       t.title,
@@ -138,9 +154,15 @@ export function exportSummaryCsv(trades: JournalTrade[]) {
       t.strategy,
       t.legs.map((l) => l.assetId).join('|'),
       t.tags.join('|'),
-      t.fundingUsd,
-      t.otherCostsUsd,
+      t.mode === 'lite' ? '' : t.fundingUsd,
+      t.mode === 'lite' ? '' : t.otherCostsUsd,
       t.review,
+      t.mode ?? 'full',
+      tradeMetrics(t).status,
+      t.thesis,
+      t.invalidation,
+      t.plan,
+      t.lessons,
     ]),
   ]
     .map((r) => r.map(quote).join(','))

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { handler } from '../server/app.ts';
-import { newTrade } from '../src/journal/model.ts';
+import { closeTrade, newTrade, tradeMetrics } from '../src/journal/model.ts';
 let server: Server, origin: string, dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'fluxdesk-journal-http-'));
@@ -82,4 +82,21 @@ it('accepts a fifty-leg basket above the old 128 KiB transport limit and survive
   const data = await (await fetch(origin + '/api/journal')).json();
   expect(data.trades[0].legs).toHaveLength(50);
   expect(data.trades[0].legs[49].fills).toHaveLength(25);
+});
+
+it('persists a notes-only lite trade, manual closure and reopening through revision-protected HTTP writes', async () => {
+  const t = { ...newTrade('2026-11-13'), title: 'Lite thesis', mode: 'lite', manualStatus: 'open', legs: [], thesis: 'Momentum', invalidation: 'Structure break', plan: 'Scale out', review: '', lessons: '' };
+  const initial = await post('/api/journal/trades', t);
+  expect(initial.status).toBe(201);
+  const { trade } = await initial.json();
+  const response = await post('/api/journal/trades', { ...closeTrade(trade), review: 'Exit on invalidation', lessons: 'Wait' });
+  expect(response.status).toBe(201);
+  const { trade: closed } = await response.json();
+  const reload = await (await fetch(origin + '/api/journal')).json();
+  expect(reload.trades[0]).toEqual(closed);
+  expect(tradeMetrics(closed)).toMatchObject({ status: 'closed', hasCompleteAccounting: false });
+  expect((await post('/api/journal/trades', trade)).status).toBe(409);
+  expect((await post('/api/journal/trades', { ...closed, manualStatus: 'open', closedAt: undefined })).status).toBe(201);
+  const portable = await (await fetch(origin + '/api/journal')).json();
+  expect(await (await post('/api/journal/import', portable)).json()).toMatchObject({ imported: 0, skipped: 1 });
 });

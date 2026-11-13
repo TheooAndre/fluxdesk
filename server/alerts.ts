@@ -4,6 +4,8 @@ import { snapshot, triggered } from './store.ts';
 import { deliver } from './notifications.ts';
 import { calendar } from './calendar.ts';
 import type { EconomicEvent } from '../src/types.ts';
+import { hasMacroActual } from '../src/lib/macro-alert.ts';
+import { RECENT_RELEASE_WINDOW_MS } from './showmytrades-calendar.ts';
 let running = false;
 // Polling only fires on crossings/new closed bars rather than repeatedly alerting on a static price.
 const lastPrice = new Map<string, number>();
@@ -18,7 +20,7 @@ export function disarmPriceAlert(id: string) {
 function reported(value: string): string {
   return value.trim() || 'not supplied by source';
 }
-export function macroReleaseMessage(event: EconomicEvent, now = Date.now()): string {
+export function macroReleaseMessage(event: EconomicEvent, now = Date.now(), released = false): string {
   const minutes = Math.max(0, Math.ceil((Date.parse(event.time) - now) / 60_000));
   const actual =
     event.actual.trim() ||
@@ -26,7 +28,7 @@ export function macroReleaseMessage(event: EconomicEvent, now = Date.now()): str
   const provider = event.providerForecast?.trim()
     ? ` Provider forecast: ${event.providerForecast.trim()}.`
     : '';
-  return `${event.country} macro in ${minutes}m — ${event.title}. Analyst consensus: ${reported(event.forecast)}. Previous: ${reported(event.previous)}. Actual: ${actual}.${provider}`;
+  return `${event.country} macro ${released ? 'released' : `in ${minutes}m`} — ${event.title}. ${released ? `Actual: ${actual}. ` : ''}Analyst consensus: ${reported(event.forecast)}. Previous: ${reported(event.previous)}.${released ? '' : ` Actual: ${actual}.`}${provider}`;
 }
 export async function scanAlerts() {
   if (running) return;
@@ -40,15 +42,19 @@ export async function scanAlerts() {
     const macroRules = rules.filter((rule) => rule.kind === 'macro');
     if (macroRules.length) {
       try {
-        const feed = await calendar(),
+        const feed = await calendar({ releaseWatch: macroRules.some((rule) => rule.timing === 'release') }),
           now = Date.now();
         for (const rule of macroRules) {
           if (rule.kind !== 'macro') continue;
           for (const event of feed.events) {
             const releaseAt = Date.parse(event.time);
-            if (!Number.isFinite(releaseAt) || releaseAt < now || releaseAt - now > rule.leadMinutes * 60_000)
-              continue;
-            const recorded = await triggered(rule, macroReleaseMessage(event, now), undefined, event.id);
+            if (!Number.isFinite(releaseAt) || event.stale || event.country !== 'US' || event.importance !== 3) continue;
+            const released = rule.timing === 'release';
+            if (released) {
+              if (releaseAt > now || now - releaseAt > RECENT_RELEASE_WINDOW_MS ||
+                  releaseAt < (rule.armedAt ?? rule.createdAt) || !hasMacroActual(event.actual)) continue;
+            } else if (releaseAt < now || releaseAt - now > rule.leadMinutes * 60_000) continue;
+            const recorded = await triggered(rule, macroReleaseMessage(event, now, released), undefined, event.id);
             if (recorded) await deliver(recorded);
           }
         }

@@ -361,6 +361,35 @@ it('prefers the free consensus feed when paid providers are not configured', asy
   });
 });
 
+it('refreshes pending actuals near release instead of waiting ten minutes, sharing concurrent polls', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(showMyTradesNow);
+  vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', '');
+  const releaseTime = showMyTradesNow + 60_000;
+  let actual = '';
+  const fetcher = vi.fn(async (input: string) => {
+    if (input.includes('showmytrades.com')) return Response.json({ ...showMyTradesPayload,
+      server_time: Date.now() / 1000, server_time_iso: new Date(Date.now()).toISOString(), generated_at: new Date(Date.now()).toISOString(), count: 1,
+      events: [{ ...showMyTradesPayload.events[0], time: new Date(releaseTime).toISOString(), ts: releaseTime / 1000, actual }] });
+    if (input.includes('bea.gov')) return new Response('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR');
+    return new Response('unavailable', { status: 503 });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const module = await import('../server/calendar.ts');
+  await module.calendar();
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  vi.advanceTimersByTime(60_000); actual = '0.3%';
+  const results = await Promise.all([module.calendar({ releaseWatch: true }), module.calendar({ releaseWatch: true })]);
+  expect(results[0]!.events[0]!.actual).toBe('0.3%');
+  expect(results[1]).toEqual(results[0]);
+  expect(fetcher).toHaveBeenCalledTimes(8);
+});
+
+it('keeps recently released paid-provider data across midnight for actual-value alerts', () => {
+  const now = Date.parse('2026-11-06T00:05:00Z');
+  expect(parseCalendar({ total: 1, events: [{ ...event, release_at_utc: '2026-11-05T23:59:00Z', actual: '3.1%' }] }, now)[0]?.actual).toBe('3.1%');
+  expect(parseTradingEconomicsCalendar([{ CalendarId: 1, Date: '2026-11-05T23:59:00Z', Country: 'United States', Event: 'CPI', Importance: 3, DateSpan: 0, Actual: 0, Forecast: 0.1, Previous: 0.2 }], now)[0]?.actual).toBe('0');
+});
+
 it('uses XOOMAR after both first sources reject and reports the source flags', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-10T00:00:00Z'));

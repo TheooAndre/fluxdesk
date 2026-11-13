@@ -7,6 +7,7 @@ import {
   tradeMetrics,
   journalAnalytics,
   validateTrade,
+  closeTrade,
   type JournalTrade,
   type JournalDay,
 } from '../journal/model.ts';
@@ -90,6 +91,21 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
     [onlyDate, setOnlyDate] = useState(false),
     [view, setView] = useState<'trades' | 'analytics' | 'calendar' | 'positions' | 'review'>('trades'),
     [limit, setLimit] = useState(30);
+  const [liteDefault, setLiteDefault] = useState(() => {
+    try {
+      return localStorage.getItem('fluxdesk.journal.mode.v1') === 'lite';
+    } catch {
+      return false;
+    }
+  });
+  const rememberMode = (lite: boolean) => {
+    setLiteDefault(lite);
+    try {
+      localStorage.setItem('fluxdesk.journal.mode.v1', lite ? 'lite' : 'full');
+    } catch {
+      /* Preference only. */
+    }
+  };
   const data = query.data,
     trades = data?.trades ?? [],
     day = dayDraft?.date === date ? dayDraft : (data?.days.find((d) => d.date === date) ?? emptyDay(date));
@@ -229,13 +245,19 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
   const month = date.slice(0, 7),
     firstDay = new Date(month + '-01T12:00:00Z'),
     daysInMonth = new Date(Date.UTC(firstDay.getUTCFullYear(), firstDay.getUTCMonth() + 1, 0)).getUTCDate();
-  const dailyPnl = trades.reduce<Record<string, { net: number; count: number }>>((out, t) => {
-    const r = tradeMetrics(t);
-    const d = (out[t.date] ??= { net: 0, count: 0 });
-    d.count++;
-    if (r.status === 'closed') d.net += r.net;
-    return out;
-  }, {});
+  const dailyPnl = trades.reduce<Record<string, { net: number; count: number; accounted: number }>>(
+    (out, t) => {
+      const r = tradeMetrics(t);
+      const d = (out[t.date] ??= { net: 0, count: 0, accounted: 0 });
+      d.count++;
+      if (r.status === 'closed' && r.hasCompleteAccounting) {
+        d.net += r.net;
+        d.accounted++;
+      }
+      return out;
+    },
+    {},
+  );
   return (
     <div className="content-stack workspace">
       <Card title="Journal">
@@ -253,7 +275,19 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
               }}
             />
           </label>
-          <button className="primary" onClick={() => edit(newTrade(date))}>
+          <label>
+            <span>
+              <input type="checkbox" checked={liteDefault} onChange={(e) => rememberMode(e.target.checked)} />{' '}
+              Lite journal
+            </span>
+          </label>
+          <button
+            className="primary"
+            onClick={() => {
+              const trade = newTrade(date);
+              edit(liteDefault ? { ...trade, mode: 'lite', manualStatus: 'open', legs: [] } : trade);
+            }}
+          >
             New trade
           </button>
           <button
@@ -340,6 +374,7 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
           trade={draft}
           setTrade={(t) => setDraft({ ...t, deviceDraftId: draft.deviceDraftId })}
           busy={busy || query.isError || query.isPending}
+          onModeChange={rememberMode}
           onCancel={() => setDraft(null)}
           onSave={() => {
             try {
@@ -475,38 +510,49 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
                   <div>
                     <strong>{t.title}</strong>
                     <p>
-                      {t.date} · {t.account} · {t.strategy || 'No setup'} · {m.status.toUpperCase()}
+                      {t.date} · {t.mode === 'lite' ? 'Lite' : `${t.account} · ${t.strategy || 'No setup'}`} ·{' '}
+                      {m.status.toUpperCase()}
                     </p>
                     <small>{t.legs.map((l) => `${l.assetId} ${l.direction}`).join(' / ')}</small>
                   </div>
-                  <div>
-                    <b className={m.net >= 0 ? 'positive' : 'negative'}>{money(m.net, false)}</b>
-                    <small className="small-label">
-                      {m.status === 'closed' ? 'Net P&L' : 'Recorded realized cash only'} · R{' '}
-                      {m.rMultiple?.toFixed(2) ?? 'N/A'}
-                    </small>
-                  </div>
+                  {t.mode !== 'lite' && (
+                    <div>
+                      <b className={m.net >= 0 ? 'positive' : 'negative'}>{money(m.net, false)}</b>
+                      <small className="small-label">
+                        {m.status === 'closed' && m.hasCompleteAccounting
+                          ? 'Net P&L'
+                          : 'Recorded realized cash only'}{' '}
+                        · R {m.rMultiple?.toFixed(2) ?? 'N/A'}
+                      </small>
+                      {m.status === 'closed' && !m.hasCompleteAccounting && (
+                        <small>P&L excluded until exit fills are complete</small>
+                      )}
+                    </div>
+                  )}
                 </header>
                 <p>{t.tags.join(' · ')}</p>
                 <details>
-                  <summary>Trade notes and cost breakdown</summary>
-                  <dl>
-                    <dt>Gross realized</dt>
-                    <dd>{money(m.gross, false)}</dd>
-                    <dt>Fees / funding / other costs</dt>
-                    <dd>
-                      {money(m.fees, false)} / {money(t.fundingUsd, false)} / {money(t.otherCostsUsd, false)}
-                    </dd>
-                    <dt>Recorded MFE / MAE (USD)</dt>
-                    <dd>
-                      {t.mfeUsd == null ? 'N/A' : money(t.mfeUsd, false)} /{' '}
-                      {t.maeUsd == null ? 'N/A' : money(t.maeUsd, false)}
-                    </dd>
-                    <dt>Rules followed / rating</dt>
-                    <dd>
-                      {t.rulesFollowed ? 'Yes' : 'No'} / {t.rating}/5
-                    </dd>
-                  </dl>
+                  <summary>{t.mode === 'lite' ? 'Trade notes' : 'Trade notes and cost breakdown'}</summary>
+                  {t.mode !== 'lite' && (
+                    <dl>
+                      <dt>Gross realized</dt>
+                      <dd>{money(m.gross, false)}</dd>
+                      <dt>Fees / funding / other costs</dt>
+                      <dd>
+                        {money(m.fees, false)} / {money(t.fundingUsd, false)} /{' '}
+                        {money(t.otherCostsUsd, false)}
+                      </dd>
+                      <dt>Recorded MFE / MAE (USD)</dt>
+                      <dd>
+                        {t.mfeUsd == null ? 'N/A' : money(t.mfeUsd, false)} /{' '}
+                        {t.maeUsd == null ? 'N/A' : money(t.maeUsd, false)}
+                      </dd>
+                      <dt>Rules followed / rating</dt>
+                      <dd>
+                        {t.rulesFollowed ? 'Yes' : 'No'} / {t.rating}/5
+                      </dd>
+                    </dl>
+                  )}
                   {[t.thesis, t.invalidation, t.plan, t.review, t.lessons].filter(Boolean).map((text, i) => (
                     <p key={i} style={{ whiteSpace: 'pre-wrap' }}>
                       {text}
@@ -525,6 +571,19 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
                   ))}
                 </details>
                 <div className="workspace-controls">
+                  {m.status !== 'closed' && (
+                    <button
+                      className="secondary"
+                      disabled={busy || query.isError || query.isPending || draft?.id === t.id}
+                      onClick={() => {
+                        const clean = closeTrade(t),
+                          submitted = asDraft(clean);
+                        save.mutate({ clean, submitted });
+                      }}
+                    >
+                      Close trade
+                    </button>
+                  )}
                   <button className="secondary" onClick={() => edit(t)}>
                     Edit trade
                   </button>
@@ -567,6 +626,12 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
       )}
       {view === 'analytics' && (
         <Card title="Closed-trade performance">
+          {process.count > stats.count && (
+            <p className="footnote">
+              {process.count - stats.count} Lite or manually closed trade(s) excluded from P&L until execution
+              fills are complete.
+            </p>
+          )}
           <div className="workspace-metrics">
             {Object.entries({
               'Closed trades': String(stats.count),
@@ -665,7 +730,7 @@ export default function JournalTab({ snapshot }: { snapshot?: MarketSnapshot }) 
                 >
                   {i + 1}
                   <small className={(row?.net ?? 0) >= 0 ? 'positive' : 'negative'}>
-                    {row ? money(row.net) : '—'}
+                    {row?.accounted ? money(row.net) : '—'}
                   </small>
                   <small>{row?.count ?? 0} trades</small>
                 </button>

@@ -1,26 +1,44 @@
 # Calendar sources and recovery
 
-The calendar is available without buying a data subscription. The persistent
-API checks XOOMAR and the official BLS and BEA schedules in parallel, with a
-nine-second deadline per request and a ten-minute process cache. Status is
-reported per source in `sources`, including `checkedAt` and the number of
-selected events in the next fourteen days. A valid empty window is available,
-not an outage. `staleSources` lists attempted sources that failed; an optional
-provider without credentials is separately `not_configured`.
+The public calendar checks Trading Economics (when configured), ShowMyTrades,
+Finance Calendar (when configured), BLS, BEA and XOOMAR in parallel. Selection
+follows that order, with the two official schedules combined as the final fallback.
+The free ShowMyTrades feed supplies analyst consensus, previous and actual values;
+a provider's separate model forecast is retained separately when supplied.
+A valid empty window is available, not an outage. Per-source `sources` includes
+status, `checkedAt` and event count; `staleSources` lists attempted failures.
+Optional providers without credentials are `not_configured`.
 
-Finance Calendar, when configured and successful, takes precedence. Otherwise
-the attributed XOOMAR schedule is preferred for its broader US coverage.
-If both broad feeds fail, the available official schedules are combined.
-BLS covers CPI, employment, PPI and JOLTS; BEA covers national GDP, personal
-income/outlays (including PCE) and international goods/services trade.
-Official backups do not supply consensus or prior values and do not cover
-every agency. Release times are parsed from the source; untimed, cancelled,
-invalid and out-of-window releases are omitted. No dates are fabricated.
+Requests have a nine-second deadline and share one in-flight refresh. The normal
+cache is ten minutes. While a release alert is active and an event is within two
+minutes before / six hours after its scheduled release without an actual value,
+the scanner can refresh after thirty seconds. The scanner runs about once a
+minute; delivery depends on the provider publishing data and is not an exchange
+latency guarantee. Failed whole-calendar refreshes back off at least a minute in
+release mode. Other consumers continue sharing the same cache.
 
-If every source fails, earlier events are retained for at most two hours on
-the same UTC day and explicitly marked stale. Failure messages never copy
-arbitrary upstream exceptions or credentials. Concurrent refreshes share a
-single fetch; failed responses are also cached to avoid retry storms.
+If every source fails, earlier events are retained for at most two hours on the
+same UTC day and explicitly marked stale. Stale rows cannot trigger macro alerts.
+Failure messages never copy arbitrary exceptions or credentials. Untimed,
+cancelled, invalid and out-of-window releases are omitted. No dates or values are
+fabricated. Official schedule backups do not supply numerical actual/consensus
+values and therefore cannot themselves produce an actual-value release alert.
+
+## Macro notifications
+
+New macro rules default to **When actual data is released**. They wait for a
+non-placeholder numerical actual, reject future, stale and more-than-six-hour-old
+releases, and ignore releases scheduled before the rule was activated. A release
+message contains actual, analyst consensus, previous, and a distinct provider
+forecast if available. Missing consensus/previous values are labelled explicitly.
+It never substitutes the forecast for the actual or sends a release countdown.
+
+**Before release** sends one reminder at 5/15/30 minutes, 1/2/4/12 hours, or one day
+before the event. Create separate rules to receive both a reminder and the actual.
+Existing saved rules without `timing` remain advance reminders. Repeating rules
+continue across events; one-shot rules disable after their first event. Per-rule
+bounded deduplication is persisted atomically, including simultaneous releases,
+and survives process restarts. Reactivation begins a new monitoring window.
 
 ## Optional Finance Calendar access
 
@@ -36,8 +54,9 @@ Northflank API service's private runtime variables**, then deploy/restart that
 service. The request uses the documented `X-API-Key` header, rejects redirects,
 and never puts the key in a URL or browser bundle. Do not paste keys in chat,
 commit them, add a `VITE_` prefix, or copy them into Vercel's frontend variables.
-The cache performs up to 144 refreshes/day per active process; other clients,
-restarts and previews can add requests against the same account quota.
+Normal caching performs up to 144 refreshes/day per active process. Active release
+alerts refresh pending observations more frequently near release; account quotas,
+other clients, restarts and previews must also be considered.
 
 Read `/api/calendar` to verify the `financecalendar` entry in `sources` is `live` after setup.
 A 401/403 requires correcting the key or account permissions; 402 requires a
