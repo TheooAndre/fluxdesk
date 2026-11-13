@@ -97,7 +97,15 @@ export type AlertCondition =
       lastTriggeredAboveAt?: number;
       lastTriggeredBelowAt?: number;
     }
-  | { kind: 'macro'; leadMinutes: 5 | 15 | 30 | 60; lastTriggeredEventId?: string }
+  | {
+      kind: 'macro';
+      /** Missing on legacy rules, which remain advance reminders. */
+      timing?: 'before' | 'release';
+      leadMinutes: import('./lib/macro-alert.ts').MacroLeadMinutes | 0;
+      lastTriggeredEventId?: string;
+      triggeredEvents?: { id: string; at: number }[];
+      armedAt?: number;
+    }
   | { kind: Exclude<AlertKind, 'price_range' | 'macro'>; threshold: number; direction?: 'above' | 'below'; referencePrice?: number };
 export type AlertInput = { assetId: string; repeat?: boolean } & AlertCondition;
 export type AlertRule = AlertCondition & {

@@ -732,7 +732,7 @@ test('macro alert previews and saves analyst consensus plus previous values', as
   await page.route('**/api/alerts', async route => {
     if (route.request().method() === 'POST') {
       const input = route.request().postDataJSON();
-      expect(input).toEqual({ assetId: 'macro:US', kind: 'macro', leadMinutes: 30, repeat: true });
+      expect(input).toEqual({ assetId: 'macro:US', kind: 'macro', timing: 'before', leadMinutes: 30, repeat: true });
       const alert = { ...input, id: crypto.randomUUID(), createdAt: Date.now(), enabled: true };
       rules = [alert]; await route.fulfill({ status: 201, json: { alert } });
     } else await route.fulfill({ json: { alerts: rules, events: [] } });
@@ -742,6 +742,7 @@ test('macro alert previews and saves analyst consensus plus previous values', as
   await page.getByRole('combobox', { name: 'Alert type', exact: true }).selectOption('macro');
   await expect(page.getByLabel('Macro alert coverage')).toHaveValue('US high-impact macro releases');
   await expect(page.getByText(/Consumer Price Index · Consensus: 3.1% · Provider forecast: 3.2% · Previous: 3.0%/)).toBeVisible();
+  await page.getByRole('combobox', { name: 'Notify', exact: true }).selectOption('before');
   await page.getByRole('combobox', { name: 'Notify before release', exact: true }).selectOption('30');
   await expect(page.getByLabel('Keep active for future releases')).toBeChecked();
   await page.getByRole('button', { name: 'Create alert', exact: true }).click();
@@ -1172,3 +1173,75 @@ test('delayed journal saves preserve newer edits across navigation and keep othe
  await expect(page.locator('.journal-trade')).toContainText('Ten-leg beta basket');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  });
+
+
+test('macro release mode defaults to actual data and supports an independent one-day reminder', async ({ page }) => {
+  const rules: Record<string, unknown>[] = [];
+  await page.route('**/api/alerts', async route => {
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      expect(input).toMatchObject(rules.length ? { timing: 'before', leadMinutes: 1440 } : { timing: 'release', leadMinutes: 0 });
+      const alert = { ...input, id: crypto.randomUUID(), createdAt: Date.now(), enabled: true };
+      rules.push(alert); await route.fulfill({ status: 201, json: { alert } });
+    } else await route.fulfill({ json: { alerts: rules, events: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Alert type', exact: true }).selectOption('macro');
+  await expect(page.getByRole('combobox', { name: 'Notify', exact: true })).toHaveValue('release');
+  await expect(page.getByLabel('Notify before release', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Create alert', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toContainText('On release · actual + consensus + previous');
+  await page.getByRole('combobox', { name: 'Notify', exact: true }).selectOption('before');
+  await page.getByRole('combobox', { name: 'Notify before release', exact: true }).selectOption('1440');
+  await page.getByRole('button', { name: 'Create alert', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toHaveCount(2);
+  await expect(page.locator('.alert-rule').last()).toContainText('1 day before');
+});
+
+test('lite journal saves notes, closes and reopens manually, and restores full mode without losing notes', async ({ page }) => {
+  let trades: Record<string, unknown>[] = [];
+  await page.route('**/api/journal', r => r.fulfill({ json: { schemaVersion: 1, trades, days: [] } }));
+  await page.route('**/api/journal/trades', r => {
+    const input = r.request().postDataJSON();
+    const trade = { ...input, id: input.id || 'lite-test', revision: input.revision + 1, createdAt: input.createdAt || Date.now(), updatedAt: Date.now() };
+    trades = [trade]; return r.fulfill({ status: 201, json: { trade } });
+  });
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Mobile navigation' });
+  const open = async () => { await (await nav.isVisible() ? nav.getByRole('button', { name: 'Journal', exact: true }) : page.getByRole('button', { name: 'Trade journal', exact: true })).click(); };
+  await open();
+  await page.getByLabel('Lite journal', { exact: true }).check();
+  await page.getByRole('button', { name: 'New trade', exact: true }).click();
+  await page.getByLabel('Trade title', { exact: true }).fill('Notes-only beta basket');
+  await page.getByRole('textbox', { name: 'Entry thesis', exact: true }).fill('Sector rotation');
+  await page.getByRole('textbox', { name: 'Invalidation / exit rules', exact: true }).fill('BTC structure breaks');
+  await page.getByRole('textbox', { name: 'Shared target & management', exact: true }).fill('Reduce into resistance');
+  await page.getByRole('textbox', { name: 'Post-trade review', exact: true }).fill('Waited for the setup');
+  await page.getByRole('textbox', { name: 'Lessons / next action', exact: true }).fill('Keep exposure steady');
+  await expect(page.getByLabel('Planned risk (USD)', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add position', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save trade', exact: true }).click();
+  await expect(page.locator('.journal-trade')).toContainText('Notes-only beta basket');
+  expect(trades[0]).toMatchObject({ mode: 'lite', manualStatus: 'open', legs: [], thesis: 'Sector rotation' });
+  await page.getByRole('button', { name: 'Close trade', exact: true }).click();
+  await expect(page.locator('.journal-trade')).toContainText('CLOSED');
+  expect(trades[0]?.manualStatus).toBe('closed');
+  await expect(page.locator('.journal-trade')).not.toContainText('Net P&L');
+  await page.reload(); await open();
+  await expect(page.getByLabel('Lite journal', { exact: true })).toBeChecked();
+  await page.getByRole('button', { name: 'Edit trade', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Post-trade review', exact: true })).toHaveValue('Waited for the setup');
+  await page.getByRole('button', { name: 'Reopen trade', exact: true }).click();
+  await page.getByLabel('Lite mode', { exact: true }).uncheck();
+  await expect(page.getByRole('button', { name: 'Add position', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Entry thesis', exact: true })).toHaveValue('Sector rotation');
+  await page.getByRole('button', { name: 'Save trade', exact: true }).click();
+  await expect(page.locator('.journal-trade')).toContainText('PLANNED');
+  expect(trades[0]?.mode).toBe('full');
+  expect((trades[0]?.legs as unknown[]).length).toBe(1);
+  await page.getByRole('button', { name: 'Close trade', exact: true }).click();
+  await expect(page.locator('.journal-trade')).toContainText('CLOSED');
+  await expect(page.locator('.journal-trade')).toContainText('P&L excluded until exit fills are complete');
+  expect(trades[0]?.manualStatus).toBe('closed');
+});

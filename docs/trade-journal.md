@@ -19,6 +19,30 @@ This implementation does not claim full parity with either service. Exchange API
 - Up to six HTTPS screenshot/chart references. Images are not fetched by the server or uploaded. Scanner candidates can seed unsaved pair drafts with direction, method context and hedge ratio; size/risk remain manual. Replacing an existing device draft requires explicit confirmation; declining preserves it.
 - Device-local trade/daily drafts survive navigation and failed saves. Explicit reload-saved controls handle conflicts without silently rebasing or overwriting another device's changes. Closing the trade editor retains its device draft; discard is explicit. Successful saves clear corresponding device drafts.
 
+## Lite entries and manual closure
+
+Enable **Lite journal** for new notes-only trades, or toggle **Lite mode** inside
+an editor. Lite records need a title/date, thesis, invalidation, management and
+post-trade notes; execution prices, quantities, risk and costs are not required.
+The device remembers the new-entry preference. Each saved trade retains its own
+mode. Switching back to full mode preserves notes and existing execution data;
+an empty Lite record gets an empty full-mode position ready to fill in.
+
+Lite status is explicitly Planned/Open/Closed. **Close trade** in the log saves a
+manual closure through the existing revision-checked write. **Mark closed** in
+an editor stages closure until Save; **Reopen trade** removes the manual closure.
+These actions only update journal records. They do not submit exchange orders.
+Full-mode fills still derive the normal status unless manually marked closed.
+
+Manual closure never fabricates exit prices, quantities or realized profit.
+Lite records and manually closed full records with incomplete exit fills stay
+out of P&L, win-rate, R, holding-time and streak calculations. They remain in
+status filters, review counts and calendar trade counts. Full records can later
+complete their exits to enter financial analytics. The review queue does not
+request risk, stops or ratings for Lite entries. Full JSON preserves mode,
+closure metadata, notes and fills with schemaVersion 1 backward compatibility;
+summary CSV adds mode, status and thesis/invalidation/management/review columns.
+
 ## Accounting and analytics
 
 Gross realized P&L is the sum over exited base units of signed price change from current average cost. Net recorded cash P&L = realized gross − all recorded fees + funding − other costs. Open/partial cash previews exclude unrealized P&L. Performance statistics include fully closed trades only; plans and remaining open exposure do not enter win rate/profit factor/expectancy.

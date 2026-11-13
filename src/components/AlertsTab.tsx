@@ -3,6 +3,7 @@ import { usePushNotifications } from '../lib/use-push-notifications.ts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellRing, X } from 'lucide-react';
 import { priceAlertDirection } from '../lib/price-alert.ts';
+import { MACRO_LEAD_MINUTES, macroLeadLabel, type MacroLeadMinutes } from '../lib/macro-alert.ts';
 import { api } from '../lib/api.ts';
 import type { Market, AlertKind } from '../types.ts';
 import { money, price, clock } from '../lib/format.ts';
@@ -14,7 +15,8 @@ function AlertsTab({ item }: { item: Market | undefined }) {
     [threshold, setThreshold] = useState('100'),
     [lowerPrice, setLowerPrice] = useState(''),
     [upperPrice, setUpperPrice] = useState(''),
-    [leadMinutes, setLeadMinutes] = useState<'5' | '15' | '30' | '60'>('15'),
+    [leadMinutes, setLeadMinutes] = useState<MacroLeadMinutes>(15),
+    [macroTiming, setMacroTiming] = useState<'before' | 'release'>('release'),
     [repeat, setRepeat] = useState(false),
     [message, setMessage] = useState('');
   const rules = useQuery({ queryKey: ['alerts'], queryFn: api.alerts, refetchInterval: 15_000 });
@@ -31,7 +33,9 @@ function AlertsTab({ item }: { item: Market | undefined }) {
         alert.kind === 'price'
           ? `Alert created: price ${alert.direction} ${price(alert.threshold)}. Monitoring runs on your dashboard server.`
           : alert.kind === 'macro'
-            ? 'Macro alert created. Notifications will include analyst consensus, provider forecast and previous value.'
+            ? alert.timing === 'release'
+              ? 'Release alert created. Sent when the source reports the actual value, with consensus and previous.'
+              : 'Advance reminder created, with consensus, forecast and previous.'
             : 'Alert created. Monitoring runs on your dashboard server.',
       );
       void client.invalidateQueries({ queryKey: ['alerts'] });
@@ -111,21 +115,35 @@ function AlertsTab({ item }: { item: Market | undefined }) {
           {kind === 'macro' ? (
             <>
               <label className="field">
-                Notify before release
+                Notify
                 <select
-                  value={leadMinutes}
-                  onChange={(e) => setLeadMinutes(e.target.value as typeof leadMinutes)}
+                  value={macroTiming}
+                  onChange={(e) => setMacroTiming(e.target.value as typeof macroTiming)}
                 >
-                  <option value="5">5 minutes before</option>
-                  <option value="15">15 minutes before</option>
-                  <option value="30">30 minutes before</option>
-                  <option value="60">1 hour before</option>
+                  <option value="release">When actual data is released</option>
+                  <option value="before">Before release</option>
                 </select>
               </label>
+              {macroTiming === 'before' && (
+                <label className="field">
+                  Notify before release
+                  <select
+                    value={leadMinutes}
+                    onChange={(e) => setLeadMinutes(Number(e.target.value) as MacroLeadMinutes)}
+                  >
+                    {MACRO_LEAD_MINUTES.map((minutes) => (
+                      <option key={minutes} value={minutes}>
+                        {macroLeadLabel(minutes)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="notice" role="status">
                 <p>
-                  <strong>Every notification includes:</strong> analyst consensus, provider forecast and
-                  previous value.
+                  {macroTiming === 'release'
+                    ? 'Actual + consensus + previous. Sent once the source publishes the actual value.'
+                    : 'Consensus + forecast + previous. One reminder per event.'}
                 </p>
                 {macroCalendar.isLoading ? (
                   <small>Loading upcoming releases…</small>
@@ -222,7 +240,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               (kind === 'price' && !direction) ||
               (kind === 'liquidation' && item?.venue !== 'binance') ||
               (kind === 'macro'
-                ? ![5, 15, 30, 60].includes(Number(leadMinutes))
+                ? macroTiming === 'before' && !MACRO_LEAD_MINUTES.includes(leadMinutes)
                 : kind === 'price_range'
                   ? ![Number(lowerPrice), Number(upperPrice)].every(
                       (value) => Number.isFinite(value) && value > 0 && value <= 1e15,
@@ -234,7 +252,8 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                 create.mutate({
                   assetId: 'macro:US',
                   kind,
-                  leadMinutes: Number(leadMinutes) as 5 | 15 | 30 | 60,
+                  timing: macroTiming,
+                  leadMinutes: macroTiming === 'release' ? 0 : leadMinutes,
                   repeat,
                 });
               } else if (item) {
@@ -314,7 +333,9 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                   </b>
                   <small>
                     {x.kind === 'macro'
-                      ? `${x.leadMinutes}m before · consensus + forecast + previous`
+                      ? x.timing === 'release'
+                        ? 'On release · actual + consensus + previous'
+                        : `${macroLeadLabel(x.leadMinutes)} · consensus + forecast + previous`
                       : x.kind === 'price_range'
                         ? `Below ${price(x.lowerPrice)} or above ${price(x.upperPrice)}`
                         : x.kind === 'volume'

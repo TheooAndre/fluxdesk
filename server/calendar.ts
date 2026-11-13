@@ -5,6 +5,7 @@ import { fetchBeaCalendar } from './bea-calendar.ts';
 import { fetchXoomarCalendar } from './xoomar-calendar.ts';
 import { fetchTradingEconomicsCalendar } from './trading-economics-calendar.ts';
 import { fetchShowMyTradesCalendar, RECENT_RELEASE_WINDOW_MS } from './showmytrades-calendar.ts';
+import { hasMacroActual } from '../src/lib/macro-alert.ts';
 
 const BASE = 'https://www.financecalendar.com/wp-json/fc/v1/calendar';
 const TTL = 10 * 60_000;
@@ -99,7 +100,7 @@ export function parseCalendar(json: SourceResponse, now = Date.now()): EconomicE
     if (
       !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(time) ||
       !Number.isFinite(Date.parse(time)) ||
-      Date.parse(time) < now
+      Date.parse(time) < now - RECENT_RELEASE_WINDOW_MS
     )
       continue;
     const id = string(raw.id),
@@ -153,7 +154,7 @@ async function checkSource(
   }
 }
 
-async function financeCalendar(day: string, now: number): Promise<SourceResult> {
+async function financeCalendar(now: number): Promise<SourceResult> {
   const key = process.env.FLUXDESK_FINANCE_CALENDAR_API_KEY?.trim();
   if (!key)
     return {
@@ -171,7 +172,7 @@ async function financeCalendar(day: string, now: number): Promise<SourceResult> 
     const url = new URL(BASE);
     url.searchParams.set('country', 'US');
     url.searchParams.set('impact', 'high');
-    url.searchParams.set('from', day);
+    url.searchParams.set('from', new Date(now - RECENT_RELEASE_WINDOW_MS).toISOString().slice(0, 10));
     url.searchParams.set('to', new Date(now + 14 * 86_400_000).toISOString().slice(0, 10));
     url.searchParams.set('limit', '500');
     const result = await getJson<SourceResponse>(url.href, {
@@ -211,7 +212,7 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
   const [economics, freeCalendar, finance, bls, bea, xoomar] = await Promise.all([
     tradingEconomics(now),
     showMyTrades(now),
-    financeCalendar(day, now),
+    financeCalendar(now),
     checkSource('bls', 'BLS', () => fetchBlsCalendar(now)),
     checkSource('bea', 'BEA', () => fetchBeaCalendar(now)),
     checkSource('xoomar', 'XOOMAR', () => fetchXoomarCalendar(now)),
@@ -281,15 +282,21 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
   return value;
 }
 
-export async function calendar(): Promise<CalendarResponse> {
+export async function calendar({ releaseWatch = false }: { releaseWatch?: boolean } = {}): Promise<CalendarResponse> {
   const now = Date.now(),
     day = new Date(now).toISOString().slice(0, 10);
-  if (cache?.day === day && now - cache.at < TTL)
+  // Re-check pending actuals near their release, sharing the same bounded cache/pending request.
+  const awaitingActual = cache?.value.events.some((event) => {
+    const time = Date.parse(event.time);
+    return time <= now + 2 * 60_000 && time >= now - RECENT_RELEASE_WINDOW_MS && !hasMacroActual(event.actual);
+  });
+  const ttl = releaseWatch && awaitingActual ? 30_000 : TTL;
+  if (cache?.day === day && now - cache.at < ttl && !failure)
     return {
       ...cache.value,
       events: cache.value.events.filter((x) => Date.parse(x.time) >= now - RECENT_RELEASE_WINDOW_MS),
     };
-  if (failure?.day === day && now - failure.at < TTL)
+  if (failure?.day === day && now - failure.at < (releaseWatch ? 60_000 : TTL))
     return {
       ...failure.value,
       events: failure.value.events.filter((x) => Date.parse(x.time) >= now - RECENT_RELEASE_WINDOW_MS),

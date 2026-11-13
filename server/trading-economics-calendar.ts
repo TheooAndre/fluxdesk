@@ -1,5 +1,6 @@
 import type { EconomicEvent } from '../src/types.ts';
 import { getJson } from './market.ts';
+import { RECENT_RELEASE_WINDOW_MS } from './showmytrades-calendar.ts';
 
 const BASE = 'https://api.tradingeconomics.com/calendar/country/united%20states';
 export const TRADING_ECONOMICS_CALENDAR_URL = 'https://tradingeconomics.com/calendar';
@@ -38,7 +39,7 @@ export function parseTradingEconomicsCalendar(payload: unknown, now = Date.now()
     if (raw.Country !== 'United States' || raw.Importance !== 3 || text(raw.DateSpan) !== '0') continue;
     const id = text(raw.CalendarId), title = text(raw.Event), time = utcTime(raw.Date);
     if (!id || !title || !Number.isFinite(time)) throw Error('Trading Economics high-impact event incomplete');
-    if (time < now || time > now + 14 * 86_400_000) continue;
+    if (time < now - RECENT_RELEASE_WINDOW_MS || time > now + 14 * 86_400_000) continue;
     events.push({
       id: `tradingeconomics:${id}`, time: new Date(time).toISOString(), country: 'US', title, importance: 3,
       forecast: text(raw.Forecast), providerForecast: text(raw.TEForecast), previous: text(raw.Previous),
@@ -51,7 +52,7 @@ export function parseTradingEconomicsCalendar(payload: unknown, now = Date.now()
 }
 
 export async function fetchTradingEconomicsCalendar(key: string, now: number): Promise<EconomicEvent[]> {
-  const from = new Date(now).toISOString().slice(0, 10),
+  const from = new Date(now - RECENT_RELEASE_WINDOW_MS).toISOString().slice(0, 10),
     to = new Date(now + 14 * 86_400_000).toISOString().slice(0, 10),
     url = `${BASE}/${from}/${to}?importance=3`;
   return parseTradingEconomicsCalendar(await getJson<unknown>(url, {

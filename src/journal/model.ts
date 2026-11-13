@@ -22,6 +22,10 @@ export type JournalTrade = {
   revision: number;
   createdAt: number;
   updatedAt: number;
+  /** Missing on existing records means the full execution journal. */
+  mode?: 'full' | 'lite';
+  manualStatus?: 'planned' | 'open' | 'closed';
+  closedAt?: number;
   date: string;
   title: string;
   account: string;
@@ -120,22 +124,65 @@ export function tradeMetrics(trade: JournalTrade) {
   const gross = legs.reduce((s, l) => s + l.gross, 0),
     fees = legs.reduce((s, l) => s + l.fees, 0),
     net = gross - fees + trade.fundingUsd - trade.otherCostsUsd;
-  const status = legs.every((l) => !l.entries)
+  const fillStatus = legs.every((l) => !l.entries)
     ? 'planned'
     : legs.every((l) => l.quantity === 0)
       ? 'closed'
       : 'open';
+  const status =
+    trade.mode === 'lite'
+      ? (trade.manualStatus ?? 'open')
+      : trade.manualStatus === 'closed'
+        ? 'closed'
+        : fillStatus;
+  const hasCompleteAccounting = trade.mode !== 'lite' && fillStatus === 'closed';
   return {
     gross,
     fees,
     net,
     status,
-    rMultiple: trade.riskUsd && status === 'closed' ? net / trade.riskUsd : null,
+    hasCompleteAccounting,
+    rMultiple: trade.riskUsd && hasCompleteAccounting ? net / trade.riskUsd : null,
+  };
+}
+export function closeTrade(trade: JournalTrade, now = Date.now()): JournalTrade {
+  return { ...trade, manualStatus: 'closed', closedAt: now };
+}
+export function tradeClosedAt(trade: JournalTrade) {
+  const exits = trade.legs.flatMap((leg) =>
+    leg.fills.filter((f) => f.kind === 'exit').map((f) => Date.parse(f.time)),
+  );
+  return tradeMetrics(trade).hasCompleteAccounting && exits.length
+    ? Math.max(...exits)
+    : (trade.closedAt ?? null);
+}
+export function journalMode(trade: JournalTrade, lite: boolean): JournalTrade {
+  const status = tradeMetrics(trade).status;
+  return {
+    ...trade,
+    mode: lite ? 'lite' : 'full',
+    manualStatus: status === 'closed' ? 'closed' : lite ? status : undefined,
+    closedAt: status === 'closed' ? (tradeClosedAt(trade) ?? Date.now()) : undefined,
+    legs: !lite && !trade.legs.length ? newTrade(trade.date).legs : trade.legs,
   };
 }
 export function validateTrade(input: unknown): JournalTrade {
   const t = input as JournalTrade;
   if (!t || typeof t !== 'object' || !isDate(t.date)) throw Error('Invalid journal date');
+  if (t.mode !== undefined && t.mode !== 'full' && t.mode !== 'lite') throw Error('Invalid journal mode');
+  if (t.manualStatus !== undefined && !['planned', 'open', 'closed'].includes(t.manualStatus))
+    throw Error('Invalid trade status');
+  if (t.mode !== 'lite' && t.manualStatus !== undefined && t.manualStatus !== 'closed')
+    throw Error('Full journal status follows fills or manual closure');
+  if (
+    (t.manualStatus === 'closed' && t.closedAt === undefined) ||
+    (t.closedAt !== undefined &&
+      (t.manualStatus !== 'closed' ||
+        !Number.isSafeInteger(t.closedAt) ||
+        t.closedAt <= 0 ||
+        t.closedAt > Date.now() + 300_000))
+  )
+    throw Error('Invalid manual closure time');
   for (const [key, max] of Object.entries({
     title: 160,
     account: 80,
@@ -186,7 +233,11 @@ export function validateTrade(input: unknown): JournalTrade {
     })
   )
     throw Error('Use HTTPS screenshot links (up to six)');
-  if (!Array.isArray(t.legs) || t.legs.length < 1 || t.legs.length > MAX_JOURNAL_LEGS)
+  if (
+    !Array.isArray(t.legs) ||
+    t.legs.length < (t.mode === 'lite' ? 0 : 1) ||
+    t.legs.length > MAX_JOURNAL_LEGS
+  )
     throw Error(`A trade requires 1–${MAX_JOURNAL_LEGS} legs`);
   for (const l of t.legs) {
     if (
@@ -276,19 +327,10 @@ export function validateJournal(data: unknown): JournalData {
 export function journalAnalytics(trades: JournalTrade[]) {
   const closed = trades
     .map((t) => ({ trade: t, ...tradeMetrics(t) }))
-    .filter((t) => t.status === 'closed')
+    .filter((t) => t.status === 'closed' && t.hasCompleteAccounting)
     .sort(
       (a, b) =>
-        Math.max(
-          ...a.trade.legs.flatMap((l) =>
-            l.fills.filter((f) => f.kind === 'exit').map((f) => Date.parse(f.time)),
-          ),
-        ) -
-          Math.max(
-            ...b.trade.legs.flatMap((l) =>
-              l.fills.filter((f) => f.kind === 'exit').map((f) => Date.parse(f.time)),
-            ),
-          ) || a.trade.id.localeCompare(b.trade.id),
+        (tradeClosedAt(a.trade) ?? 0) - (tradeClosedAt(b.trade) ?? 0) || a.trade.id.localeCompare(b.trade.id),
     );
   let cumulative = 0,
     peak = 0,

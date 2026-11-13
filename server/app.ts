@@ -9,6 +9,7 @@ import { resolve, extname, sep } from 'node:path';
 import { marketSnapshot, freshMarkets, candles, assetIdentity, enrichedOpenInterest, perpetualQuote } from './market.ts';
 import { marketRefreshStatus } from './market-refresh.ts';
 import { priceAlertDirection } from '../src/lib/price-alert.ts';
+import { MACRO_LEAD_MINUTES, type MacroLeadMinutes } from '../src/lib/macro-alert.ts';
 import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
@@ -255,9 +256,12 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         throw Error('Public market-wide Hyperliquid liquidations are not available from this connector');
       let condition: AlertCondition;
       if (kind === 'macro') {
-        const leadMinutes = Number(o.leadMinutes);
-        if (![5, 15, 30, 60].includes(leadMinutes)) throw Error('Invalid macro alert lead time');
-        condition = { kind, leadMinutes: leadMinutes as 5 | 15 | 30 | 60 };
+        const timing = o.timing ?? 'before';
+        if (timing !== 'before' && timing !== 'release') throw Error('Invalid macro alert timing');
+        const leadMinutes = timing === 'release' ? 0 : Number(o.leadMinutes);
+        if (timing === 'before' && !MACRO_LEAD_MINUTES.includes(leadMinutes as MacroLeadMinutes))
+          throw Error('Invalid macro alert lead time');
+        condition = { kind, timing, leadMinutes: leadMinutes as MacroLeadMinutes | 0 };
       } else if (kind === 'price_range') {
         if (typeof o.lowerPrice !== 'number' || typeof o.upperPrice !== 'number')
           throw Error('Invalid price range: both bounds must be numbers');

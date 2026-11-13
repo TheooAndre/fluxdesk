@@ -79,7 +79,11 @@ export function setAlertEnabled(id: string, enabled: boolean, viewer?: string): 
           delete alert.lastTriggeredAboveAt;
           delete alert.lastTriggeredBelowAt;
         }
-        if (alert.kind === 'macro') delete alert.lastTriggeredEventId;
+        if (alert.kind === 'macro') {
+          delete alert.lastTriggeredEventId;
+          delete alert.triggeredEvents;
+          alert.armedAt = Date.now();
+        }
       }
     }
     return structuredClone(alert);
@@ -93,7 +97,9 @@ export function triggered(rule: AlertRule, message: string, boundary?: 'above' |
     let last = original.lastTriggeredAt;
     if (original.kind === 'macro') {
       if (!eventId) throw Error('Macro alerts require an event ID');
-      if (original.lastTriggeredEventId === eventId) return null;
+      const seen = (original.triggeredEvents ?? []).filter((event) => now - event.at <= 7 * 86_400_000);
+      if (original.lastTriggeredEventId === eventId || seen.some((event) => event.id === eventId)) return null;
+      original.triggeredEvents = [...seen, { id: eventId, at: now }].slice(-512);
       original.lastTriggeredEventId = eventId;
     } else if (original.kind === 'price_range') {
       if (!boundary) throw Error('Range alerts require a crossed boundary');
