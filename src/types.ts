@@ -88,8 +88,17 @@ export type PairStats = {
   note: string;
 };
 export type PairCandidate = { id: string; correlation: number; zScore: number; beta: number; points: number };
-export type AlertKind = 'price' | 'price_range' | 'volume' | 'liquidation' | 'macro';
+export type AlertKind = 'price' | 'price_range' | 'volume' | 'liquidation' | 'macro' | 'technical';
 export type AlertCondition =
+  | {
+      kind: 'technical';
+      name: string;
+      assetIds: string[];
+      match: 'all' | 'any';
+      conditions: import('./lib/advanced-alert.ts').TechnicalCondition[];
+      cooldownMinutes: number;
+      technicalState?: Record<string, import('./lib/advanced-alert.ts').TechnicalObservation>;
+    }
   | {
       kind: 'price_range';
       lowerPrice: number;
@@ -106,7 +115,12 @@ export type AlertCondition =
       triggeredEvents?: { id: string; at: number }[];
       armedAt?: number;
     }
-  | { kind: Exclude<AlertKind, 'price_range' | 'macro'>; threshold: number; direction?: 'above' | 'below'; referencePrice?: number };
+  | {
+      kind: Exclude<AlertKind, 'price_range' | 'macro' | 'technical'>;
+      threshold: number;
+      direction?: 'above' | 'below';
+      referencePrice?: number;
+    };
 export type AlertInput = { assetId: string; repeat?: boolean } & AlertCondition;
 export type AlertRule = AlertCondition & {
   id: string;
@@ -118,7 +132,14 @@ export type AlertRule = AlertCondition & {
   createdAt: number;
   lastTriggeredAt?: number;
 };
-export type AlertEvent = { id: string; assetId: string; kind: AlertKind; message: string; time: number; ownerId?: string };
+export type AlertEvent = {
+  id: string;
+  assetId: string;
+  kind: AlertKind;
+  message: string;
+  time: number;
+  ownerId?: string;
+};
 export type EconomicEvent = {
   id: string;
   time: string;

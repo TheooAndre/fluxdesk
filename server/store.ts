@@ -3,7 +3,11 @@ import { resolve, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AlertRule, AlertEvent } from '../src/types.ts';
 import { visibleTo, publicMode } from './identity.ts';
-export type PushSubscriptionRecord = { endpoint: string; keys: { p256dh: string; auth: string }; ownerId?: string };
+export type PushSubscriptionRecord = {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  ownerId?: string;
+};
 export type Store = { alerts: AlertRule[]; events: AlertEvent[]; subscriptions: PushSubscriptionRecord[] };
 const FILE = resolve(process.env.DATA_DIR ?? 'data', 'state.json');
 let data: Store = { alerts: [], events: [], subscriptions: [] };
@@ -57,7 +61,13 @@ export function addAlert(alert: AlertRule) {
   const copy = structuredClone(alert);
   return change((next) => {
     if (next.alerts.length >= 5000) throw Error('Global alert limit reached');
-    if (next.alerts.filter((x) => x.ownerId === copy.ownerId).length >= 250) throw Error('Alert limit reached');
+    if (next.alerts.filter((x) => x.ownerId === copy.ownerId).length >= 250)
+      throw Error('Alert limit reached');
+    if (
+      copy.kind === 'technical' &&
+      next.alerts.filter((x) => x.kind === 'technical' && x.ownerId === copy.ownerId).length >= 20
+    )
+      throw Error('Advanced alert limit reached (20 rules)');
     next.alerts.push(copy);
   });
 }
@@ -84,9 +94,84 @@ export function setAlertEnabled(id: string, enabled: boolean, viewer?: string): 
           delete alert.triggeredEvents;
           alert.armedAt = Date.now();
         }
+        if (alert.kind === 'technical') delete alert.technicalState;
       }
     }
     return structuredClone(alert);
+  });
+}
+export type TechnicalEvaluation = { assetId: string } & (
+  | { key: string; matched: boolean; eventKey?: string; message: string }
+  | { error: string }
+);
+/** Persist arming, closed-bar dedupe and per-market cooldowns atomically with notifications. */
+export function recordTechnicalEvaluations(
+  ruleId: string,
+  evaluations: TechnicalEvaluation[],
+): Promise<AlertEvent[]> {
+  return change((next) => {
+    const rule = next.alerts.find((x) => x.id === ruleId);
+    if (!rule || rule.kind !== 'technical' || !rule.enabled) return [];
+    const now = Date.now(),
+      events: AlertEvent[] = [];
+    rule.technicalState ??= {};
+    for (const evaluation of evaluations) {
+      if (!rule.enabled || !rule.assetIds.includes(evaluation.assetId)) continue;
+      const previous = rule.technicalState[evaluation.assetId];
+      if ('error' in evaluation) {
+        rule.technicalState[evaluation.assetId] = {
+          key: '',
+          matched: false,
+          ...previous,
+          evaluatedAt: now,
+          error: evaluation.error.slice(0, 160),
+        };
+        continue;
+      }
+      const state = {
+        key: evaluation.key,
+        matched: evaluation.matched,
+        evaluatedAt: now,
+        ...(previous?.lastTriggeredAt !== undefined ? { lastTriggeredAt: previous.lastTriggeredAt } : {}),
+        ...(evaluation.eventKey
+          ? { lastEventKey: evaluation.eventKey }
+          : previous?.lastEventKey
+            ? { lastEventKey: previous.lastEventKey }
+            : {}),
+      };
+      rule.technicalState[evaluation.assetId] = state;
+      // First observation seeds the rule. A restart retains the previous observation on disk.
+      if (!previous?.key || evaluation.key === previous.key || !evaluation.matched) continue;
+      if (evaluation.eventKey && evaluation.eventKey === previous.lastEventKey) continue;
+      if (previous.matched && !evaluation.eventKey) continue;
+      if (
+        previous.lastTriggeredAt !== undefined &&
+        now - previous.lastTriggeredAt < rule.cooldownMinutes * 60_000
+      )
+        continue;
+      state.lastTriggeredAt = now;
+      rule.lastTriggeredAt = now;
+      if (rule.repeat !== true) rule.enabled = false;
+      const event: AlertEvent = {
+        id: randomUUID(),
+        assetId: evaluation.assetId,
+        kind: 'technical',
+        message: evaluation.message,
+        time: now,
+        ...(rule.ownerId ? { ownerId: rule.ownerId } : {}),
+      };
+      events.push(event);
+      next.events.unshift(event);
+    }
+    const counts = new Map<string | undefined, number>();
+    next.events = next.events
+      .filter((entry) => {
+        const count = counts.get(entry.ownerId) ?? 0;
+        counts.set(entry.ownerId, count + 1);
+        return count < 150;
+      })
+      .slice(0, 5000);
+    return events;
   });
 }
 export function triggered(rule: AlertRule, message: string, boundary?: 'above' | 'below', eventId?: string) {
@@ -98,7 +183,8 @@ export function triggered(rule: AlertRule, message: string, boundary?: 'above' |
     if (original.kind === 'macro') {
       if (!eventId) throw Error('Macro alerts require an event ID');
       const seen = (original.triggeredEvents ?? []).filter((event) => now - event.at <= 7 * 86_400_000);
-      if (original.lastTriggeredEventId === eventId || seen.some((event) => event.id === eventId)) return null;
+      if (original.lastTriggeredEventId === eventId || seen.some((event) => event.id === eventId))
+        return null;
       original.triggeredEvents = [...seen, { id: eventId, at: now }].slice(-512);
       original.lastTriggeredEventId = eventId;
     } else if (original.kind === 'price_range') {
@@ -122,11 +208,13 @@ export function triggered(rule: AlertRule, message: string, boundary?: 'above' |
     };
     next.events.unshift(event);
     const counts = new Map<string | undefined, number>();
-    next.events = next.events.filter((entry) => {
-      const count = counts.get(entry.ownerId) ?? 0;
-      counts.set(entry.ownerId, count + 1);
-      return count < 150;
-    }).slice(0, 5000);
+    next.events = next.events
+      .filter((entry) => {
+        const count = counts.get(entry.ownerId) ?? 0;
+        counts.set(entry.ownerId, count + 1);
+        return count < 150;
+      })
+      .slice(0, 5000);
     return event;
   });
 }
@@ -135,15 +223,16 @@ export function subscribe(record: PushSubscriptionRecord) {
   return change((next) => {
     // A renewed subscription can retain its endpoint but rotate encryption keys.
     const retained = next.subscriptions.filter((x) => x.endpoint !== copy.endpoint);
-    if (retained.length >= 5000 ||
-        retained.filter((x) => x.ownerId === copy.ownerId).length >= 10)
+    if (retained.length >= 5000 || retained.filter((x) => x.ownerId === copy.ownerId).length >= 10)
       throw Error('Push subscription limit reached');
     next.subscriptions = [...retained, copy];
   });
 }
 export function forgetSubscription(endpoint: string, viewer?: string) {
   return change((next) => {
-    next.subscriptions = next.subscriptions.filter((x) => x.endpoint !== endpoint ||
-      (publicMode() && viewer !== undefined && !visibleTo(x.ownerId, viewer)));
+    next.subscriptions = next.subscriptions.filter(
+      (x) =>
+        x.endpoint !== endpoint || (publicMode() && viewer !== undefined && !visibleTo(x.ownerId, viewer)),
+    );
   });
 }

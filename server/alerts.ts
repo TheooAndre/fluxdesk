@@ -6,6 +6,7 @@ import { calendar } from './calendar.ts';
 import type { EconomicEvent } from '../src/types.ts';
 import { hasMacroActual } from '../src/lib/macro-alert.ts';
 import { RECENT_RELEASE_WINDOW_MS } from './showmytrades-calendar.ts';
+import { scanTechnicalAlerts } from './technical-alerts.ts';
 let running = false;
 // Polling only fires on crossings/new closed bars rather than repeatedly alerting on a static price.
 const lastPrice = new Map<string, number>();
@@ -48,13 +49,29 @@ export async function scanAlerts() {
           if (rule.kind !== 'macro') continue;
           for (const event of feed.events) {
             const releaseAt = Date.parse(event.time);
-            if (!Number.isFinite(releaseAt) || event.stale || event.country !== 'US' || event.importance !== 3) continue;
+            if (
+              !Number.isFinite(releaseAt) ||
+              event.stale ||
+              event.country !== 'US' ||
+              event.importance !== 3
+            )
+              continue;
             const released = rule.timing === 'release';
             if (released) {
-              if (releaseAt > now || now - releaseAt > RECENT_RELEASE_WINDOW_MS ||
-                  releaseAt < (rule.armedAt ?? rule.createdAt) || !hasMacroActual(event.actual)) continue;
+              if (
+                releaseAt > now ||
+                now - releaseAt > RECENT_RELEASE_WINDOW_MS ||
+                releaseAt < (rule.armedAt ?? rule.createdAt) ||
+                !hasMacroActual(event.actual)
+              )
+                continue;
             } else if (releaseAt < now || releaseAt - now > rule.leadMinutes * 60_000) continue;
-            const recorded = await triggered(rule, macroReleaseMessage(event, now, released), undefined, event.id);
+            const recorded = await triggered(
+              rule,
+              macroReleaseMessage(event, now, released),
+              undefined,
+              event.id,
+            );
             if (recorded) await deliver(recorded);
           }
         }
@@ -62,8 +79,11 @@ export async function scanAlerts() {
         console.error('Macro alert evaluation failure', error);
       }
     }
-    const marketRules = rules.filter((rule) => rule.kind !== 'macro');
-    if (!marketRules.length) return;
+    const marketRules = rules.filter((rule) => rule.kind !== 'macro' && rule.kind !== 'technical');
+    const technicalRules = rules.filter(
+      (rule): rule is Extract<typeof rule, { kind: 'technical' }> => rule.kind === 'technical',
+    );
+    if (!marketRules.length && !technicalRules.length) return;
     const list = await freshMarkets();
     for (const rule of marketRules) {
       const priorPrice = lastPrice.get(rule.id),
@@ -121,6 +141,7 @@ export async function scanAlerts() {
         console.error('Alert evaluation failure', rule.id, error);
       }
     }
+    await scanTechnicalAlerts(technicalRules, list);
   } catch (error) {
     console.error('Scan failure', error);
   } finally {

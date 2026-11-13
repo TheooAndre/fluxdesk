@@ -1,20 +1,40 @@
 import { type IncomingMessage, type ServerResponse } from 'node:http';
 import { gzipSync } from 'node:zlib';
-import { readJournal,importJournal,saveTrade,removeTrade,saveDay,JournalError } from './journal.ts';
-import {startScan,scanStatus,cancelScan,ScannerError} from './statarb-scanner.ts';
+import { readJournal, importJournal, saveTrade, removeTrade, saveDay, JournalError } from './journal.ts';
+import { startScan, scanStatus, cancelScan, ScannerError } from './statarb-scanner.ts';
 import { randomUUID } from 'node:crypto';
 import { authenticateGateway, GatewayAuthError } from './gateway.ts';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
-import { marketSnapshot, freshMarkets, candles, assetIdentity, enrichedOpenInterest, perpetualQuote } from './market.ts';
+import {
+  marketSnapshot,
+  freshMarkets,
+  candles,
+  assetIdentity,
+  enrichedOpenInterest,
+  perpetualQuote,
+} from './market.ts';
 import { marketRefreshStatus } from './market-refresh.ts';
 import { priceAlertDirection } from '../src/lib/price-alert.ts';
+import {
+  ALERT_COOLDOWNS,
+  MAX_ALERT_MARKETS,
+  MAX_ALERT_CONDITIONS,
+  validateTechnicalCondition,
+} from '../src/lib/advanced-alert.ts';
 import { MACRO_LEAD_MINUTES, type MacroLeadMinutes } from '../src/lib/macro-alert.ts';
 import { pairStats, priceLevels } from '../src/engine/stats.ts';
 import { detectSignals } from '../src/engine/signals.ts';
 import { cachedSignalScan, cachedCorrelationScan } from './scanners.ts';
 import type { AlertKind, AlertCondition, AlertRule, Market } from '../src/types.ts';
-import { snapshotFor, addAlert, deleteAlert, setAlertEnabled, subscribe, forgetSubscription } from './store.ts';
+import {
+  snapshotFor,
+  addAlert,
+  deleteAlert,
+  setAlertEnabled,
+  subscribe,
+  forgetSubscription,
+} from './store.ts';
 import { liqEvents, liqSummary, liquidityStatus } from './liquidations.ts';
 import { savedWatchlist, changeWatchlist } from './watchlist.ts';
 import { armPriceAlert, disarmPriceAlert } from './alerts.ts';
@@ -27,7 +47,13 @@ import { vapidKey } from './notifications.ts';
 import { publicMode, isOwner } from './identity.ts';
 import { accountMode } from './account-policy.ts';
 import { accountSession, handleAccounts } from './accounts.ts';
-import { ResearchRequestError, enrichResearchDataset, listResearchDatasets, fetchAndSaveResearchDataset, executeResearchBacktest } from './research/api.ts';
+import {
+  ResearchRequestError,
+  enrichResearchDataset,
+  listResearchDatasets,
+  fetchAndSaveResearchDataset,
+  executeResearchBacktest,
+} from './research/api.ts';
 const json = (res: ServerResponse, data: unknown, status = 200) => {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -83,7 +109,10 @@ function checkOrigin(req: IncomingMessage, expectedHost: string, gatewayProtecte
 }
 export async function handler(req: IncomingMessage, res: ServerResponse) {
   writeSecurityHeaders(res);
-  res.setHeader('x-fluxdesk-access-mode', accountMode() ? 'accounts-v1' : publicMode() ? 'social-v1' : 'private-v1');
+  res.setHeader(
+    'x-fluxdesk-access-mode',
+    accountMode() ? 'accounts-v1' : publicMode() ? 'social-v1' : 'private-v1',
+  );
   let path = '';
   try {
     const access = authenticateGateway(req);
@@ -97,48 +126,76 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     }
     if (path.startsWith('/api/')) {
       if (publicMode()) {
-        const privateRoute = /^\/api\/(journal|alerts|watchlist|push|research|statarb|investments)(?:\/|$)/.test(path);
+        const privateRoute =
+          /^\/api\/(journal|alerts|watchlist|push|research|statarb|investments)(?:\/|$)/.test(path);
         if (privateRoute && !access.userId) throw new GatewayAuthError('Sign in to use this feature', 401);
         if (/^\/api\/(research|statarb|investments)(?:\/|$)/.test(path) && !isOwner(access.userId))
           throw new GatewayAuthError('Owner access required', 403);
-        if (!privateRoute && req.method !== 'GET') throw new GatewayAuthError('Public route is read only', 403);
+        if (!privateRoute && req.method !== 'GET')
+          throw new GatewayAuthError('Public route is read only', 403);
       }
       const allowed =
-        path === '/api/investments' ? ['GET', 'POST'] : path === '/api/statarb/scan' ? ['GET','POST','DELETE'] : path === '/api/journal' ? ['GET'] : path === '/api/journal/trades' ? ['POST','DELETE'] : (path === '/api/journal/day'||path === '/api/journal/import') ? ['POST'] : path === '/api/watchlist'
-          ? ['GET', 'POST', 'DELETE']
-          : path === '/api/research/datasets'
+        path === '/api/investments'
           ? ['GET', 'POST']
-          : (path === '/api/research/backtests' || path === '/api/research/market-history')
-            ? ['POST']
-            : path === '/api/alerts'
-              ? ['GET', 'POST']
-          : path.startsWith('/api/alerts/')
-            ? ['DELETE', 'PUT']
-            : path === '/api/push/subscribe'
-              ? ['POST', 'DELETE']
-              : ['GET'];
+          : path === '/api/statarb/scan'
+            ? ['GET', 'POST', 'DELETE']
+            : path === '/api/journal'
+              ? ['GET']
+              : path === '/api/journal/trades'
+                ? ['POST', 'DELETE']
+                : path === '/api/journal/day' || path === '/api/journal/import'
+                  ? ['POST']
+                  : path === '/api/watchlist'
+                    ? ['GET', 'POST', 'DELETE']
+                    : path === '/api/research/datasets'
+                      ? ['GET', 'POST']
+                      : path === '/api/research/backtests' || path === '/api/research/market-history'
+                        ? ['POST']
+                        : path === '/api/alerts'
+                          ? ['GET', 'POST']
+                          : path.startsWith('/api/alerts/')
+                            ? ['DELETE', 'PUT']
+                            : path === '/api/push/subscribe'
+                              ? ['POST', 'DELETE']
+                              : ['GET'];
       if (!allowed.includes(req.method ?? '')) {
         res.setHeader('allow', allowed.join(', '));
         return json(res, { error: 'Method not allowed' }, 405);
       }
     }
     checkOrigin(req, access.originHost, access.gatewayProtected);
-    if (path === '/api/investments/search') return json(res, await searchStocks(url.searchParams.get('q') ?? ''));
-    if (path === '/api/investments/stock') return json(res, await stockData(url.searchParams.get('symbol') ?? ''));
-    if (path === '/api/investments') return json(res, req.method === 'GET'
-      ? await readInvestments() : await saveInvestments(await body(req, MAX_INVESTMENT_BYTES)));
-    if(path === '/api/statarb/scan'){
-      if(req.method==='GET')return json(res,{scan:scanStatus()});
-      if(req.method==='DELETE')return json(res,{scan:cancelScan()});
-      return json(res,{scan:startScan(await body(req))},202);
+    if (path === '/api/investments/search')
+      return json(res, await searchStocks(url.searchParams.get('q') ?? ''));
+    if (path === '/api/investments/stock')
+      return json(res, await stockData(url.searchParams.get('symbol') ?? ''));
+    if (path === '/api/investments')
+      return json(
+        res,
+        req.method === 'GET'
+          ? await readInvestments()
+          : await saveInvestments(await body(req, MAX_INVESTMENT_BYTES)),
+      );
+    if (path === '/api/statarb/scan') {
+      if (req.method === 'GET') return json(res, { scan: scanStatus() });
+      if (req.method === 'DELETE') return json(res, { scan: cancelScan() });
+      return json(res, { scan: startScan(await body(req)) }, 202);
     }
-    if(path === '/api/journal')return json(res,await readJournal(access.userId));
-    if(path === '/api/journal/trades'){
-      if(req.method==='DELETE')return json(res,await removeTrade(url.searchParams.get('id')??'',Number(url.searchParams.get('revision')), access.userId));
-      return json(res,await saveTrade(await body(req,MAX_JOURNAL_TRADE_BYTES), access.userId),201);
+    if (path === '/api/journal') return json(res, await readJournal(access.userId));
+    if (path === '/api/journal/trades') {
+      if (req.method === 'DELETE')
+        return json(
+          res,
+          await removeTrade(
+            url.searchParams.get('id') ?? '',
+            Number(url.searchParams.get('revision')),
+            access.userId,
+          ),
+        );
+      return json(res, await saveTrade(await body(req, MAX_JOURNAL_TRADE_BYTES), access.userId), 201);
     }
-    if(path === '/api/journal/import')return json(res,await importJournal(await body(req,4*1024*1024), access.userId));
-    if(path === '/api/journal/day')return json(res,await saveDay(await body(req,131072), access.userId));
+    if (path === '/api/journal/import')
+      return json(res, await importJournal(await body(req, 4 * 1024 * 1024), access.userId));
+    if (path === '/api/journal/day') return json(res, await saveDay(await body(req, 131072), access.userId));
     if (path === '/api/watchlist') {
       if (req.method === 'GET') return json(res, await savedWatchlist(access.userId));
       const id = req.method === 'POST' ? (await body(req)).assetId : url.searchParams.get('asset');
@@ -154,11 +211,18 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === '/api/research/backtests' && req.method === 'POST')
       return json(res, await executeResearchBacktest(await body(req)));
     if (path === '/api/health')
-      return json(res, { ok: true, at: Date.now(), liquidations: liquidityStatus(), markets: marketRefreshStatus() });
+      return json(res, {
+        ok: true,
+        at: Date.now(),
+        liquidations: liquidityStatus(),
+        markets: marketRefreshStatus(),
+      });
     if (path === '/api/markets') {
       const snapshot = await marketSnapshot();
       const list = snapshot.assets;
-      const benchmarks: Record<string, Market> = Object.fromEntries(list.map((market) => [market.id, market]));
+      const benchmarks: Record<string, Market> = Object.fromEntries(
+        list.map((market) => [market.id, market]),
+      );
       return json(res, { ...snapshot, benchmarks });
     }
     if (path === '/api/perpetual')
@@ -246,16 +310,55 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     }
     if (path === '/api/calendar') return json(res, await calendar());
     if (path === '/api/alerts' && req.method === 'GET')
-      return json(res, { alerts: snapshotFor(access.userId).alerts, events: snapshotFor(access.userId).events });
+      return json(res, {
+        alerts: snapshotFor(access.userId).alerts,
+        events: snapshotFor(access.userId).events,
+      });
     if (path === '/api/alerts' && req.method === 'POST') {
       const o = await body(req),
         kind = o.kind as AlertKind;
-      if (!['price', 'price_range', 'volume', 'liquidation', 'macro'].includes(kind)) throw Error('Invalid alert type');
-      const assetId = kind === 'macro' ? 'macro:US' : validatedId(String(o.assetId ?? ''));
+      if (!['price', 'price_range', 'volume', 'liquidation', 'macro', 'technical'].includes(kind))
+        throw Error('Invalid alert type');
+      let assetId = kind === 'macro' ? 'macro:US' : validatedId(String(o.assetId ?? ''));
       if (kind === 'liquidation' && !assetId.startsWith('binance:'))
         throw Error('Public market-wide Hyperliquid liquidations are not available from this connector');
       let condition: AlertCondition;
-      if (kind === 'macro') {
+      if (kind === 'technical') {
+        if (
+          !Array.isArray(o.assetIds) ||
+          o.assetIds.length < 1 ||
+          o.assetIds.length > MAX_ALERT_MARKETS ||
+          o.assetIds.some((id) => typeof id !== 'string')
+        )
+          throw Error('Choose 1–20 markets');
+        const assetIds = [...new Set(o.assetIds.map((id) => validatedId(String(id))))];
+        if (assetIds.length !== o.assetIds.length) throw Error('Invalid duplicate alert markets');
+        assetId = assetIds[0]!;
+        if (
+          !Array.isArray(o.conditions) ||
+          o.conditions.length < 1 ||
+          o.conditions.length > MAX_ALERT_CONDITIONS
+        )
+          throw Error('Choose 1–5 advanced conditions');
+        if (o.match !== 'all' && o.match !== 'any') throw Error('Invalid condition matching mode');
+        if (typeof o.cooldownMinutes !== 'number' || !ALERT_COOLDOWNS.some((n) => n === o.cooldownMinutes))
+          throw Error('Invalid advanced alert cooldown');
+        if (typeof o.name !== 'string' || o.name.trim().length > 60)
+          throw Error('Invalid alert name: maximum 60 characters');
+        const conditions = o.conditions.map(validateTechnicalCondition);
+        // Only canonical market identifiers are accepted; a forged or delisted market cannot be saved.
+        const available = new Set((await freshMarkets()).map((x) => x.id));
+        if (assetIds.some((id) => !available.has(id)))
+          throw Error('Invalid or unavailable alert market; select a live market');
+        condition = {
+          kind,
+          name: o.name.trim() || 'Technical alert',
+          assetIds,
+          conditions,
+          match: o.match,
+          cooldownMinutes: o.cooldownMinutes,
+        };
+      } else if (kind === 'macro') {
         const timing = o.timing ?? 'before';
         if (timing !== 'before' && timing !== 'release') throw Error('Invalid macro alert timing');
         const leadMinutes = timing === 'release' ? 0 : Number(o.leadMinutes);
@@ -265,8 +368,10 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       } else if (kind === 'price_range') {
         if (typeof o.lowerPrice !== 'number' || typeof o.upperPrice !== 'number')
           throw Error('Invalid price range: both bounds must be numbers');
-        const lowerPrice = positiveNumber(o.lowerPrice), upperPrice = positiveNumber(o.upperPrice);
-        if (lowerPrice >= upperPrice) throw Error('Invalid price range: lower price must be less than upper price');
+        const lowerPrice = positiveNumber(o.lowerPrice),
+          upperPrice = positiveNumber(o.upperPrice);
+        if (lowerPrice >= upperPrice)
+          throw Error('Invalid price range: lower price must be less than upper price');
         condition = { kind, lowerPrice, upperPrice };
       } else {
         const threshold = positiveNumber(o.threshold);
@@ -276,15 +381,21 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         if (kind === 'price') {
           const asset = (await freshMarkets()).find((x) => x.id === assetId);
           if (!asset || !Number.isFinite(asset.price) || asset.price <= 0)
-            throw Error('A live quote is required to create a price alert. Try again after the feed recovers.');
+            throw Error(
+              'A live quote is required to create a price alert. Try again after the feed recovers.',
+            );
           const direction = priceAlertDirection(asset.price, threshold);
           if (!direction) throw Error('Invalid price level: choose a level above or below the current price');
           condition = { kind, threshold, direction, referencePrice: asset.price };
         } else condition = { kind, threshold };
       }
       const a: AlertRule = {
-        id: randomUUID(), assetId, ...condition, enabled: true,
-        repeat: kind === 'macro' ? o.repeat !== false : o.repeat === true, createdAt: Date.now(),
+        id: randomUUID(),
+        assetId,
+        ...condition,
+        enabled: true,
+        repeat: kind === 'macro' ? o.repeat !== false : o.repeat === true,
+        createdAt: Date.now(),
         ...(publicMode() ? { ownerId: access.userId } : {}),
       };
       if (o.repeat !== undefined && typeof o.repeat !== 'boolean') throw Error('Invalid repeat option');
@@ -329,8 +440,11 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
         typeof keys.auth !== 'string'
       )
         throw Error('Invalid PushSubscription');
-      await subscribe({ endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth },
-        ...(publicMode() ? { ownerId: access.userId } : {}) });
+      await subscribe({
+        endpoint,
+        keys: { p256dh: keys.p256dh, auth: keys.auth },
+        ...(publicMode() ? { ownerId: access.userId } : {}),
+      });
       return json(res, { ok: true }, 201);
     }
     if (path.startsWith('/api/')) return json(res, { error: 'Unknown endpoint' }, 404);
@@ -363,7 +477,10 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     );
     const bytes = await readFile(file);
     res.setHeader('vary', 'Accept-Encoding');
-    if (/\bgzip\b/.test(req.headers['accept-encoding'] ?? '') && /\.(html|js|css|json|svg|webmanifest)$/.test(file)) {
+    if (
+      /\bgzip\b/.test(req.headers['accept-encoding'] ?? '') &&
+      /\.(html|js|css|json|svg|webmanifest)$/.test(file)
+    ) {
       res.setHeader('content-encoding', 'gzip');
       res.end(gzipSync(bytes));
     } else res.end(bytes);
@@ -375,13 +492,15 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
       { error: message },
       error instanceof GatewayAuthError
         ? error.status
-        : error instanceof JournalError || error instanceof ScannerError || error instanceof InvestmentError ? error.status : error instanceof ResearchRequestError
-        ? error.status
-        : /Invalid|Unsupported|Choose|threshold|Too |limit|blocked|Cross-origin|requires|not available|large/i.test(
-        message,
-      )
-        ? 400
-        : 503,
+        : error instanceof JournalError || error instanceof ScannerError || error instanceof InvestmentError
+          ? error.status
+          : error instanceof ResearchRequestError
+            ? error.status
+            : /Invalid|Unsupported|Choose|threshold|Too |limit|blocked|Cross-origin|requires|not available|large/i.test(
+                  message,
+                )
+              ? 400
+              : 503,
     );
   }
 }

@@ -1245,3 +1245,67 @@ test('lite journal saves notes, closes and reopens manually, and restores full m
   await expect(page.locator('.journal-trade')).toContainText('P&L excluded until exit fills are complete');
   expect(trades[0]?.manualStatus).toBe('closed');
 });
+
+test('advanced alerts build multiple conditions and markets, persist and reactivate', async ({ page }) => {
+  let rules: import('../src/types.ts').AlertRule[] = [];
+  await page.route('**/api/alerts', async route => {
+    if (route.request().method() === 'POST') {
+      const input = route.request().postDataJSON();
+      expect(input.kind).toBe('technical');
+      expect(input.assetIds).toEqual([btc.id, eth.id]);
+      expect(input.match).toBe('all');
+      expect(input.conditions).toHaveLength(2);
+      expect(input.conditions[1].timeframe).toBe('4h');
+      const alert = { ...input, id: '00000000-0000-4000-8000-000000000051', createdAt: Date.now(), enabled: true };
+      rules = [alert]; await route.fulfill({ status: 201, json: { alert } });
+    } else await route.fulfill({ json: { alerts: rules, events: [] } });
+  });
+  await page.route('**/api/alerts/*', async route => {
+    if (route.request().method() === 'PUT') { rules[0].enabled = route.request().postDataJSON().enabled; await route.fulfill({ json: { alert: rules[0] } }); }
+    else { rules = []; await route.fulfill({ json: { ok: true } }); }
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('button', { name: 'Advanced alerts', exact: true }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Momentum basket');
+  await page.getByLabel('Markets', { exact: true }).selectOption('basket');
+  await page.getByRole('checkbox', { name: /ETHUSDT/ }).check();
+  await page.getByRole('button', { name: 'Add condition', exact: true }).click();
+  const second = page.getByRole('group', { name: 'Condition 2', exact: true });
+  await second.getByLabel('Indicator', { exact: true }).selectOption('macd');
+  await second.getByLabel('Timeframe', { exact: true }).selectOption('4h');
+  await second.getByLabel('Fast length', { exact: true }).fill('50');
+  await expect(page.getByRole('alert')).toContainText('Fast length must be less than slow length');
+  await expect(page.getByRole('button', { name: 'Create advanced alert', exact: true })).toBeDisabled();
+  await second.getByLabel('Fast length', { exact: true }).fill('12');
+  await page.getByLabel('After trigger', { exact: true }).selectOption('repeat');
+  await page.getByLabel('Cooldown per market', { exact: true }).selectOption('60');
+  await page.getByRole('button', { name: 'Create advanced alert', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toContainText('Momentum basket');
+  await expect(page.locator('.alert-rule')).toContainText('2 markets');
+  await page.reload();
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toContainText('Momentum basket');
+  await page.getByRole('button', { name: 'Disable', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Reactivate', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Reactivate', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Disable', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Delete alert', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toHaveCount(0);
+  await expect(page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).resolves.toBe(true);
+});
+
+test('advanced alert presets and category navigation keep macro release controls', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.getByRole('button', { name: 'Advanced alerts', exact: true }).click();
+  await page.getByLabel('Start from', { exact: true }).selectOption('trend');
+  await expect(page.getByRole('group', { name: /Condition/ })).toHaveCount(2);
+  await expect(page.getByRole('group', { name: 'Condition 2', exact: true }).getByLabel('Timeframe', { exact: true })).toHaveValue('4h');
+  await page.getByRole('button', { name: 'Remove condition 2', exact: true }).click();
+  await expect(page.getByRole('group', { name: /Condition/ })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Macro alerts', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Notify', exact: true })).toHaveValue('release');
+  await page.getByRole('button', { name: 'Quick alerts', exact: true }).click();
+  await expect(page.getByLabel('Alert type', { exact: true })).toHaveValue('volume');
+});
