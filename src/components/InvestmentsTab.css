@@ -277,3 +277,14 @@
 .stock-profile { color: #b7c9d7; line-height: 1.65; }
 @media (max-width: 1150px) { .investment-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) { .stock-search-result { flex-direction: column; gap: 6px; } .stock-quote-price { font-size: 27px; } }
+
+.investment-summary.card { padding: 14px 18px; }
+.investment-summary .card-head { margin-bottom: 5px; }
+.investment-context > summary { cursor: pointer; color: #a8bfcc; font-size: 12px; padding: 4px 0; }
+.investment-context p { margin: 10px 0 0; }
+.investment-metrics { gap: 0; padding: 2px 0 12px; border-bottom: 1px solid #263848; }
+.investment-metrics .metric { padding: 6px 16px; background: transparent; border: 0; border-radius: 0; }
+.investment-metrics .metric + .metric { border-left: 1px solid #263848; }
+.investment-metrics .metric strong { font-size: 20px; margin: 4px 0; }
+.investment-metrics .metric small { font-size: 10px; }
+@media(max-width:600px) { .investment-metrics .metric { padding: 8px 12px; } .investment-metrics .metric:nth-child(3) { border-left: 0; } }

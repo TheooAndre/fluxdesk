@@ -535,13 +535,6 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
     );
   return (
     <div className="investments-workspace content-stack">
-      <div className="investment-banner">
-        <div>
-          <span className="tiny-label">OWNER</span>
-          <h2>Investment theses</h2>
-        </div>
-        <span className="pill pill-green">Private</span>
-      </div>
       <div className="investment-actions">
         <label className="investment-select">
           Thesis
@@ -698,6 +691,7 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
       {portfolio && (
         <>
           <Card
+            className="investment-summary"
             title={portfolio.name}
             aside={
               <button
@@ -715,16 +709,16 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
               </button>
             }
           >
-            <p className="investment-description">
-              {portfolio.description ||
-                'Add the economic rationale and evidence that would change your view.'}
-            </p>
-            <p className="small-label">
-              {portfolio.horizon ? `Horizon: ${portfolio.horizon} · ` : ''}
-              {portfolio.researchAsOf
-                ? `Research as of ${portfolio.researchAsOf}`
-                : 'Research date not recorded'}
-            </p>
+            <details className="investment-context">
+              <summary>
+                Thesis{portfolio.horizon ? ` · ${portfolio.horizon}` : ''}{' '}
+                <span className="small-label">· Owner only</span>
+              </summary>
+              <p className="investment-description">{portfolio.description || 'No thesis description.'}</p>
+              {portfolio.researchAsOf && (
+                <p className="small-label">Research as of {portfolio.researchAsOf}</p>
+              )}
+            </details>
           </Card>
           <div className="metric-grid investment-metrics">
             <div className="metric">
@@ -735,19 +729,16 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
             <div className="metric">
               <span>Target weight</span>
               <strong>{weight(allocated)}</strong>
-              <small>Research allocation</small>
             </div>
             <div className="metric">
               <span>Unallocated</span>
               <strong>{weight(Math.max(0, 100 - allocated))}</strong>
-              <small>Research allocation</small>
             </div>
             <div className="metric">
               <span>Positions ≥ 7%</span>
               <strong>
                 {weight(active.filter((s) => s.targetWeight >= 7).reduce((n, s) => n + s.targetWeight, 0))}
               </strong>
-              <small>Concentration in this thesis</small>
             </div>
           </div>
           <div className="investment-grid">
@@ -965,20 +956,16 @@ export default function InvestmentsTab({ offline }: { offline: boolean }) {
       )}
       {!portfolio && !portfolioDraft && (
         <Card title="Bring your China thesis into FluxDesk">
-          <p>
-            Import the original MCGA HTML dashboard to preserve its stock list, target weights, statuses and
-            research memos. You can also create a new thesis and add stocks from any country.
-          </p>
-          <p className="footnote">
-            Import reads the embedded portfolio data without running the HTML. Portfolio data is private
-            server data and is never bundled into the public site.
-          </p>
+          <p>Import your MCGA / FluxDesk JSON, or create a thesis.</p>
         </Card>
       )}
-      <p className="footnote">
-        Research workspace only. No broker connection or order execution. Listing currencies are kept
-        separate; no portfolio value or FX-adjusted performance is inferred from target weights.
-      </p>
+      <details className="help-details">
+        <summary>Research limits</summary>
+        <p className="footnote">
+          Weights are research allocations. Quotes use the linked listing currency. Review statuses are
+          manual; no broker or FX-adjusted portfolio valuation is connected.
+        </p>
+      </details>
     </div>
   );
 }
