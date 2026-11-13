@@ -1168,6 +1168,7 @@ test('delayed journal saves preserve newer edits across navigation and keep othe
  expect((trades[0]?.legs as unknown[]).length).toBe(10);
  expect(trades[0]).toMatchObject({thesis:'Shared beta thesis',invalidation:'BTC loses 60k',plan:'Exit the basket at the range high'});
  await page.reload();
+ await (await mobile.isVisible()?mobile.getByRole('button',{name:'Journal',exact:true}):page.getByRole('button',{name:'Trade journal',exact:true})).click();
  await expect(page.locator('.journal-trade')).toContainText('Ten-leg beta basket');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  });
