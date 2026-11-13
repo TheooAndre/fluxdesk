@@ -470,7 +470,7 @@ export default function JournalTradeEditor({
           </button>
         </>
       )}
-      <details className="editor-details" open={lite || status === 'closed'}>
+      <details className="editor-details" open={lite || trade.manualStatus === 'closed'}>
         <summary>Review & attachments</summary>
         <div className="workspace-grid">
           {(['review', 'lessons'] as const).map((key) => (
