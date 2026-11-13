@@ -638,7 +638,7 @@ function App() {
         </header>
         <main>
           <Intro tab={ui.tab} />
-          {['overview','signals','pairs'].includes(ui.tab) && <div className="selector-bar">
+          {['overview','signals','pairs','alerts'].includes(ui.tab) && <div className="selector-bar">
             <div className="selected-input">
               <span className="tiny-label">SELECTED ASSET</span>
               <select
@@ -654,7 +654,7 @@ function App() {
                 ))}
               </select>
             </div>
-            <div className="selected-input">
+            {ui.tab !== 'alerts' && <><div className="selected-input">
               <span className="tiny-label">COMPARE AGAINST</span>
               <BenchmarkSelector value={ui.benchmark} assets={mk.data?.assets ?? []} onChange={ui.setBenchmark} />
             </div>
@@ -672,6 +672,7 @@ function App() {
                 ))}
               </select>
             </div>
+            </>}
           </div>}
           {offline && (
             <div className="notice warning">

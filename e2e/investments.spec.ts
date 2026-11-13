@@ -76,7 +76,7 @@ test('owner creates a global thesis and Japanese stock, persists notes, and arch
   await expect(page.getByRole('button', { name: /Example Japan Automation/ })).toBeVisible();
   await expect(page.getByText('Private automation hypothesis', { exact: true })).toBeVisible();
   await expect(page.getByText('Tokyo:7203.T · JPY · Japan')).toBeVisible();
-  await expect(page.getByText('3,000', {exact:true})).toBeVisible();
+  await expect(page.locator('.stock-quote-price')).toContainText('3,000 JPY');
   await page.getByRole('button', {name:'News',exact:true}).click();
   await expect(page.getByRole('link', {name:/Example Japan Automation opens a new factory/})).toBeVisible();
   await page.getByRole('button', {name:'Company',exact:true}).click();
