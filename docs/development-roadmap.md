@@ -19,34 +19,24 @@ advance alerts; 32-family multi-condition advanced alerts; installed-PWA push.
 
 | #   | Work                 | Current state / completion gate                                                                                                                                                                                                             |
 | --- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | BLS schedule         | Direct host access returns 403. Backoff retains the true failed check and working fallback. Repair/replacement remains open; no recovery is claimed.                                                                                        |
-| 2   | Push delivery        | Durable per-device outbox, bounded retry/expiry, acceptance/failure visibility and stable notification tags implemented. Requires CI and production backend rollout.                                                                        |
-| 3   | Offsite restore      | CLI now supports required accounts/investments as well as journal. Real export, owner-computer download and isolated restore still require administrator access.                                                                            |
-| 4   | Main protection      | Ready-to-apply ruleset in deploy/github/main-ruleset.json; administration access required. Require quality and Offline stat-arb mechanics checks; solo owner does not need another reviewer.                                                |
-| 5   | Float / FDV          | Hourly batched CoinGecko observations for explicit identities; fresh/stale/unknown states; stale/unknown excluded from dynamic membership. Requires backend rollout; identity coverage is intentionally partial.                            |
+| 1   | BLS schedule         | Exact calendar URL and application headers returned HTTP 403 from the released Northflank container on 14 November. Backoff and working fallback expose the stale source. Diagnose supported access or replace the source. |
+| 2   | Push delivery        | Durable per-device outbox, bounded retry/expiry, acceptance/failure visibility and stable notification tags released. Physical iPhone installed-PWA resume and a test push still need owner device. |
+| 3   | Offsite restore      | Required state files are present on the existing /data volume. Real encrypted export to owner computer, checksum and isolated restore remain unverified. Northflank volume UI showed no native backups. |
+| 4   | Main protection      | Active main ruleset 27268519 verified by authenticated API readback: PR, up-to-date quality and Offline stat-arb mechanics checks, resolved conversations, no force-push/deletion, no bypass. |
+| 5   | Float / FDV          | Hourly batched CoinGecko observations released; fresh/stale/unknown states exclude unsupported dynamic membership. Production had 30 fresh venue-specific rows and 659 unknown at release. |
 | 6   | Macro latency        | First observed actual and trigger times; delivery outcomes; provider forecast separate from consensus. Upstream free feed can cache for 15 minutes.                                                                                         |
 | 7   | Advanced scan health | Oldest evaluation, delayed/unchecked/error counts; many-account synthetic queue/concurrency test. No tick-level latency guarantee.                                                                                                          |
 | 8   | Auth throttles       | Production metadata has no shared Redis settings. Local edge plus database backend limits remain. Cross-instance/shared-storage tests and missing-config fail-closed behavior implemented; optional Redis configuration awaits owner setup. |
 | 9   | Stock resilience     | Parallel quote/fundamental/news requests; retained exact-identity quote marked stale on refresh failure; stale quote cannot verify a new link. No new paid provider.                                                                        |
 | 10  | Compact alerts       | Search and Active/Triggered/Paused filter; expandable device diagnostics and paged trigger history.                                                                                                                                         |
-| 11  | Acceptance           | Full automated browser/device matrix required before merge. Physical iPhone installed-PWA resume and a test push require owner device participation. Use synthetic accounts and records for automated tests.                                |
+| 11  | Acceptance           | Final-head CI passed 523 tests, lint, TypeScript, smoke/build, browser/mobile, persistence/auth and audits; frontend/backend release verified. Physical iPhone installed-PWA and test push remain. |
 | 12  | Roadmap              | Current checklist separated from historical receipts here. Track CI, PR and deployment evidence in the release PR.                                                                                                                          |
 
 ## Administration handoff
 
-GitHub connector operations do not grant repository-administration privileges.
-After signing into the owner's GitHub account, create a branch ruleset from
-`deploy/github/main-ruleset.json` in repository Settings → Rules. The required
-contexts must match actual successful CI jobs. An administrator may alternatively
-apply it from an authenticated GitHub CLI with:
+Main protection is active: [ruleset 27268519](https://github.com/TheooAndre/fluxdesk/settings/rules/27268519) targets `main` without bypass actors. An authenticated GitHub API readback confirmed the PR, strict up-to-date `quality` and `Offline stat-arb mechanics` checks, resolved conversations, force-push and deletion restrictions. It requires no second human reviewer for this solo-owner repository. The source definition is `deploy/github/main-ruleset.json`.
 
-```
-gh api --method POST repos/TheooAndre/fluxdesk/rulesets --input deploy/github/main-ruleset.json
-```
-
-The prepared rule blocks deletion and force-push, requires a PR, resolved review
-threads and the two CI jobs. It does not require a second human reviewer for this
-single-owner repository. Verify the applied rule using fresh GitHub metadata.
+Northflank's existing service is running the released revision with its original 6 GB `FD Storage` volume. Recent startup logs showed a Node SQLite experimental warning, not a failed request. Direct calendar retrieval from that host still returned HTTP 403; the fallback is live. A presence-only check found the required state files; their contents were not opened. The volume UI listed no native backups.
 
 Shared authentication throttles are optional infrastructure. No shared-store
 credentials were read or created. The present fallback policy retains service
@@ -64,9 +54,7 @@ Verify canonical alias, public reads, anonymous private rejection and account
 metadata without reading owner journal contents. Keep the previous deployment
 for rollback and follow the account-auth rollback rules. See production-preflight.md.
 
-The real backup/restore receipt, repository-admin configuration and physical
-phone checks remain open until actual evidence is recorded; code/tests alone
-cannot mark them complete.
+Repository protection is verified. The encrypted owner-computer backup, checksum and isolated restore receipt, BLS supported-source resolution, and physical iPhone PWA/push checks remain open until actual evidence is recorded.
 
 ## Research remains separate
 
