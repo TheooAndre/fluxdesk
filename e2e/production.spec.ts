@@ -93,7 +93,7 @@ test('paints real production HTML before JavaScript and preserves the heading th
   });
   release();
   await expect(page.locator('.layout')).toHaveAttribute('aria-busy', 'false');
-  await expect(page.getByLabel('Selected asset')).toHaveValue('binance:ETHUSDT');
+  await expect(page.getByLabel('Selected asset')).toHaveValue('ETH · binance');
   await expect(page.getByRole('img', { name: 'ETH 1h interactive price and volume chart' })).toBeVisible();
   expect(
     await page.evaluate(

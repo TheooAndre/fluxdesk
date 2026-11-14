@@ -3,7 +3,8 @@ import type { BenchmarkId, Market } from '../types.ts';
 
 type Option = { id: BenchmarkId; label: string; search: string };
 
-export default function BenchmarkSelector({ assets, value, onChange }: {
+export default function BenchmarkSelector({ assets, value, onChange, mode = 'benchmark' }: {
+  mode?: 'benchmark' | 'asset';
   assets: Market[];
   value: BenchmarkId;
   onChange: (value: BenchmarkId) => void;
@@ -15,13 +16,13 @@ export default function BenchmarkSelector({ assets, value, onChange }: {
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
   const options = useMemo<Option[]>(() => [
-    { id: 'USD', label: 'USD / USDT · cash baseline', search: 'usd usdt dollar cash baseline' },
+    ...(mode === 'benchmark' ? [{ id: 'USD' as const, label: 'USD / USDT · cash baseline', search: 'usd usdt dollar cash baseline' }] : []),
     ...assets.map((asset) => ({
       id: asset.id,
       label: `${asset.base} · ${asset.venue}`,
       search: `${asset.base} ${asset.symbol} ${asset.venue} ${asset.id}`.toLowerCase(),
     })).sort((a, b) => a.label.localeCompare(b.label)),
-  ], [assets]);
+  ], [assets, mode]);
   const selected = options.find((option) => option.id === value);
   const matches = useMemo(() => {
     const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -29,6 +30,9 @@ export default function BenchmarkSelector({ assets, value, onChange }: {
   }, [options, query]);
   const visible = matches.slice(0, 100);
   useEffect(() => setActive(0), [query]);
+  useEffect(() => {
+    if (open) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' });
+  }, [active, open, listId]);
   useEffect(() => {
     if (!open) return;
     const close = (event: PointerEvent) => {
@@ -49,24 +53,26 @@ export default function BenchmarkSelector({ assets, value, onChange }: {
         ref={input}
         className="benchmark-search"
         role="combobox"
-        aria-label="Search comparison benchmark"
+        aria-label={mode === 'asset' ? 'Selected asset' : 'Search comparison benchmark'}
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls={listId}
         aria-activedescendant={open && visible[active] ? `${listId}-${active}` : undefined}
-        placeholder={selected?.label ?? 'Search benchmarks…'}
+        placeholder={mode === 'asset' ? 'Search assets…' : (selected?.label ?? 'Search benchmarks…')}
         value={open ? query : (selected?.label ?? value)}
+        onBlur={(event) => { if (!root.current?.contains(event.relatedTarget as Node)) { setOpen(false); setQuery(''); } }}
+        onClick={() => { if (!open) { setQuery(''); setActive(0); setOpen(true); } }}
         onFocus={() => { setQuery(''); setOpen(true); }}
         onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { setOpen(false); setQuery(''); input.current?.blur(); }
-          if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActive((index) => Math.min(index + 1, visible.length - 1)); }
+          if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActive((index) => Math.max(0, Math.min(index + 1, visible.length - 1))); }
           if (event.key === 'ArrowUp') { event.preventDefault(); setActive((index) => Math.max(0, index - 1)); }
           if (event.key === 'Enter' && open && visible[active]) { event.preventDefault(); choose(visible[active].id); }
         }}
       />
       {open && (
-        <div className="benchmark-options" id={listId} role="listbox" aria-label="Available comparison benchmarks">
+        <div className="benchmark-options" id={listId} role="listbox" aria-label={mode === 'asset' ? 'Available assets' : 'Available comparison benchmarks'}>
           {visible.map((option, index) => (
             <button
               type="button"
