@@ -8,6 +8,8 @@ import { assertRemoteBindingAllowed } from './gateway.ts';
 import { assertDurableDataDirectory } from './persistence.ts';
 import { accountMode } from './account-policy.ts';
 import { initializeAccounts } from './accounts.ts';
+import { startFloatRefresh } from './float-screen.ts';
+import { startPushDelivery } from './notifications.ts';
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 8787);
 assertRemoteBindingAllowed(host, {
@@ -17,16 +19,19 @@ assertRemoteBindingAllowed(host, {
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw Error('Invalid PORT');
 // Never bring up an internet-reachable, stateful backend on ephemeral container
 // storage. Fail closed unless DATA_DIR is an actual writable Linux mount.
-if (!['127.0.0.1', '::1', 'localhost'].includes(host))
-  await assertDurableDataDirectory();
+if (!['127.0.0.1', '::1', 'localhost'].includes(host)) await assertDurableDataDirectory();
 process.umask(0o077);
 if (accountMode()) await initializeAccounts();
 await load();
+await startPushDelivery();
+startFloatRefresh();
 const stopMarketRefresh = startMarketRefresh();
 startLiquidations();
 runAlertScanner();
 createServer((req, res) => {
   void handler(req, res);
-}).once('close', stopMarketRefresh).listen(port, host, () => {
-  console.info(`FluxDesk API listening on http://${host}:${port}`);
-});
+})
+  .once('close', stopMarketRefresh)
+  .listen(port, host, () => {
+    console.info(`FluxDesk API listening on http://${host}:${port}`);
+  });

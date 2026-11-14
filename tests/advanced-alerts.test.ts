@@ -245,3 +245,46 @@ it('shares histories across rules, bounds parallel requests and combines AND/OR 
   expect(mock.calls).toHaveLength(40);
   expect(mock.deliver).toHaveBeenCalledTimes(20);
 });
+it('keeps many-account baskets within request/concurrency budgets and advances unchecked jobs on the next scan', async () => {
+  const template = (await (await create()).json()).alert;
+  await store.deleteAlert(template.id);
+  const ids = Array.from({ length: 20 }, (_, i) => `binance:TEST${i}USDT`);
+  for (let owner = 0; owner < 10; owner++)
+    for (let r = 0; r < 10; r++)
+      await store.addAlert({
+        ...template,
+        id: `owner-${owner}-rule-${r}`,
+        ownerId: `x:${owner + 1}`,
+        assetIds: ids,
+      });
+  const scan = (await import('../server/technical-alerts.ts')).scanTechnicalAlerts;
+  const markets = ids.map((id) => ({
+    id,
+    symbol: id.split(':')[1]!,
+    price: 100,
+    asOf: now,
+  })) as import('../src/types.ts').Market[];
+  await scan(
+    store.snapshot().alerts as Extract<import('../src/types.ts').AlertRule, { kind: 'technical' }>[],
+    markets,
+  );
+  const checked = () =>
+    store
+      .snapshot()
+      .alerts.flatMap((a) =>
+        a.kind === 'technical' ? Object.keys(a.technicalState ?? {}).map((id) => `${a.id}:${id}`) : [],
+      );
+  const first = checked();
+  expect(first).toHaveLength(80);
+  expect(mock.calls.length).toBeLessThanOrEqual(40);
+  expect(mock.maxActive).toBeLessThanOrEqual(4);
+  now += 60_000;
+  mock.calls = [];
+  await scan(
+    store.snapshot().alerts as Extract<import('../src/types.ts').AlertRule, { kind: 'technical' }>[],
+    markets.map((m) => ({ ...m, asOf: now })),
+  );
+  expect(checked()).toHaveLength(160);
+  expect(mock.calls.length).toBeLessThanOrEqual(40);
+  expect(mock.deliver).not.toHaveBeenCalled();
+});

@@ -121,7 +121,12 @@ export default function StockMarketPanel({
               </div>
               <div className="row-between small-label stock-quote-time">
                 <span>
-                  {data.marketState === 'closed' ? 'Latest close' : 'Exchange quote'} · {date(data.quoteAt)}
+                  {data.quoteStale
+                    ? 'Cached quote'
+                    : data.marketState === 'closed'
+                      ? 'Latest close'
+                      : 'Exchange quote'}{' '}
+                  · {date(data.quoteAt)}
                 </span>
                 <a href={data.sourceUrl} target="_blank" rel="noopener noreferrer">
                   Yahoo Finance ↗

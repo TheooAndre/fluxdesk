@@ -218,3 +218,19 @@ it('CLI verifies with a private password file and never logs its contents', asyn
     ]),
   ).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('chmod 600') });
 });
+
+it('requires current account/investment files before creating an archive or restore directory', async () => {
+  const f = await fixture();
+  for (const options of [{ requireAccounts: true }, { requireInvestments: true }]) {
+    await expect(createArchive(f.source, f.file, password, options)).rejects.toThrow(
+      'Backup does not contain required',
+    );
+    await expect(stat(f.file)).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+  await createArchive(f.source, f.file, password);
+  await expect(verifyArchive(f.file, password, { requireAccounts: true })).rejects.toThrow('accounts.sqlite');
+  await expect(restoreArchive(f.file, f.target, password, { requireInvestments: true })).rejects.toThrow(
+    'investments.json',
+  );
+  await expect(stat(f.target)).rejects.toMatchObject({ code: 'ENOENT' });
+});

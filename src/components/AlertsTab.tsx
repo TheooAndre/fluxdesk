@@ -9,10 +9,14 @@ import type { Market, AlertKind } from '../types.ts';
 import { money, price, clock } from '../lib/format.ts';
 import { Pill, ErrorText, Loading, Card } from './UiPrimitives.tsx';
 import AdvancedAlertBuilder from './AdvancedAlertBuilder.tsx';
+import { deliveryLabel, technicalHealth } from '../lib/alert-health.ts';
 import { technicalConditionLabel } from '../lib/advanced-alert.ts';
 
 function AlertsTab({ item }: { item: Market | undefined }) {
   const client = useQueryClient();
+  const [ruleSearch, setRuleSearch] = useState('');
+  const [ruleFilter, setRuleFilter] = useState('all');
+  const [historyLimit, setHistoryLimit] = useState(12);
   const [advanced, setAdvanced] = useState(false);
   const [kind, setKind] = useState<Exclude<AlertKind, 'technical'>>('volume'),
     [threshold, setThreshold] = useState('100'),
@@ -23,6 +27,27 @@ function AlertsTab({ item }: { item: Market | undefined }) {
     [repeat, setRepeat] = useState(false),
     [message, setMessage] = useState('');
   const rules = useQuery({ queryKey: ['alerts'], queryFn: api.alerts, refetchInterval: 15_000 });
+  const visibleRules = (rules.data?.alerts ?? []).filter((rule) => {
+    const term = ruleSearch.trim().toLowerCase();
+    return (
+      (!term ||
+        [
+          rule.assetId,
+          rule.kind,
+          rule.kind === 'technical' ? rule.name : '',
+          rule.kind === 'technical' ? rule.assetIds.join(' ') : '',
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(term)) &&
+      (ruleFilter === 'all' ||
+        (ruleFilter === 'active'
+          ? rule.enabled
+          : ruleFilter === 'triggered'
+            ? !rule.enabled && !!rule.lastTriggeredAt
+            : !rule.enabled && !rule.lastTriggeredAt))
+    );
+  });
   const macroCalendar = useQuery({
     queryKey: ['calendar'],
     queryFn: api.calendar,
@@ -97,6 +122,13 @@ function AlertsTab({ item }: { item: Market | undefined }) {
       </div>
       <div className="cols-2 alerts-layout">
         <Card title={advanced ? 'Advanced alerts' : kind === 'macro' ? 'Macro alerts' : 'Create alert'}>
+          {kind === 'macro' && !advanced && (
+            <details className="small-label">
+              <summary>Release timing</summary>Sent after the source supplies an actual. The free feed may lag
+              about 15 minutes, plus the scan interval. Consensus is the analysts’ estimate; a provider
+              forecast is shown separately when supplied.
+            </details>
+          )}
           {advanced ? (
             <AdvancedAlertBuilder
               item={item}
@@ -370,10 +402,28 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               Refresh failed. Showing the last loaded rules and triggers; their status may have changed.
             </p>
           )}
+          <div className="controls">
+            <input
+              aria-label="Search alert rules"
+              placeholder="Search alerts…"
+              value={ruleSearch}
+              onChange={(e) => setRuleSearch(e.target.value)}
+            />
+            <select
+              aria-label="Alert status"
+              value={ruleFilter}
+              onChange={(e) => setRuleFilter(e.target.value)}
+            >
+              <option value="all">All rules</option>
+              <option value="active">Active</option>
+              <option value="triggered">Triggered</option>
+              <option value="paused">Paused</option>
+            </select>
+          </div>
           {rules.isLoading ? (
             <Loading />
-          ) : !rules.data ? null : rules.data?.alerts.length ? (
-            rules.data.alerts.map((x) => (
+          ) : !rules.data ? null : visibleRules.length ? (
+            visibleRules.map((x) => (
               <div className="alert-rule" key={x.id}>
                 <div>
                   <b>
@@ -398,24 +448,27 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                               ? `Price ${x.direction ?? 'above'} ${price(x.threshold)}`
                               : `≥ ${money(x.threshold)} / 5m`}
                   </small>
-                  {x.kind === 'technical' && (
-                    <div className="alert-health">
-                      <span>{x.cooldownMinutes}m cooldown / market</span>
-                      {Object.values(x.technicalState ?? {}).some((state) => state.error) ? (
-                        <span className="negative">
-                          Data unavailable ·{' '}
-                          {Object.values(x.technicalState ?? {}).filter((state) => state.error).length}{' '}
-                          market(s)
-                        </span>
-                      ) : (
-                        <span>
-                          {Object.keys(x.technicalState ?? {}).length
-                            ? 'Monitoring closed candles'
-                            : 'Awaiting first check'}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {x.kind === 'technical' &&
+                    (() => {
+                      const health = technicalHealth(x);
+                      return (
+                        <div className="alert-health">
+                          <span>{x.cooldownMinutes}m cooldown / market</span>
+                          <span>
+                            {health.oldest ? `Oldest check ${clock(health.oldest)}` : 'Awaiting first check'}
+                          </span>
+                          {!!health.unchecked && <span>{health.unchecked} awaiting scan</span>}
+                          {!!health.delayed && (
+                            <span className="negative">
+                              {health.delayed} delayed · queued for a later scan
+                            </span>
+                          )}
+                          {!!health.failed && (
+                            <span className="negative">Data unavailable · {health.failed} market(s)</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   <small>
                     {x.enabled
                       ? x.repeat
@@ -423,7 +476,9 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                           ? 'Active · every new release'
                           : 'Active · repeats'
                         : 'Active · one time'
-                      : 'Disabled · reactivate to monitor again'}
+                      : x.lastTriggeredAt
+                        ? 'Triggered · reactivate'
+                        : 'Paused'}
                   </small>
                 </div>
                 <button
@@ -451,20 +506,49 @@ function AlertsTab({ item }: { item: Market | undefined }) {
               </div>
             ))
           ) : (
-            <div className="empty">No alert rules. Choose a rule on the left.</div>
+            <div className="empty">
+              {ruleSearch || ruleFilter !== 'all'
+                ? 'No matching rules.'
+                : 'No alert rules. Choose a rule on the left.'}
+            </div>
           )}
           {remove.error && <ErrorText error={remove.error} />}
           <h4 className="mt-6 mb-2">Recent triggers</h4>
           {rules.data?.events.length ? (
-            rules.data.events.slice(0, 12).map((e) => (
+            rules.data.events.slice(0, historyLimit).map((e) => (
               <div className="alert-event" key={e.id}>
                 <span>{e.message}</span>
-                <small>{clock(e.time)}</small>
+                <small>
+                  Triggered {clock(e.time)} · {deliveryLabel(e)}
+                </small>
+                {e.macro?.firstActualObservedAt && (
+                  <small>
+                    Actual observed {clock(e.macro.firstActualObservedAt)} ·{' '}
+                    {Math.max(0, Math.round((e.macro.firstActualObservedAt - e.macro.scheduledAt) / 1000))}s
+                    after scheduled release
+                  </small>
+                )}
+                {!!e.delivery?.devices.length && (
+                  <details>
+                    <summary>Delivery details</summary>
+                    {e.delivery.devices.map((d, i) => (
+                      <small key={d.deviceId}>
+                        Device {i + 1} · {d.status} · {d.attempts} attempt(s){d.error ? ` · ${d.error}` : ''}
+                      </small>
+                    ))}
+                    <small>Acceptance by a push service does not confirm receipt on a device.</small>
+                  </details>
+                )}
               </div>
             ))
           ) : rules.data ? (
             <div className="small-label">Nothing triggered yet.</div>
           ) : null}
+          {(rules.data?.events.length ?? 0) > historyLimit && (
+            <button type="button" className="subtle" onClick={() => setHistoryLimit((n) => n + 24)}>
+              More triggers
+            </button>
+          )}
         </Card>
       </div>
     </div>

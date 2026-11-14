@@ -33,12 +33,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('push', (event) => {
   if (!event.data) return;
   try {
-    const data = event.data.json() as { title: string; body: string; url: string };
+    const data = event.data.json() as { title: string; body: string; url: string; eventId?: string };
     event.waitUntil(
       self.registration.showNotification(data.title, {
         body: data.body,
         icon: '/icons/icon-192.png',
         badge: '/icons/icon-192.png',
+        ...(data.eventId ? { tag: `fluxdesk:${data.eventId}`, renotify: false } : {}),
         data: { url: data.url },
       }),
     );

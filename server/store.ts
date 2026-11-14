@@ -1,8 +1,8 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import type { AlertRule, AlertEvent } from '../src/types.ts';
-import { visibleTo, publicMode } from './identity.ts';
+import { randomUUID, createHash } from 'node:crypto';
+import type { AlertRule, AlertEvent, PushDelivery } from '../src/types.ts';
+import { visibleTo, publicMode, ownerId } from './identity.ts';
 export type PushSubscriptionRecord = {
   endpoint: string;
   keys: { p256dh: string; auth: string };
@@ -69,6 +69,81 @@ export function addAlert(alert: AlertRule) {
     )
       throw Error('Advanced alert limit reached (20 rules)');
     next.alerts.push(copy);
+  });
+}
+export const pushDeviceId = (endpoint: string) =>
+  createHash('sha256').update(endpoint).digest('hex').slice(0, 16);
+function enqueueEvent(next: Store, event: AlertEvent) {
+  event.delivery = {
+    expiresAt: event.time + 300_000,
+    devices: next.subscriptions
+      .filter((s) => visibleTo(s.ownerId, event.ownerId ?? ownerId()))
+      .map((s) => ({
+        deviceId: pushDeviceId(s.endpoint),
+        status: 'pending',
+        attempts: 0,
+        nextAttemptAt: event.time,
+      })),
+  };
+  next.events.unshift(event);
+}
+/** Claim on disk before sending. Never repeat an ambiguous send after a process crash. */
+export function claimPush(eventId: string, deviceId: string) {
+  return change((next) => {
+    const event = next.events.find((e) => e.id === eventId);
+    const device = event?.delivery?.devices.find((d) => d.deviceId === deviceId);
+    const now = Date.now();
+    if (!event || !device || !['pending', 'retrying'].includes(device.status) || device.nextAttemptAt > now)
+      return null;
+    if (now >= event.delivery!.expiresAt) {
+      device.status = 'expired';
+      return null;
+    }
+    const subscription = next.subscriptions.find(
+      (s) => pushDeviceId(s.endpoint) === deviceId && visibleTo(s.ownerId, event.ownerId ?? ownerId()),
+    );
+    if (!subscription) {
+      device.status = 'expired';
+      device.error = 'Device unsubscribed';
+      return null;
+    }
+    device.status = 'sending';
+    device.attempts++;
+    device.attemptedAt = now;
+    delete device.error;
+    return { event: structuredClone(event), subscription: structuredClone(subscription) };
+  });
+}
+export function finishPush(
+  eventId: string,
+  deviceId: string,
+  result: { status: PushDelivery['status']; error?: string; retryAfterMs?: number },
+) {
+  return change((next) => {
+    const event = next.events.find((e) => e.id === eventId);
+    const device = event?.delivery?.devices.find((d) => d.deviceId === deviceId);
+    if (!device || device.status !== 'sending') return;
+    const now = Date.now();
+    device.status = result.status;
+    if (result.error) device.error = result.error;
+    if (result.status === 'accepted') device.acceptedAt = now;
+    if (result.status === 'retrying') {
+      device.nextAttemptAt =
+        now + Math.max(10_000, result.retryAfterMs ?? 10_000 * 2 ** (device.attempts - 1));
+      if (device.attempts >= 3) device.status = 'failed';
+      else if (device.nextAttemptAt >= event!.delivery!.expiresAt) device.status = 'expired';
+    }
+  });
+}
+export function recoverPushClaims() {
+  return change((next) => {
+    for (const event of next.events)
+      for (const device of event.delivery?.devices ?? []) {
+        if (device.status === 'sending') {
+          device.status = 'interrupted';
+          device.error = 'Send interrupted; outcome unknown';
+        }
+      }
   });
 }
 export function deleteAlert(id: string, viewer?: string) {
@@ -158,10 +233,11 @@ export function recordTechnicalEvaluations(
         kind: 'technical',
         message: evaluation.message,
         time: now,
+        ruleId: rule.id,
         ...(rule.ownerId ? { ownerId: rule.ownerId } : {}),
       };
       events.push(event);
-      next.events.unshift(event);
+      enqueueEvent(next, event);
     }
     const counts = new Map<string | undefined, number>();
     next.events = next.events
@@ -174,7 +250,13 @@ export function recordTechnicalEvaluations(
     return events;
   });
 }
-export function triggered(rule: AlertRule, message: string, boundary?: 'above' | 'below', eventId?: string) {
+export function triggered(
+  rule: AlertRule,
+  message: string,
+  boundary?: 'above' | 'below',
+  eventId?: string,
+  macro?: AlertEvent['macro'],
+) {
   return change((next) => {
     const original = next.alerts.find((x) => x.id === rule.id);
     if (!original || !original.enabled) return null;
@@ -204,9 +286,11 @@ export function triggered(rule: AlertRule, message: string, boundary?: 'above' |
       kind: rule.kind,
       time: now,
       message,
+      ruleId: original.id,
+      ...(macro ? { macro } : {}),
       ...(original.ownerId ? { ownerId: original.ownerId } : {}),
     };
-    next.events.unshift(event);
+    enqueueEvent(next, event);
     const counts = new Map<string | undefined, number>();
     next.events = next.events
       .filter((entry) => {

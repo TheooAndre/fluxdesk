@@ -44,6 +44,8 @@ export default function CategoryBrowser({
   );
   const description = CATEGORIES.find((c) => c.id === selected)?.description;
   const isLowFloatHighFdv = selected === 'low-float-high-fdv';
+  const dynamic = assets.some((a) => a.floatScreen);
+  const covered = universe.filter((a) => a.floatScreen?.status === 'fresh').length;
   const dilutionSnapshotAgeDays = Math.floor(
     (Date.now() - Date.parse(`${CATEGORY_REVIEWED_AT}T00:00:00Z`)) / 86_400_000,
   );
@@ -66,7 +68,15 @@ export default function CategoryBrowser({
         ))}
       </div>
       {description && <p className="footnote">{description}</p>}
-      {isLowFloatHighFdv && (
+      {isLowFloatHighFdv && dynamic && (
+        <p className="footnote">
+          Fresh supply data: {covered}/{universe.length} contracts. Unknown or stale supply is excluded.{' '}
+          <a href="https://www.coingecko.com/en/api" target="_blank" rel="noopener noreferrer">
+            Data: CoinGecko
+          </a>
+        </p>
+      )}
+      {isLowFloatHighFdv && !dynamic && (
         <p className="footnote">
           Snapshot reviewed {CATEGORY_REVIEWED_AT}. Prices and unlocks can move assets across the threshold;
           verify the current supply schedule before using this screen.
@@ -118,7 +128,10 @@ export default function CategoryBrowser({
                   <small>
                     {Math.round(evidence.marketCapToFdv * 1000) / 10}% market cap / FDV
                     {' · '}
-                    {money(evidence.fdvUsd)} FDV at review
+                    {money(evidence.fdvUsd)} FDV
+                    {'asOf' in evidence
+                      ? ` · ${new Date(evidence.asOf as number).toLocaleDateString()}`
+                      : ' at review'}
                   </small>
                 )}
               </span>
