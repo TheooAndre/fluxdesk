@@ -25,7 +25,6 @@ const Watchlist = lazy(() => import('./components/Watchlist.tsx'));
 const PerpetualDetails = lazy(() => import('./components/PerpetualDetails.tsx'));
 const StrategyLab = lazy(() => import('./components/StrategyLab.tsx'));
 const SignalsTab = lazy(() => import('./components/SignalsTab.tsx'));
-const StatArbScanner = lazy(() => import('./components/StatArbScanner.tsx'));
 const JournalTab = lazy(() => import('./components/JournalTab.tsx'));
 const PairsTab = lazy(() => import('./components/PairsTab.tsx'));
 const AlertsTab = lazy(() => import('./components/AlertsTab.tsx'));
@@ -50,7 +49,6 @@ const NAV: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'overview', label: 'Markets', icon: BarChart3 },
   { id: 'signals', label: 'Entry models', icon: Zap },
   { id: 'pairs', label: 'Correlation', icon: GitCompareArrows },
-  { id: 'statarb', label: 'Stat-arb scanner', icon: GitCompareArrows },
   { id: 'journal', label: 'Trade journal', icon: BookOpen },
   { id: 'research', label: 'Strategy Lab', icon: FlaskConical },
   { id: 'investments', label: 'Investments', icon: BookOpen },
@@ -521,7 +519,7 @@ function App() {
   const owner = !publicUi || session.data?.owner === true;
   const needsOwnerSetup = session.data?.ownerSetupAllowed === true && !signedIn;
   useEffect(() => { if (needsOwnerSetup) setAccountOpen(true); }, [needsOwnerSetup]);
-  const navigation = NAV.filter((x) => owner || !['research', 'statarb', 'investments'].includes(x.id));
+  const navigation = NAV.filter((x) => owner || !['research', 'investments'].includes(x.id));
   useEffect(() => {
     if (!owner) queryClient.removeQueries({ queryKey: ['investments'] });
   }, [owner, queryClient]);
@@ -763,7 +761,6 @@ function App() {
               <PairsTab key={ui.assetId} item={selected} assets={mk.data?.assets ?? []} />
             </Suspense>
           )}
-          {ui.tab === 'statarb' && (owner ? <Suspense fallback={<Loading label="Loading stat-arb scanner…"/>}><StatArbScanner/></Suspense> : <Card title="Owner workspace">This tool is available to the owner.</Card>)}
           {ui.tab === 'journal' && (signedIn ? <Suspense fallback={<Loading label="Loading journal…"/>}><JournalTab snapshot={mk.data}/></Suspense> : <SignInPrompt title="Trade journal" providers={session.data?.providers} onSignIn={() => setAccountOpen(true)} />)}
           {ui.tab === 'alerts' && (
             signedIn ? <Suspense fallback={<Loading label="Loading alerts…"/>}><AlertsTab item={selected}/></Suspense> : <SignInPrompt title="Market alerts" providers={session.data?.providers} onSignIn={() => setAccountOpen(true)} />
@@ -790,7 +787,7 @@ function App() {
           <button key={x.id} className={ui.tab === x.id ? 'active' : ''} onClick={() => ui.setTab(x.id)}>
             <x.icon size={20} />
             <span>
-              {x.id === 'journal' ? 'Journal' : x.id === 'statarb' ? 'Stat-arb' : x.id === 'overview'
+              {x.id === 'journal' ? 'Journal' : x.id === 'overview'
                 ? 'Markets'
                 : x.id === 'signals'
                   ? 'Signals'
