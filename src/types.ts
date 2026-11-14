@@ -134,6 +134,7 @@ export type AlertRule = AlertCondition & {
   id: string;
   assetId: string;
   enabled: boolean;
+  disabledReason?: 'triggered' | 'paused';
   /** Repeating alerts keep monitoring after a trigger. Missing means one shot. */
   repeat?: boolean;
   ownerId?: string;

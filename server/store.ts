@@ -157,7 +157,9 @@ export function setAlertEnabled(id: string, enabled: boolean, viewer?: string): 
     if (!alert) return null;
     if (alert.enabled !== enabled) {
       alert.enabled = enabled;
+      if (!enabled) alert.disabledReason = 'paused';
       if (enabled) {
+        delete alert.disabledReason;
         // A manual rearm is a fresh monitoring window, including both range boundaries.
         delete alert.lastTriggeredAt;
         if (alert.kind === 'price_range') {
@@ -226,7 +228,10 @@ export function recordTechnicalEvaluations(
         continue;
       state.lastTriggeredAt = now;
       rule.lastTriggeredAt = now;
-      if (rule.repeat !== true) rule.enabled = false;
+      if (rule.repeat !== true) {
+        rule.enabled = false;
+        rule.disabledReason = 'triggered';
+      }
       const event: AlertEvent = {
         id: randomUUID(),
         assetId: evaluation.assetId,
@@ -279,7 +284,10 @@ export function triggered(
       else original.lastTriggeredBelowAt = now;
     }
     original.lastTriggeredAt = now;
-    if (original.repeat !== true) original.enabled = false;
+    if (original.repeat !== true) {
+      original.enabled = false;
+      original.disabledReason = 'triggered';
+    }
     const event: AlertEvent = {
       id: randomUUID(),
       assetId: rule.assetId,

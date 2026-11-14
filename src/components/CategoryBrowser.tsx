@@ -5,6 +5,7 @@ import {
   categoryLabel,
   marketCategories,
   matchesCategory,
+  freshFloatData,
   type CategoryFilter,
 } from '../lib/categories.ts';
 import { money, pct, price } from '../lib/format.ts';
@@ -45,7 +46,7 @@ export default function CategoryBrowser({
   const description = CATEGORIES.find((c) => c.id === selected)?.description;
   const isLowFloatHighFdv = selected === 'low-float-high-fdv';
   const dynamic = assets.some((a) => a.floatScreen);
-  const covered = universe.filter((a) => a.floatScreen?.status === 'fresh').length;
+  const covered = universe.filter((a) => freshFloatData(a)).length;
   const dilutionSnapshotAgeDays = Math.floor(
     (Date.now() - Date.parse(`${CATEGORY_REVIEWED_AT}T00:00:00Z`)) / 86_400_000,
   );

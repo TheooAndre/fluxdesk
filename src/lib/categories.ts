@@ -210,6 +210,16 @@ for (const category of CATEGORIES)
 // Explicit handling of the gaming BEAM ticker; do not classify the different
 // privacy project's generic BEAM symbol through a global symbol substitution.
 assignments.set('binance:BEAMXUSDT', ['gaming']);
+export function freshFloatData(market: Pick<Market, 'floatScreen'>, now = Date.now()) {
+  const at = market.floatScreen?.evidence?.asOf;
+  return (
+    market.floatScreen?.status === 'fresh' &&
+    typeof at === 'number' &&
+    Number.isFinite(at) &&
+    at <= now &&
+    now - at <= 86400_000
+  );
+}
 export function marketCategories(market: Pick<Market, 'id' | 'floatScreen'>): readonly CategoryId[] {
   const canonical = aliases[market.id];
   const categories = assignments.get(canonical ? `binance:${canonical}USDT` : market.id) ?? [];
@@ -217,7 +227,7 @@ export function marketCategories(market: Pick<Market, 'id' | 'floatScreen'>): re
   const current: CategoryId[] = categories.filter((c) => c !== 'low-float-high-fdv');
   const evidence = market.floatScreen.evidence;
   if (
-    market.floatScreen.status === 'fresh' &&
+    freshFloatData(market) &&
     evidence &&
     evidence.maxSupply > 0 &&
     evidence.marketCapToFdv < LOW_FLOAT_HIGH_FDV_CRITERIA.marketCapToFdvExclusive &&

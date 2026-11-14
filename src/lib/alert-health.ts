@@ -26,3 +26,7 @@ export function technicalHealth(rule: Extract<AlertRule, { kind: 'technical' }>,
   }
   return { unchecked, delayed, failed, oldest: Number.isFinite(oldest) ? oldest : null };
 }
+
+export function alertStatus(rule: AlertRule) {
+  return rule.enabled ? 'active' : (rule.disabledReason ?? (rule.lastTriggeredAt ? 'triggered' : 'paused'));
+}

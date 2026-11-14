@@ -62,3 +62,11 @@ it('keeps unknown listings out of the dynamic screen instead of guessing a symbo
   expect(missing.floatScreen?.status).toBe('unknown');
   expect(marketCategories(missing)).not.toContain('low-float-high-fdv');
 });
+it('expires dynamic membership on the client even if an offline snapshot still carries a fresh status', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json([row()])));
+  await mod.refreshFloatScreen();
+  const snapshot = mod.withFloatScreen([market])[0]!;
+  expect(marketCategories(snapshot)).toContain('low-float-high-fdv');
+  now += 25 * 3600_000;
+  expect(marketCategories(snapshot)).not.toContain('low-float-high-fdv');
+});

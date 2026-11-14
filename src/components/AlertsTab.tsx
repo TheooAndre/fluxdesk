@@ -9,7 +9,7 @@ import type { Market, AlertKind } from '../types.ts';
 import { money, price, clock } from '../lib/format.ts';
 import { Pill, ErrorText, Loading, Card } from './UiPrimitives.tsx';
 import AdvancedAlertBuilder from './AdvancedAlertBuilder.tsx';
-import { deliveryLabel, technicalHealth } from '../lib/alert-health.ts';
+import { deliveryLabel, technicalHealth, alertStatus } from '../lib/alert-health.ts';
 import { technicalConditionLabel } from '../lib/advanced-alert.ts';
 
 function AlertsTab({ item }: { item: Market | undefined }) {
@@ -40,12 +40,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
           .join(' ')
           .toLowerCase()
           .includes(term)) &&
-      (ruleFilter === 'all' ||
-        (ruleFilter === 'active'
-          ? rule.enabled
-          : ruleFilter === 'triggered'
-            ? !rule.enabled && !!rule.lastTriggeredAt
-            : !rule.enabled && !rule.lastTriggeredAt))
+      (ruleFilter === 'all' || alertStatus(rule) === ruleFilter)
     );
   });
   const macroCalendar = useQuery({
@@ -476,7 +471,7 @@ function AlertsTab({ item }: { item: Market | undefined }) {
                           ? 'Active · every new release'
                           : 'Active · repeats'
                         : 'Active · one time'
-                      : x.lastTriggeredAt
+                      : alertStatus(x) === 'triggered'
                         ? 'Triggered · reactivate'
                         : 'Paused'}
                   </small>
