@@ -79,7 +79,6 @@ a live cloud volume.
   path protection, and refusal to overwrite existing data. They do not establish
   that a backup of the owner's Northflank volume has been made or restored.
 
-
 ## Owner computer workflow (selected 23 October 2026)
 
 The website continues running without a downloaded backup. The computer copy
@@ -114,3 +113,20 @@ The owner verified the original hosted backup and isolated computer restore on
 23 October. That receipt predates the journal. A fresh archive including current
 journal records still needs host export, download and isolated computer restore;
 local fixture tests do not clear that new-data recovery check.
+
+## Current account-and-investment restore gate (14 November)
+
+The October receipt does not establish recovery of later accounts or investments.
+On the existing backend and owner computer, append all three flags to backup,
+verify and isolated restore:
+
+```
+--require-journal --require-accounts --require-investments
+```
+
+These checks fail before creating an archive or restore directory if a required
+file is missing. Inspect metadata-only `filePaths` for `accounts.sqlite`,
+`investments.json`, `journal.json`, `state.json` and the expected user directories.
+Do not publish those receipts or the archive. The application can generate them
+only with authorized access to the real data directory; a synthetic test does
+not complete this operational gate.

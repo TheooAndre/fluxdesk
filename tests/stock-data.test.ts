@@ -141,3 +141,28 @@ it('rejects arbitrary URLs, unsupported symbols, mismatched identities and provi
   mock.mockResolvedValue(new Response('', { status: 429 }));
   await expect(data.searchStocks('Apple')).rejects.toThrow('HTTP 429');
 });
+it('retains the exact verified quote timestamp on refresh failure while optional sections remain usable; stale data cannot verify a new link', async () => {
+  let now = Date.now();
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  try {
+    const good = await data.stockData('7203.T');
+    const original = mock.getMockImplementation() as (raw: string | URL) => Promise<Response>;
+    mock.mockImplementation(async (raw: string | URL) =>
+      new URL(raw).pathname.includes('/chart') ? new Response('', { status: 503 }) : original(raw),
+    );
+    now += 11 * 60_000;
+    const partial = await data.stockData('7203.T');
+    expect(partial).toMatchObject({
+      quoteStale: true,
+      quoteAt: good.quoteAt,
+      currency: 'JPY',
+      symbol: '7203.T',
+      marketCap: 300000000,
+    });
+    expect(partial.news).toHaveLength(1);
+    expect(partial.issues).toContain('Quote refresh failed · showing last verified quote');
+    await expect(data.verifyStockListing('7203.T')).rejects.toThrow('fresh provider response');
+  } finally {
+    vi.restoreAllMocks();
+  }
+});

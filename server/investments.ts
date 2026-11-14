@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { MAX_INVESTMENT_BYTES, validateInvestments, type Investments } from '../src/investments/model.ts';
 
 import { InvestmentError } from './investment-error.ts';
-import { stockData } from './stock-data.ts';
+import { verifyStockListing } from './stock-data.ts';
 export { InvestmentError } from './investment-error.ts';
 const path = () => resolve(process.env.DATA_DIR ?? 'data', 'investments.json');
 let writes = Promise.resolve();
@@ -40,7 +40,7 @@ export async function saveInvestments(input: unknown): Promise<Investments> {
     ];
     if (links.length > 20) throw new InvestmentError('Link at most 20 new listings per save');
     for (let i = 0; i < links.length; i += 4)
-      await Promise.all(links.slice(i, i + 4).map((symbol) => stockData(symbol)));
+      await Promise.all(links.slice(i, i + 4).map((symbol) => verifyStockListing(symbol)));
     const value: Investments = { ...next, revision: old.revision + 1 };
     const raw = JSON.stringify(value);
     if (Buffer.byteLength(raw) > MAX_INVESTMENT_BYTES)

@@ -109,7 +109,8 @@ for (const entry of LOW_FLOAT_HIGH_FDV_SNAPSHOT) {
   dilutionEvidence.set(`binance:${entry.symbol}USDT`, entry);
   dilutionEvidence.set(`hyperliquid:${entry.symbol}`, entry);
 }
-export function lowFloatEvidence(market: Pick<Market, 'id'>) {
+export function lowFloatEvidence(market: Pick<Market, 'id' | 'floatScreen'>) {
+  if (market.floatScreen) return market.floatScreen.evidence;
   return dilutionEvidence.get(market.id);
 }
 
@@ -209,11 +210,33 @@ for (const category of CATEGORIES)
 // Explicit handling of the gaming BEAM ticker; do not classify the different
 // privacy project's generic BEAM symbol through a global symbol substitution.
 assignments.set('binance:BEAMXUSDT', ['gaming']);
-export function marketCategories(market: Pick<Market, 'id'>): readonly CategoryId[] {
-  const canonical = aliases[market.id];
-  return assignments.get(canonical ? `binance:${canonical}USDT` : market.id) ?? [];
+export function freshFloatData(market: Pick<Market, 'floatScreen'>, now = Date.now()) {
+  const at = market.floatScreen?.evidence?.asOf;
+  return (
+    market.floatScreen?.status === 'fresh' &&
+    typeof at === 'number' &&
+    Number.isFinite(at) &&
+    at <= now &&
+    now - at <= 86400_000
+  );
 }
-export function matchesCategory(market: Pick<Market, 'id'>, filter: CategoryFilter): boolean {
+export function marketCategories(market: Pick<Market, 'id' | 'floatScreen'>): readonly CategoryId[] {
+  const canonical = aliases[market.id];
+  const categories = assignments.get(canonical ? `binance:${canonical}USDT` : market.id) ?? [];
+  if (!market.floatScreen) return categories; // Legacy independently deployed backend: dated snapshot UI.
+  const current: CategoryId[] = categories.filter((c) => c !== 'low-float-high-fdv');
+  const evidence = market.floatScreen.evidence;
+  if (
+    freshFloatData(market) &&
+    evidence &&
+    evidence.maxSupply > 0 &&
+    evidence.marketCapToFdv < LOW_FLOAT_HIGH_FDV_CRITERIA.marketCapToFdvExclusive &&
+    evidence.fdvUsd >= LOW_FLOAT_HIGH_FDV_CRITERIA.minimumFdvUsdInclusive
+  )
+    current.push('low-float-high-fdv');
+  return current;
+}
+export function matchesCategory(market: Pick<Market, 'id' | 'floatScreen'>, filter: CategoryFilter): boolean {
   const categories = marketCategories(market);
   return (
     filter === 'all' || (filter === 'uncategorized' ? categories.length === 0 : categories.includes(filter))

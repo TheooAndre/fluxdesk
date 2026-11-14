@@ -21,6 +21,8 @@ export type StockData = {
   changePercent: number | null;
   quoteAt: number;
   fetchedAt: number;
+  quoteStale?: boolean;
+  quoteCheckedAt?: number;
   delayMinutes: number | null;
   marketState: 'open' | 'closed';
   previousClose: number | null;

@@ -14,6 +14,7 @@ import {
   enrichedOpenInterest,
   perpetualQuote,
 } from './market.ts';
+import { withFloatScreen } from './float-screen.ts';
 import { marketRefreshStatus } from './market-refresh.ts';
 import { priceAlertDirection } from '../src/lib/price-alert.ts';
 import {
@@ -213,17 +214,18 @@ export async function handler(req: IncomingMessage, res: ServerResponse) {
     if (path === '/api/health')
       return json(res, {
         ok: true,
+        version: 'reliability-2026-11-14',
         at: Date.now(),
         liquidations: liquidityStatus(),
         markets: marketRefreshStatus(),
       });
     if (path === '/api/markets') {
       const snapshot = await marketSnapshot();
-      const list = snapshot.assets;
+      const list = withFloatScreen(snapshot.assets);
       const benchmarks: Record<string, Market> = Object.fromEntries(
         list.map((market) => [market.id, market]),
       );
-      return json(res, { ...snapshot, benchmarks });
+      return json(res, { ...snapshot, assets: list, benchmarks });
     }
     if (path === '/api/perpetual')
       return json(res, await perpetualQuote(validatedId(url.searchParams.get('asset') ?? '')));

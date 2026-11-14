@@ -3,7 +3,7 @@ import { lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:f
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { gzip, gunzip } from 'node:zlib';
-import {validateJournal} from '../src/journal/model.ts';
+import { validateJournal } from '../src/journal/model.ts';
 import { datasetId, type HistoricalDataset } from './research/datasets.ts';
 import { assetIdentity } from './market.ts';
 import { accountBackupBytes, snapshotAccountDatabase, validateAccountBackup } from './account-backup.ts';
@@ -17,7 +17,7 @@ const MAX_ARCHIVE_BYTES = 20 * 1024 * 1024;
 const MAX_USER_DIRS = 100;
 type ArchiveFile = { path: string; sha256: string; content: string };
 export type ArchiveManifest = { schemaVersion: 1; createdAt: number; files: ArchiveFile[] };
-type ArchiveOptions = { requireJournal?: boolean };
+type ArchiveOptions = { requireJournal?: boolean; requireAccounts?: boolean; requireInvestments?: boolean };
 type ArchiveReceipt = {
   files: number;
   datasetIds: string[];
@@ -28,6 +28,10 @@ type ArchiveReceipt = {
 function requireContents(manifest: ArchiveManifest, options: ArchiveOptions) {
   if (options.requireJournal && !manifest.files.some((file) => file.path === 'journal.json'))
     throw Error('Backup does not contain required journal.json');
+  if (options.requireAccounts && !manifest.files.some((file) => file.path === 'accounts.sqlite'))
+    throw Error('Backup does not contain required accounts.sqlite');
+  if (options.requireInvestments && !manifest.files.some((file) => file.path === 'investments.json'))
+    throw Error('Backup does not contain required investments.json');
 }
 function receipt(manifest: ArchiveManifest, bytes: Buffer): ArchiveReceipt {
   return {
@@ -41,8 +45,13 @@ function receipt(manifest: ArchiveManifest, bytes: Buffer): ArchiveReceipt {
 const digest = (content: string) => createHash('sha256').update(content).digest('hex');
 const userFile = /^users\/[a-f0-9]{64}\/(?:journal|watchlist)\.json$/;
 const allowedPath = (path: string) =>
-  path === 'state.json' || path === 'watchlist.json' || path === 'journal.json' || path === 'investments.json' || path === 'accounts.sqlite' ||
-  userFile.test(path) || /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
+  path === 'state.json' ||
+  path === 'watchlist.json' ||
+  path === 'journal.json' ||
+  path === 'investments.json' ||
+  path === 'accounts.sqlite' ||
+  userFile.test(path) ||
+  /^research\/datasets\/[a-f0-9]{64}\.json$/.test(path);
 
 function validateFile(file: ArchiveFile): void {
   if (
@@ -54,7 +63,10 @@ function validateFile(file: ArchiveFile): void {
     digest(file.content) !== file.sha256
   )
     throw Error('Invalid backup file path or checksum');
-  if (file.path === 'accounts.sqlite') { accountBackupBytes(file.content); return; }
+  if (file.path === 'accounts.sqlite') {
+    accountBackupBytes(file.content);
+    return;
+  }
   const value = JSON.parse(file.content) as Record<string, unknown>;
   if (file.path.startsWith('research/')) {
     if (datasetId(value as unknown as HistoricalDataset) !== file.path.slice(18, -5))
@@ -209,8 +221,11 @@ export async function createArchive(
       if (!child.isDirectory() || child.isSymbolicLink())
         throw Error('User archive directory must not be a symlink');
       for (const kind of ['journal.json', 'watchlist.json']) {
-        try { await collect(`users/${name}/${kind}`); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+        try {
+          await collect(`users/${name}/${kind}`);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
       }
     }
   } catch (error) {
@@ -245,7 +260,8 @@ export async function verifyArchive(
 ): Promise<ArchiveReceipt> {
   const bytes = await readRegularFile(file, MAX_ARCHIVE_BYTES);
   const manifest = await unpack(bytes, password);
-  for (const entry of manifest.files) if (entry.path === 'accounts.sqlite') await validateAccountBackup(entry.content);
+  for (const entry of manifest.files)
+    if (entry.path === 'accounts.sqlite') await validateAccountBackup(entry.content);
   requireContents(manifest, options);
   return receipt(manifest, bytes);
 }
@@ -260,7 +276,8 @@ export async function restoreArchive(
 ): Promise<ArchiveReceipt> {
   const bytes = await readRegularFile(file, MAX_ARCHIVE_BYTES);
   const manifest = await unpack(bytes, password);
-  for (const entry of manifest.files) if (entry.path === 'accounts.sqlite') await validateAccountBackup(entry.content);
+  for (const entry of manifest.files)
+    if (entry.path === 'accounts.sqlite') await validateAccountBackup(entry.content);
   requireContents(manifest, options);
   const destination = resolve(target);
   await mkdir(destination, { mode: 0o700 }); // EEXIST is deliberately fatal.
@@ -268,7 +285,11 @@ export async function restoreArchive(
     for (const entry of manifest.files) {
       const path = join(destination, entry.path);
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-      await writeFile(path, entry.path === 'accounts.sqlite' ? accountBackupBytes(entry.content) : entry.content, { mode: 0o600, flag: 'wx' });
+      await writeFile(
+        path,
+        entry.path === 'accounts.sqlite' ? accountBackupBytes(entry.content) : entry.content,
+        { mode: 0o600, flag: 'wx' },
+      );
     }
   } catch (error) {
     await rm(destination, { recursive: true, force: true });

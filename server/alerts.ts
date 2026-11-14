@@ -71,6 +71,10 @@ export async function scanAlerts() {
               macroReleaseMessage(event, now, released),
               undefined,
               event.id,
+              {
+                scheduledAt: releaseAt,
+                ...(released ? { firstActualObservedAt: event.firstActualObservedAt ?? now } : {}),
+              },
             );
             if (recorded) await deliver(recorded);
           }

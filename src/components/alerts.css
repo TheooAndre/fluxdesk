@@ -186,3 +186,20 @@
     grid-template-columns: 1fr;
   }
 }
+
+.alert-event {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.alert-event small {
+  color: #99acc3;
+  display: block;
+}
+.alert-event details {
+  font-size: 12px;
+}
+.alert-event summary {
+  cursor: pointer;
+}

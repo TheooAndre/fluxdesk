@@ -1334,3 +1334,57 @@ test('advanced alert presets and category navigation keep macro release controls
   await page.getByRole('button', { name: 'Quick alerts', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Alert type', exact: true })).toHaveValue('volume');
 });
+
+test('alert rule search and status filters retain trigger delivery receipts and macro observation times', async ({
+  page,
+}) => {
+  const now = Date.now();
+  await page.route('**/api/alerts', (route) =>
+    route.fulfill({
+      json: {
+        alerts: [
+          { id: 'active', assetId: btc.id, kind: 'price', enabled: true, threshold: 100, createdAt: now },
+          {
+            id: 'triggered',
+            assetId: eth.id,
+            kind: 'price',
+            enabled: false,
+            threshold: 100,
+            createdAt: now,
+            lastTriggeredAt: now,
+          },
+          { id: 'paused', assetId: hype.id, kind: 'volume', enabled: false, threshold: 100, createdAt: now },
+        ],
+        events: [
+          {
+            id: 'event',
+            assetId: 'macro:US',
+            kind: 'macro',
+            message: 'US CPI actual 3.0%, consensus 3.1%, previous 3.2%',
+            time: now,
+            macro: { scheduledAt: now - 100_000, firstActualObservedAt: now - 10_000 },
+            delivery: {
+              expiresAt: now + 300_000,
+              devices: [{ deviceId: 'synthetic', status: 'accepted', attempts: 1, nextAttemptAt: now }],
+            },
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.locator('.alert-rule')).toHaveCount(3);
+  await page.getByLabel('Search alert rules').fill('ETH');
+  await expect(page.locator('.alert-rule')).toHaveCount(1);
+  await page.getByLabel('Search alert rules').fill('');
+  await page.getByLabel('Alert status', { exact: true }).selectOption('triggered');
+  await expect(page.locator('.alert-rule')).toHaveCount(1);
+  await expect(page.locator('.alert-rule')).toContainText('Triggered');
+  await page.getByLabel('Alert status', { exact: true }).selectOption('paused');
+  await expect(page.locator('.alert-rule')).toContainText('HYPE');
+  await expect(page.locator('.alert-event')).toContainText('Push service accepted');
+  await expect(page.locator('.alert-event')).toContainText('90s after scheduled release');
+  await page.getByText('Delivery details', { exact: true }).click();
+  await expect(page.locator('.alert-event')).toContainText('does not confirm receipt');
+});
