@@ -135,11 +135,11 @@ export function finishPush(
     }
   });
 }
-export function recoverPushClaims() {
+export function recoverPushClaims(before = Infinity) {
   return change((next) => {
     for (const event of next.events)
       for (const device of event.delivery?.devices ?? []) {
-        if (device.status === 'sending') {
+        if (device.status === 'sending' && (device.attemptedAt ?? 0) <= before) {
           device.status = 'interrupted';
           device.error = 'Send interrupted; outcome unknown';
         }

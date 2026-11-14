@@ -1,4 +1,5 @@
 import webpush from 'web-push';
+import { ownerId } from './identity.ts';
 import type { AlertEvent } from '../src/types.ts';
 import { snapshot, claimPush, finishPush, forgetSubscription, recoverPushClaims } from './store.ts';
 const pub = process.env.VAPID_PUBLIC_KEY ?? '',
@@ -75,7 +76,7 @@ export function drainPushQueue(): Promise<void> {
               retryAfterMs: retryDelay(failure.headers?.['retry-after']),
             });
             if (expired)
-              await forgetSubscription(subscription.endpoint).catch(() =>
+              await forgetSubscription(subscription.endpoint, subscription.ownerId ?? ownerId()).catch(() =>
                 console.error('Expired push subscription could not be removed'),
               );
             continue;
@@ -93,11 +94,25 @@ export function drainPushQueue(): Promise<void> {
   return draining;
 }
 export async function deliver(event: AlertEvent) {
-  if (snapshot().events.some((saved) => saved.id === event.id)) await drainPushQueue();
+  // The durable event is already committed. Transport must not stall market/macro evaluation.
+  if (snapshot().events.some((saved) => saved.id === event.id))
+    void drainPushQueue().catch(() => console.error('Push queue persistence unavailable'));
 }
 export async function startPushDelivery() {
   await recoverPushClaims();
-  const tick = () => void drainPushQueue().catch(() => console.error('Push queue persistence unavailable'));
+  let ticking = false;
+  const tick = () => {
+    if (ticking || draining) return;
+    ticking = true;
+    void (async () => {
+      await recoverPushClaims(Date.now() - 60_000);
+      await drainPushQueue();
+    })()
+      .catch(() => console.error('Push queue persistence unavailable'))
+      .finally(() => {
+        ticking = false;
+      });
+  };
   tick();
   const timer = setInterval(tick, 10_000);
   timer.unref();

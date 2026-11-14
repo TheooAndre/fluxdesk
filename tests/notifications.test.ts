@@ -73,6 +73,7 @@ it('persists per-device outcomes with four concurrent sends and retries a networ
   expect(saved.delivery!.devices.filter((d) => d.status === 'expired')).toHaveLength(1);
   expect(JSON.stringify(saved)).not.toMatch(/private|push.example|secret/);
   await push.deliver(event);
+  await push.drainPushQueue();
   expect(mocks.send).toHaveBeenCalledTimes(8);
   now += 10_001;
   mocks.send.mockResolvedValue(undefined);
@@ -128,7 +129,7 @@ it('expires old work without sending, and keeps ownerless legacy events attached
     keys: { p256dh: 'k', auth: 'a' },
     ownerId: 'x:2',
   });
-  const event = await enqueue(1, 'price', 'x:1');
+  const event = await enqueue(1, 'price');
   expect(event.delivery!.devices).toHaveLength(1);
   now += 300_001;
   await push.drainPushQueue();
@@ -139,5 +140,33 @@ it('marks missing push configuration explicitly and records events even with no 
   const event = await enqueue(0);
   await push.deliver(event);
   expect(store.snapshot().events[0]!.delivery!.devices).toEqual([]);
+  expect(mocks.send).not.toHaveBeenCalled();
+});
+it('does not stall alert evaluation behind a slow push transport', async () => {
+  const event = await enqueue();
+  let release!: () => void;
+  mocks.send.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  await push.deliver(event);
+  await vi.waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('sending');
+  release();
+  await push.drainPushQueue();
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('accepted');
+});
+it('marks an old ambiguous claim interrupted after storage recovers without automatically resending', async () => {
+  const event = await enqueue();
+  const d = event.delivery!.devices[0]!;
+  await store.claimPush(event.id, d.deviceId);
+  await store.recoverPushClaims(now - 60_000);
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('sending');
+  now += 61_000;
+  await store.recoverPushClaims(now - 60_000);
+  await push.drainPushQueue();
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('interrupted');
   expect(mocks.send).not.toHaveBeenCalled();
 });
