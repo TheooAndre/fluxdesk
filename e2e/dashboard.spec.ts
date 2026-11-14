@@ -222,7 +222,7 @@ test('categories filter contracts and open the selected venue chart', async ({ p
   await page.getByLabel('Category exchange').selectOption('hyperliquid');
   await expect(page.getByRole('button', { name: 'Chart ETH on binance' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Chart ETH on hyperliquid' }).click();
-  await expect(page.getByLabel('Selected asset')).toHaveValue('hyperliquid:ETH');
+  await expect(page.getByLabel('Selected asset')).toHaveValue('ETH · hyperliquid');
   await expect(page.getByRole('img', { name: 'ETH 1h interactive price and volume chart' })).toBeVisible();
   await expect(page.getByLabel('Market category')).toHaveValue('l1');
   await page.getByRole('button', { name: 'Categories', exact: true }).click();
@@ -252,6 +252,25 @@ test('TradingView account shortcut validates layouts and survives reload', async
   await expect(page.getByRole('link', { name: 'Open my saved layout' })).toHaveCount(0);
 });
 
+test('selected asset searches symbols and venues with sorted results and keyboard selection', async ({ page }) => {
+  await page.goto('/');
+  const picker = page.getByRole('combobox', { name: 'Selected asset', exact: true });
+  await picker.click();
+  const list = page.getByRole('listbox', { name: 'Available assets', exact: true });
+  const labels = await list.getByRole('option').allTextContents();
+  expect(labels.map(x => x.replace(' ✓', ''))).toEqual(labels.map(x => x.replace(' ✓', '')).sort((a,b) => a.localeCompare(b)));
+  await picker.fill('ETH hyperliquid');
+  await expect(list.getByRole('option')).toHaveCount(1);
+  await picker.press('Enter');
+  await expect(picker).toHaveValue('ETH · hyperliquid');
+  await picker.click();
+  await picker.fill('no-such-market');
+  await expect(list.getByText('No matching instruments')).toBeVisible();
+  await picker.press('Escape');
+  await expect(picker).toHaveValue('ETH · hyperliquid');
+  await expect(list).toHaveCount(0);
+});
+
 test('market table sorts and asset selection are usable', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Market overview')).toBeVisible();
@@ -259,7 +278,8 @@ test('market table sorts and asset selection are usable', async ({ page }) => {
   await page.getByLabel('Sort by').selectOption('relative');
   await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Inspect ETH on binance' }) })).toBeVisible();
   await expect(page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Inspect ETH on hyperliquid' }) })).toBeVisible();
-  await page.getByLabel('Selected asset').selectOption(eth.id);
+  await page.getByLabel('Selected asset', { exact: true }).fill(eth.id);
+  await page.getByLabel('Selected asset', { exact: true }).press('Enter');
   await expect(page.getByText('ETH', { exact: true }).first()).toBeVisible();
 });
 
@@ -501,7 +521,8 @@ test('perpetual details label price bases and funding interval without mixed-bas
   const hyperRow = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Inspect ETH on hyperliquid' }) });
   await expect(hyperRow.getByRole('cell').nth(3)).toHaveText('N/A');
   await expect(hyperRow.getByText('Mark', { exact: true })).toBeVisible();
-  await page.getByLabel('Selected asset').selectOption(ethHyper.id);
+  await page.getByLabel('Selected asset', { exact: true }).fill(ethHyper.id);
+  await page.getByLabel('Selected asset', { exact: true }).press('Enter');
   await expect(page.getByText('Mark price', { exact: true }).first()).toBeVisible();
   await expect(panel.getByText('Hyperliquid supplies mark and oracle prices;', { exact: false })).toBeHidden();
   await panel.getByText('Price and funding details', { exact: true }).click();
@@ -522,7 +543,8 @@ test('funding errors remain unavailable and stale cached quotes are visibly labe
   await page.route('**/api/perpetual?**', (route) => route.fulfill({ status: 503, json: { error: 'Feed unavailable' } }));
   await page.clock.fastForward(10_000);
   await expect(panel.getByText('Stale · last reported')).toBeVisible();
-  await page.getByLabel('Selected asset').selectOption(eth.id);
+  await page.getByLabel('Selected asset', { exact: true }).fill(eth.id);
+  await page.getByLabel('Selected asset', { exact: true }).press('Enter');
   await expect(panel.getByText('Unavailable', { exact: true }).first()).toBeVisible();
   await expect(panel.getByText('Reported funding · interval unknown')).toBeVisible();
   await expect(panel.getByText('Age unknown')).toBeVisible();
@@ -547,7 +569,7 @@ test('saved markets persist after reload, select the correct venue and recover f
   await page.reload();
   await expect(page.getByRole('button', { name: 'Remove ETH on hyperliquid from watchlist' })).toHaveAttribute('aria-pressed', 'true');
   await watchlist.getByRole('button', { name: 'Inspect saved hyperliquid:ETH' }).click();
-  await expect(page.getByLabel('Selected asset')).toHaveValue('hyperliquid:ETH');
+  await expect(page.getByLabel('Selected asset')).toHaveValue('ETH · hyperliquid');
   await watchlist.getByRole('button', { name: 'Remove hyperliquid:HYPE from watchlist' }).click();
   await expect(watchlist.getByRole('button', { name: 'Inspect saved hyperliquid:HYPE' })).toHaveCount(0);
   fail = true;
@@ -826,9 +848,11 @@ test('chart drawings support touch or mouse, undo, reload, scale changes and mar
   await page.getByRole('button', { name: 'Clear drawings', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Clear drawings', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Undo drawing', exact: true }).click();
-  await page.getByLabel('Selected asset', { exact: true }).selectOption('binance:ETHUSDT');
+  await page.getByLabel('Selected asset', { exact: true }).fill('binance:ETHUSDT');
+  await page.getByLabel('Selected asset', { exact: true }).press('Enter');
   await expect(page.getByRole('button', { name: 'Clear drawings', exact: true })).toBeDisabled();
-  await page.getByLabel('Selected asset', { exact: true }).selectOption('binance:BTCUSDT');
+  await page.getByLabel('Selected asset', { exact: true }).fill('binance:BTCUSDT');
+  await page.getByLabel('Selected asset', { exact: true }).press('Enter');
   await expect(page.getByText('3 / 50 drawings', { exact: false })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Stay in drawing mode' }).click();
@@ -1077,7 +1101,8 @@ test('chart live quote matches the dashboard through refresh, mode change, venue
   await page.screenshot({ path: test.info().outputPath('clean-overview-live-price.png'), fullPage: true });
   await page.getByRole('group', { name: 'Chart controls' }).getByRole('button', { name: 'Line', exact: true }).click();
   await expect(quote).toContainText('$100,123.45');
-  await page.getByLabel('Selected asset', { exact: true }).selectOption('hyperliquid:ETH');
+  await page.getByLabel('Selected asset', { exact: true }).fill('hyperliquid:ETH');
+  await page.getByLabel('Selected asset', { exact: true }).press('Enter');
   await expect(quote).toContainText('Mark $4,000.00');
   await expect(page.locator('.big-price')).toHaveText('$4,000.00');
   await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); window.dispatchEvent(new Event('offline')); });

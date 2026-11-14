@@ -641,18 +641,7 @@ function App() {
           {['overview','signals','pairs','alerts'].includes(ui.tab) && <div className="selector-bar">
             <div className="selected-input">
               <span className="tiny-label">SELECTED ASSET</span>
-              <select
-                aria-label="Selected asset"
-                value={ui.assetId}
-                onChange={(e) => ui.setAsset(e.target.value)}
-              >
-                {!selected && <option value={ui.assetId}>{ui.assetId.split(':')[1]} · unavailable</option>}
-                {(mk.data?.assets ?? []).map((x) => (
-                  <option value={x.id} key={x.id}>
-                    {x.base} · {x.venue}
-                  </option>
-                ))}
-              </select>
+              <BenchmarkSelector mode="asset" value={ui.assetId} assets={mk.data?.assets ?? []} onChange={ui.setAsset} />
             </div>
             {ui.tab !== 'alerts' && <><div className="selected-input">
               <span className="tiny-label">COMPARE AGAINST</span>
