@@ -369,7 +369,7 @@ function StockMedia({ stock }: { stock: InvestmentStock }) {
         Add an exchange-qualified TradingView reference to show charts and company news.
       </p>
     );
-  const doc = (kind: 'chart' | 'news') => {
+  const widgetUrl = (kind: 'chart' | 'news') => {
     const script = kind === 'chart' ? 'advanced-chart' : 'timeline';
     const settings =
       kind === 'chart'
@@ -394,7 +394,10 @@ function StockMedia({ stock }: { stock: InvestmentStock }) {
             height: '100%',
             isTransparent: false,
           };
-    return `<!doctype html><html><head><meta name="referrer" content="no-referrer"><style>html,body{margin:0;height:100%;background:#121c2b}.tradingview-widget-container{height:100%;width:100%}</style></head><body><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget" style="height:calc(100% - 28px);width:100%"></div><div class="tradingview-widget-copyright"><a href="https://www.tradingview.com/" target="_blank" rel="noopener nofollow">Market data by TradingView</a></div><script src="https://s3.tradingview.com/external-embedding/embed-widget-${script}.js" async>${JSON.stringify(settings).replaceAll('<', '\\u003c')}</script></div></body></html>`;
+    const url = new URL(`https://www.tradingview-widget.com/embed-widget/${script}/`);
+    url.searchParams.set('locale', 'en');
+    url.hash = encodeURIComponent(JSON.stringify(settings));
+    return url.toString();
   };
   return (
     <>
@@ -412,14 +415,14 @@ function StockMedia({ stock }: { stock: InvestmentStock }) {
         <div className="investment-media">
           <iframe
             title={`TradingView reference chart for ${stock.name}`}
-            srcDoc={doc('chart')}
-            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+            src={widgetUrl('chart')}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             referrerPolicy="no-referrer"
           />
           <iframe
             title={`TradingView company news for ${stock.name}`}
-            srcDoc={doc('news')}
-            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+            src={widgetUrl('news')}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             referrerPolicy="no-referrer"
           />
         </div>
