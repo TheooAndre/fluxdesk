@@ -22,6 +22,7 @@ const headers = { 'user-agent': 'Mozilla/5.0', accept: 'application/json' };
 // Bounded process-local caches. Only public provider data is cached; never owner memos.
 const cache = new Map<string, { until: number; value: unknown }>();
 const pending = new Map<string, Promise<unknown>>();
+const verifiedCharts = new Map<string, { row: ObjectData; at: number }>();
 async function cached<T>(key: string, ttl: number, task: () => Promise<T>): Promise<T> {
   const hit = cache.get(key);
   if (hit && hit.until > Date.now()) return hit.value as T;
@@ -190,13 +191,21 @@ export async function stockData(raw: string): Promise<StockData> {
     throw new InvestmentError('Choose a valid stock listing');
   }
   return cached('stock:' + symbol, 60_000, async () => {
-    const chart = await json(
-      Q + '/v8/finance/chart/' + encodeURIComponent(symbol) + '?interval=1d&range=6mo',
-    );
-    const result = object(chart.chart).result;
-    if (!Array.isArray(result) || !result.length) throw new InvestmentError('Stock listing not found', 404);
-    const row = object(result[0]),
-      meta = object(row.meta),
+    const [chart, summary, news] = await Promise.allSettled([
+      json(Q + '/v8/finance/chart/' + encodeURIComponent(symbol) + '?interval=1d&range=6mo'),
+      fundamentals(symbol),
+      headlines(symbol),
+    ]);
+    const previous = verifiedCharts.get(symbol);
+    const quoteStale = chart.status === 'rejected';
+    let row: ObjectData;
+    if (chart.status === 'fulfilled') {
+      const result = object(chart.value.chart).result;
+      if (!Array.isArray(result) || !result.length) throw new InvestmentError('Stock listing not found', 404);
+      row = object(result[0]);
+    } else if (previous && Date.now() - previous.at <= 7 * 86400_000) row = previous.row;
+    else throw chart.reason;
+    const meta = object(row.meta),
       price = number(meta.regularMarketPrice),
       quoteAt = (number(meta.regularMarketTime) ?? 0) * 1000;
     if (
@@ -209,6 +218,10 @@ export async function stockData(raw: string): Promise<StockData> {
       !string(meta.currency)
     )
       throw new InvestmentError('Provider could not verify this stock listing', 502);
+    if (!quoteStale) {
+      if (verifiedCharts.size >= 100) verifiedCharts.delete(verifiedCharts.keys().next().value!);
+      verifiedCharts.set(symbol, { row, at: Date.now() });
+    }
     const times = Array.isArray(row.timestamp) ? row.timestamp : [],
       quotes = object(row.indicators).quote;
     const closes = Array.isArray(quotes) ? object(quotes[0]).close : [];
@@ -217,7 +230,6 @@ export async function stockData(raw: string): Promise<StockData> {
         close = Array.isArray(closes) ? number(closes[i]) : null;
       return at > 0 && at <= Date.now() && close !== null && close > 0 ? [{ at, close }] : [];
     });
-    const [summary, news] = await Promise.allSettled([fundamentals(symbol), headlines(symbol)]);
     const info = summary.status === 'fulfilled' ? summary.value : {},
       profile = object(info.assetProfile),
       detail = object(info.summaryDetail),
@@ -244,6 +256,8 @@ export async function stockData(raw: string): Promise<StockData> {
         number(meta.regularMarketChangePercent) ?? (previousClose ? (price / previousClose - 1) * 100 : null),
       quoteAt,
       fetchedAt: Date.now(),
+      quoteStale,
+      quoteCheckedAt: quoteStale ? previous!.at : Date.now(),
       delayMinutes: number(meta.exchangeDataDelayedBy),
       marketState: Date.now() >= start && Date.now() < end ? 'open' : 'closed',
       previousClose,
@@ -265,10 +279,18 @@ export async function stockData(raw: string): Promise<StockData> {
       history,
       news: news.status === 'fulfilled' ? news.value : [],
       issues: [
+        ...(quoteStale ? ['Quote refresh failed · showing last verified quote'] : []),
         ...(summary.status === 'rejected' ? ['Fundamentals unavailable'] : []),
         ...(news.status === 'rejected' ? ['News unavailable'] : []),
       ],
       sourceUrl: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`,
     };
   });
+}
+
+export async function verifyStockListing(symbol: string) {
+  const value = await stockData(symbol);
+  if (value.quoteStale)
+    throw new InvestmentError('A fresh provider response is required to link this listing', 502);
+  return value;
 }

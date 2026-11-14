@@ -144,7 +144,9 @@ it('verifies newly linked listings before saving and preserves research and revi
   await saveInvestments(original);
   const changed = await readInvestments();
   changed.portfolios[0]!.stocks[0]!.marketSymbol = '7203.T';
-  const provider = vi.spyOn(stocks, 'stockData').mockRejectedValue(new Error('Provider unavailable'));
+  const provider = vi
+    .spyOn(stocks, 'verifyStockListing')
+    .mockRejectedValue(new Error('Provider unavailable'));
   await expect(saveInvestments(changed)).rejects.toThrow('Provider unavailable');
   expect((await readInvestments()).revision).toBe(1);
   provider.mockResolvedValue(stockDataFixture());

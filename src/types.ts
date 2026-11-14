@@ -30,7 +30,15 @@ export type PerpetualQuote = {
   asOf: number | null;
   timestampBasis: 'exchange' | 'received';
 };
+export type FloatEvidence = {
+  coingeckoId: string;
+  marketCapToFdv: number;
+  fdvUsd: number;
+  maxSupply: number;
+  asOf: number;
+};
 export type Market = {
+  floatScreen?: { status: 'fresh' | 'stale' | 'unavailable' | 'unknown'; evidence?: FloatEvidence };
   id: string;
   venue: Venue;
   symbol: string;
@@ -126,6 +134,7 @@ export type AlertRule = AlertCondition & {
   id: string;
   assetId: string;
   enabled: boolean;
+  disabledReason?: 'triggered' | 'paused';
   /** Repeating alerts keep monitoring after a trigger. Missing means one shot. */
   repeat?: boolean;
   ownerId?: string;
@@ -139,6 +148,18 @@ export type AlertEvent = {
   message: string;
   time: number;
   ownerId?: string;
+  ruleId?: string;
+  macro?: { scheduledAt: number; firstActualObservedAt?: number };
+  delivery?: { expiresAt: number; devices: PushDelivery[] };
+};
+export type PushDelivery = {
+  deviceId: string;
+  status: 'pending' | 'sending' | 'retrying' | 'accepted' | 'failed' | 'expired' | 'interrupted';
+  attempts: number;
+  nextAttemptAt: number;
+  attemptedAt?: number;
+  acceptedAt?: number;
+  error?: string;
 };
 export type EconomicEvent = {
   id: string;
@@ -152,6 +173,8 @@ export type EconomicEvent = {
   providerForecast?: string;
   previous: string;
   actual: string;
+  /** First observed supplied actual; not the agency publication time. */
+  firstActualObservedAt?: number;
   status?: string;
   stale?: boolean;
   sourceName?: string;

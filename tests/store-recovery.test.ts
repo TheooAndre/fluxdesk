@@ -63,3 +63,16 @@ it('serializes cooldown checks and does not consume cooldown after a failed even
   await store.deleteAlert(alert.id);
   expect(await store.triggered(alert, 'deleted')).toBeNull();
 });
+it('distinguishes a manual pause after an earlier repeat from a one-shot trigger', async () => {
+  const store = await fixture();
+  const repeat = { ...rule('repeat'), repeat: true };
+  await store.addAlert(repeat);
+  await store.triggered(repeat, 'crossed');
+  expect((await store.setAlertEnabled(repeat.id, false))?.disabledReason).toBe('paused');
+  const rearmed = await store.setAlertEnabled(repeat.id, true);
+  expect(rearmed?.disabledReason).toBeUndefined();
+  const one = rule('one-shot');
+  await store.addAlert(one);
+  await store.triggered(one, 'crossed');
+  expect(store.snapshot().alerts.find((a) => a.id === one.id)?.disabledReason).toBe('triggered');
+});

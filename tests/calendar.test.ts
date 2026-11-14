@@ -512,3 +512,58 @@ it('serves official BLS and BEA schedules if the broad feed fails and redacts cr
     message: 'Request or response validation failed',
   });
 });
+
+it('retains first actual observation across revisions without mislabelling it as publication time', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(showMyTradesNow);
+  vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', '');
+  let actual = '216K';
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      url.includes('showmytrades')
+        ? Response.json({
+            ...showMyTradesPayload,
+            server_time: Date.now() / 1000,
+            server_time_iso: new Date().toISOString(),
+            generated_at: new Date().toISOString(),
+            count: 1,
+            events: [{ ...showMyTradesPayload.events[0], actual }],
+          })
+        : new Response('unavailable', { status: 503 }),
+    ),
+  );
+  const mod = await import('../server/calendar.ts');
+  const a = await mod.calendar();
+  const first = a.events[0]!.firstActualObservedAt;
+  expect(first).toBe(showMyTradesNow);
+  vi.advanceTimersByTime(11 * 60_000);
+  actual = '215K';
+  const b = await mod.calendar();
+  expect(b.events[0]!.actual).toBe('215K');
+  expect(b.events[0]!.firstActualObservedAt).toBe(first);
+});
+it('backs off a rejected BLS client while retaining the real failed check and working fallback', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(showMyTradesNow);
+  vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', '');
+  const fetcher = vi.fn(async (url: string) =>
+    url.includes('showmytrades')
+      ? Response.json({
+          ...showMyTradesPayload,
+          server_time: Date.now() / 1000,
+          server_time_iso: new Date().toISOString(),
+          generated_at: new Date().toISOString(),
+        })
+      : new Response('forbidden', { status: 403 }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const mod = await import('../server/calendar.ts');
+  const a = await mod.calendar();
+  vi.advanceTimersByTime(11 * 60_000);
+  const b = await mod.calendar();
+  expect(fetcher.mock.calls.filter(([u]) => u.includes('bls.gov'))).toHaveLength(1);
+  expect(b.sources.find((s) => s.id === 'bls')).toEqual(a.sources.find((s) => s.id === 'bls'));
+  expect(b.staleSources).toContain('bls');
+  expect(b.source).toBe('showmytrades');
+});

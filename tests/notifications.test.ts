@@ -1,62 +1,172 @@
-import { afterEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ send: vi.fn(), forget: vi.fn(), snapshot: vi.fn() }));
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import type { AlertRule } from '../src/types.ts';
+const mocks = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock('web-push', () => ({ default: { setVapidDetails: vi.fn(), sendNotification: mocks.send } }));
-vi.mock('../server/store.ts', () => ({ snapshotFor: mocks.snapshot, forgetSubscription: mocks.forget }));
-afterEach(() => {
-  vi.unstubAllEnvs();
+let directory: string,
+  now: number,
+  store: typeof import('../server/store.ts'),
+  push: typeof import('../server/notifications.ts');
+beforeEach(async () => {
   vi.resetModules();
-  vi.clearAllMocks();
-});
-it('uses bounded concurrent push delivery and continues after expiration cleanup fails', async () => {
+  mocks.send.mockReset();
+  mocks.send.mockResolvedValue(undefined);
+  directory = await mkdtemp(join(tmpdir(), 'fluxdesk-push-outbox-'));
+  vi.stubEnv('DATA_DIR', directory);
   vi.stubEnv('VAPID_PUBLIC_KEY', 'public');
   vi.stubEnv('VAPID_PRIVATE_KEY', 'private');
-  const subscriptions = Array.from({ length: 8 }, (_, i) => ({
-    endpoint: `https://push.example/${i}`,
-    keys: { p256dh: 'key', auth: 'auth' },
-  }));
-  mocks.snapshot.mockReturnValue({ subscriptions });
+  vi.stubEnv('FLUXDESK_ACCOUNT_AUTH', 'false');
+  vi.stubEnv('FLUXDESK_PUBLIC_MODE', 'false');
+  now = Date.now();
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  store = await import('../server/store.ts');
+  await store.load();
+  push = await import('../server/notifications.ts');
+});
+afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  await rm(directory, { recursive: true, force: true });
+});
+async function enqueue(count = 1, kind: 'price' | 'macro' = 'price', ownerId?: string) {
+  for (let i = 0; i < count; i++)
+    await store.subscribe({
+      endpoint: `https://push.example/${i}`,
+      keys: { p256dh: 'private-key', auth: 'private-auth' },
+      ...(ownerId ? { ownerId } : {}),
+    });
+  const base = {
+    id: 'rule',
+    assetId: 'binance:BTCUSDT',
+    enabled: true,
+    createdAt: now,
+    ...(ownerId ? { ownerId } : {}),
+  };
+  const rule: AlertRule =
+    kind === 'macro'
+      ? { ...base, kind, assetId: 'macro:US', timing: 'release', leadMinutes: 15 }
+      : { ...base, kind, threshold: 100 };
+  await store.addAlert(rule);
+  return (await store.triggered(rule, 'released', undefined, kind === 'macro' ? 'cpi' : undefined))!;
+}
+it('persists per-device outcomes with four concurrent sends and retries a network failure without recording another trigger', async () => {
+  const event = await enqueue(8);
   let active = 0,
     maximum = 0;
   mocks.send.mockImplementation(async (sub) => {
     active++;
     maximum = Math.max(maximum, active);
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 2));
     active--;
-    if (sub.endpoint.endsWith('/0')) throw { statusCode: 410 };
-    if (sub.endpoint.endsWith('/1')) throw Error('Timeout');
+    if (sub.endpoint.endsWith('/0')) throw { statusCode: 410, body: 'secret' };
+    if (sub.endpoint.endsWith('/1')) throw Error('private provider details');
   });
-  mocks.forget.mockRejectedValue(Error('Disk failure'));
-  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-  try {
-    const { deliver } = await import('../server/notifications.ts');
-    await deliver({
-      id: 'e',
-      assetId: 'binance:BTCUSDT',
-      kind: 'price',
-      time: Date.now(),
-      message: 'crossed',
-    });
-    expect(maximum).toBe(4);
-    expect(mocks.send).toHaveBeenCalledTimes(8);
-    expect(mocks.send.mock.calls.every((call) => call[2].timeout === 10_000 && call[2].TTL === 300)).toBe(
-      true,
-    );
-    expect(mocks.forget).toHaveBeenCalledWith('https://push.example/0');
-  } finally {
-    log.mockRestore();
-  }
-});
-it('deep-links macro notifications to the calendar', async () => {
-  vi.stubEnv('VAPID_PUBLIC_KEY', 'public');
-  vi.stubEnv('VAPID_PRIVATE_KEY', 'private');
-  mocks.snapshot.mockReturnValue({
-    subscriptions: [{ endpoint: 'https://push.example/1', keys: { p256dh: 'key', auth: 'auth' } }],
-  });
+  await Promise.all([push.deliver(event), push.drainPushQueue()]);
+  expect(maximum).toBeGreaterThan(1);
+  expect(maximum).toBeLessThanOrEqual(4);
+  expect(mocks.send).toHaveBeenCalledTimes(8);
+  const saved = store.snapshot().events[0]!;
+  expect(saved.delivery!.devices.filter((d) => d.status === 'accepted')).toHaveLength(6);
+  expect(saved.delivery!.devices.filter((d) => d.status === 'retrying')).toHaveLength(1);
+  expect(saved.delivery!.devices.filter((d) => d.status === 'expired')).toHaveLength(1);
+  expect(JSON.stringify(saved)).not.toMatch(/private|push.example|secret/);
+  await push.deliver(event);
+  await push.drainPushQueue();
+  expect(mocks.send).toHaveBeenCalledTimes(8);
+  now += 10_001;
   mocks.send.mockResolvedValue(undefined);
-  const { deliver } = await import('../server/notifications.ts');
-  await deliver({
-    id: 'macro-event', assetId: 'macro:US', kind: 'macro', time: Date.now(),
-    message: 'US CPI · Consensus/forecast: 3.1% · Previous: 3.0%',
+  await push.drainPushQueue();
+  expect(mocks.send).toHaveBeenCalledTimes(9);
+  expect(store.snapshot().events).toHaveLength(1);
+  expect(mocks.send.mock.calls.every((call) => call[2].timeout === 10_000 && call[2].TTL <= 300)).toBe(true);
+});
+it('respects Retry-After, retries at most three attempts, and expires stale work', async () => {
+  await enqueue();
+  mocks.send.mockRejectedValue({ statusCode: 429, headers: { 'retry-after': '60' } });
+  await push.drainPushQueue();
+  now += 59_000;
+  await push.drainPushQueue();
+  expect(mocks.send).toHaveBeenCalledTimes(1);
+  now += 1_001;
+  await push.drainPushQueue();
+  now += 60_001;
+  await push.drainPushQueue();
+  expect(mocks.send).toHaveBeenCalledTimes(3);
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('failed');
+  now += 60_000;
+  await push.drainPushQueue();
+  expect(mocks.send).toHaveBeenCalledTimes(3);
+});
+it('does not resend a claimed/ambiguous send across restart and preserves macro deep links and event identity', async () => {
+  const event = await enqueue(1, 'macro');
+  const device = event.delivery!.devices[0]!;
+  await store.claimPush(event.id, device.deviceId);
+  vi.resetModules();
+  store = await import('../server/store.ts');
+  await store.load();
+  await store.recoverPushClaims();
+  push = await import('../server/notifications.ts');
+  await push.drainPushQueue();
+  expect(mocks.send).not.toHaveBeenCalled();
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('interrupted');
+  // A new legitimate event carries one stable notification tag across transport retries.
+  await store.setAlertEnabled('rule', true);
+  const rule = store.snapshot().alerts[0]!;
+  await store.triggered(rule, 'next release', undefined, 'ppi');
+  await push.drainPushQueue();
+  expect(JSON.parse(mocks.send.mock.calls[0]![1])).toMatchObject({
+    url: '/?tab=calendar',
+    eventId: expect.any(String),
   });
-  expect(JSON.parse(mocks.send.mock.calls[0]![1])).toMatchObject({ url: '/?tab=calendar' });
+});
+it('expires old work without sending, and keeps ownerless legacy events attached to the owner only', async () => {
+  vi.stubEnv('FLUXDESK_PUBLIC_MODE', 'true');
+  vi.stubEnv('FLUXDESK_OWNER_SUB', 'x:1');
+  await store.subscribe({
+    endpoint: 'https://push.example/friend',
+    keys: { p256dh: 'k', auth: 'a' },
+    ownerId: 'x:2',
+  });
+  const event = await enqueue(1, 'price');
+  expect(event.delivery!.devices).toHaveLength(1);
+  now += 300_001;
+  await push.drainPushQueue();
+  expect(mocks.send).not.toHaveBeenCalled();
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('expired');
+});
+it('marks missing push configuration explicitly and records events even with no subscribed devices', async () => {
+  const event = await enqueue(0);
+  await push.deliver(event);
+  expect(store.snapshot().events[0]!.delivery!.devices).toEqual([]);
+  expect(mocks.send).not.toHaveBeenCalled();
+});
+it('does not stall alert evaluation behind a slow push transport', async () => {
+  const event = await enqueue();
+  let release!: () => void;
+  mocks.send.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  await push.deliver(event);
+  await vi.waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('sending');
+  release();
+  await push.drainPushQueue();
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('accepted');
+});
+it('marks an old ambiguous claim interrupted after storage recovers without automatically resending', async () => {
+  const event = await enqueue();
+  const d = event.delivery!.devices[0]!;
+  await store.claimPush(event.id, d.deviceId);
+  await store.recoverPushClaims(now - 60_000);
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('sending');
+  now += 61_000;
+  await store.recoverPushClaims(now - 60_000);
+  await push.drainPushQueue();
+  expect(store.snapshot().events[0]!.delivery!.devices[0]!.status).toBe('interrupted');
+  expect(mocks.send).not.toHaveBeenCalled();
 });

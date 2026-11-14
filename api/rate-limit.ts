@@ -98,6 +98,7 @@ async function hit(key: string, windowMs: number): Promise<[number, number] | nu
       if (failClosed) return null;
     }
   }
+  if (failClosed) return null;
   return memoryHit(key, windowMs, now);
 }
 

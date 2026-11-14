@@ -62,6 +62,8 @@ export type CalendarSourceCheck = {
 let cache: { at: number; day: string; value: CalendarResponse } | null = null;
 let failure: { at: number; day: string; value: CalendarResponse } | null = null;
 let pending: Promise<CalendarResponse> | null = null;
+const observedActuals = new Map<string, { at: number; releaseAt: number }>();
+let blsBlocked: { until: number; result: SourceResult } | null = null;
 
 function string(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -132,6 +134,13 @@ export function parseCalendar(json: SourceResponse, now = Date.now()): EconomicE
 }
 
 type SourceResult = { check: CalendarSourceCheck; events: EconomicEvent[] | null };
+async function blsSource(now: number): Promise<SourceResult> {
+  if (blsBlocked && Date.now() < blsBlocked.until) return blsBlocked.result;
+  const result = await checkSource('bls', 'BLS', () => fetchBlsCalendar(now));
+  // Respect a persistent access rejection. Retain its actual check time and failure flag.
+  blsBlocked = result.check.message === 'HTTP 403' ? { until: Date.now() + 3600_000, result } : null;
+  return result;
+}
 
 async function checkSource(
   id: CalendarSourceCheck['id'],
@@ -213,7 +222,7 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
     tradingEconomics(now),
     showMyTrades(now),
     financeCalendar(now),
-    checkSource('bls', 'BLS', () => fetchBlsCalendar(now)),
+    blsSource(now),
     checkSource('bea', 'BEA', () => fetchBeaCalendar(now)),
     checkSource('xoomar', 'XOOMAR', () => fetchXoomarCalendar(now)),
   ]);
@@ -267,6 +276,18 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
           : source === 'xoomar'
             ? 'Showing the attributed XOOMAR US schedule; verify release times with the originating agency.'
             : `Showing a partial official ${source === 'official' ? 'BLS and BEA' : source.toUpperCase()} release schedule; other agencies, forecasts and prior values are not covered.`;
+  for (const [id, observed] of observedActuals) {
+    if (observed.releaseAt < now - RECENT_RELEASE_WINDOW_MS) observedActuals.delete(id);
+  }
+  events = events.map((event) => {
+    const releaseAt = Date.parse(event.time);
+    if (event.stale || releaseAt > now || !hasMacroActual(event.actual)) return event;
+    if (!observedActuals.has(event.id)) {
+      if (observedActuals.size >= 1000) observedActuals.delete(observedActuals.keys().next().value!);
+      observedActuals.set(event.id, { at: Date.now(), releaseAt });
+    }
+    return { ...event, firstActualObservedAt: observedActuals.get(event.id)!.at };
+  });
   const value: CalendarResponse = {
     configured: true,
     events,
@@ -282,13 +303,17 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
   return value;
 }
 
-export async function calendar({ releaseWatch = false }: { releaseWatch?: boolean } = {}): Promise<CalendarResponse> {
+export async function calendar({
+  releaseWatch = false,
+}: { releaseWatch?: boolean } = {}): Promise<CalendarResponse> {
   const now = Date.now(),
     day = new Date(now).toISOString().slice(0, 10);
   // Re-check pending actuals near their release, sharing the same bounded cache/pending request.
   const awaitingActual = cache?.value.events.some((event) => {
     const time = Date.parse(event.time);
-    return time <= now + 2 * 60_000 && time >= now - RECENT_RELEASE_WINDOW_MS && !hasMacroActual(event.actual);
+    return (
+      time <= now + 2 * 60_000 && time >= now - RECENT_RELEASE_WINDOW_MS && !hasMacroActual(event.actual)
+    );
   });
   const ttl = releaseWatch && awaitingActual ? 30_000 : TTL;
   if (cache?.day === day && now - cache.at < ttl && !failure)
