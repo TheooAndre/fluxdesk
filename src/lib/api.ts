@@ -195,7 +195,7 @@ export const api = {
         | 'tradingeconomics'
         | 'showmytrades'
         | 'financecalendar'
-        | 'bls'
+        | 'nyfed'
         | 'bea'
         | 'official'
         | 'xoomar'

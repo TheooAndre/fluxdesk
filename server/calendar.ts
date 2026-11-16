@@ -1,6 +1,6 @@
 import type { EconomicEvent } from '../src/types.ts';
 import { getJson, UpstreamError } from './market.ts';
-import { fetchBlsCalendar } from './bls-calendar.ts';
+import { fetchNyFedCalendar } from './nyfed-calendar.ts';
 import { fetchBeaCalendar } from './bea-calendar.ts';
 import { fetchXoomarCalendar } from './xoomar-calendar.ts';
 import { fetchTradingEconomicsCalendar } from './trading-economics-calendar.ts';
@@ -41,7 +41,7 @@ export type CalendarResponse = {
     | 'tradingeconomics'
     | 'showmytrades'
     | 'financecalendar'
-    | 'bls'
+    | 'nyfed'
     | 'bea'
     | 'official'
     | 'xoomar'
@@ -52,7 +52,7 @@ export type CalendarResponse = {
   message?: string;
 };
 export type CalendarSourceCheck = {
-  id: 'tradingeconomics' | 'showmytrades' | 'financecalendar' | 'bls' | 'bea' | 'xoomar';
+  id: 'tradingeconomics' | 'showmytrades' | 'financecalendar' | 'nyfed' | 'bea' | 'xoomar';
   name: string;
   status: 'live' | 'unavailable' | 'not_configured';
   checkedAt: number;
@@ -63,7 +63,7 @@ let cache: { at: number; day: string; value: CalendarResponse } | null = null;
 let failure: { at: number; day: string; value: CalendarResponse } | null = null;
 let pending: Promise<CalendarResponse> | null = null;
 const observedActuals = new Map<string, { at: number; releaseAt: number }>();
-let blsBlocked: { until: number; result: SourceResult } | null = null;
+let nyfedBlocked: { until: number; result: SourceResult } | null = null;
 
 function string(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -134,11 +134,11 @@ export function parseCalendar(json: SourceResponse, now = Date.now()): EconomicE
 }
 
 type SourceResult = { check: CalendarSourceCheck; events: EconomicEvent[] | null };
-async function blsSource(now: number): Promise<SourceResult> {
-  if (blsBlocked && Date.now() < blsBlocked.until) return blsBlocked.result;
-  const result = await checkSource('bls', 'BLS', () => fetchBlsCalendar(now));
+async function nyfedSource(now: number): Promise<SourceResult> {
+  if (nyfedBlocked && Date.now() < nyfedBlocked.until) return nyfedBlocked.result;
+  const result = await checkSource('nyfed', 'New York Fed', () => fetchNyFedCalendar(now));
   // Respect a persistent access rejection. Retain its actual check time and failure flag.
-  blsBlocked = result.check.message === 'HTTP 403' ? { until: Date.now() + 3600_000, result } : null;
+  nyfedBlocked = result.check.message === 'HTTP 403' ? { until: Date.now() + 3600_000, result } : null;
   return result;
 }
 
@@ -218,15 +218,15 @@ function showMyTrades(now: number): Promise<SourceResult> {
 async function refresh(day: string, now: number): Promise<CalendarResponse> {
   // Check independent schedules together so one denied/slow provider cannot
   // hide a working backup or multiply the nine-second request deadline.
-  const [economics, freeCalendar, finance, bls, bea, xoomar] = await Promise.all([
+  const [economics, freeCalendar, finance, nyfed, bea, xoomar] = await Promise.all([
     tradingEconomics(now),
     showMyTrades(now),
     financeCalendar(now),
-    blsSource(now),
+    nyfedSource(now),
     checkSource('bea', 'BEA', () => fetchBeaCalendar(now)),
     checkSource('xoomar', 'XOOMAR', () => fetchXoomarCalendar(now)),
   ]);
-  const sources = [economics, freeCalendar, finance, bls, bea, xoomar].map((result) => result.check);
+  const sources = [economics, freeCalendar, finance, nyfed, bea, xoomar].map((result) => result.check);
   // An optional provider without a key is not an attempted failed request.
   const staleSources = sources.filter((source) => source.status === 'unavailable').map((source) => source.id);
   const failures = sources
@@ -246,9 +246,10 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
   } else if (xoomar.events !== null) {
     source = 'xoomar';
     events = xoomar.events;
-  } else if (bls.events !== null || bea.events !== null) {
-    source = bls.events !== null && bea.events !== null ? 'official' : bls.events !== null ? 'bls' : 'bea';
-    events = [...(bls.events ?? []), ...(bea.events ?? [])].sort((a, b) => a.time.localeCompare(b.time));
+  } else if (nyfed.events !== null || bea.events !== null) {
+    source =
+      nyfed.events !== null && bea.events !== null ? 'official' : nyfed.events !== null ? 'nyfed' : 'bea';
+    events = [...(nyfed.events ?? []), ...(bea.events ?? [])].sort((a, b) => a.time.localeCompare(b.time));
   } else {
     const recent = cache?.day === day && now - cache.at < 2 * 60 * 60_000;
     const value: CalendarResponse = {
@@ -275,7 +276,7 @@ async function refresh(day: string, now: number): Promise<CalendarResponse> {
           ? ''
           : source === 'xoomar'
             ? 'Showing the attributed XOOMAR US schedule; verify release times with the originating agency.'
-            : `Showing a partial official ${source === 'official' ? 'BLS and BEA' : source.toUpperCase()} release schedule; other agencies, forecasts and prior values are not covered.`;
+            : `Showing a partial official ${source === 'official' ? 'New York Fed and BEA' : source === 'nyfed' ? 'New York Fed' : source.toUpperCase()} release schedule; other agencies, forecasts and prior values are not covered.`;
   for (const [id, observed] of observedActuals) {
     if (observed.releaseAt < now - RECENT_RELEASE_WINDOW_MS) observedActuals.delete(id);
   }

@@ -9,7 +9,7 @@ export type OfficialCalendar = {
   highImpact: RegExp[];
 };
 
-function utcForEastern(value: string): number | null {
+export function utcForEastern(value: string): number | null {
   if (!/^\d{8}T\d{6}$/.test(value)) return null;
   const year = Number(value.slice(0, 4)),
     month = Number(value.slice(4, 6)),
