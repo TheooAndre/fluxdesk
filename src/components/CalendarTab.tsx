@@ -33,13 +33,13 @@ function CalendarTab() {
                 {feed.data.message}
               </div>
             )}
-            {feed.data.source === 'bls' && (
-              <p className="footnote">Source: official BLS schedule · partial coverage</p>
+            {feed.data.source === 'nyfed' && (
+              <p className="footnote">Source: New York Fed schedule · partial coverage</p>
             )}
             {(feed.data.source === 'bea' || feed.data.source === 'official') && (
               <p className="footnote">
-                Source: official {feed.data.source === 'official' ? 'BLS and BEA' : 'BEA'} schedule · partial
-                coverage
+                Source: official {feed.data.source === 'official' ? 'New York Fed and BEA' : 'BEA'} schedule ·
+                partial coverage
               </p>
             )}
             {feed.data.source === 'xoomar' && (
@@ -166,6 +166,11 @@ function CalendarTab() {
           </>
         )}
         <p className="footnote">
+          © {new Date().getFullYear()} Federal Reserve Bank of New York. Content from the New York Fed
+          subject to the <a href="https://www.newyorkfed.org/privacy/termsofuse">Terms of Use</a>. FluxDesk
+          selects high-impact releases and converts Eastern times to local time.
+        </p>
+        <p className="footnote">
           Free calendar data by{' '}
           <a
             href="https://showmytrades.com/tools/economic-calendar"
@@ -184,11 +189,11 @@ function CalendarTab() {
           </a>
           ; official schedules by{' '}
           <a
-            href="https://www.bls.gov/schedule/news_release/bls.ics"
+            href="https://www.newyorkfed.org/research/calendars/nationalecon_cal"
             target="_blank"
             rel="noopener noreferrer"
           >
-            U.S. Bureau of Labor Statistics
+            Federal Reserve Bank of New York
           </a>{' '}
           and{' '}
           <a href="https://www.bea.gov/news/schedule/icalendar" target="_blank" rel="noopener noreferrer">
