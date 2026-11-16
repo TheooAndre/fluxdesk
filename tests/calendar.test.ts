@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { parseCalendar } from '../server/calendar.ts';
-import { parseBlsCalendar } from '../server/bls-calendar.ts';
+import { parseNyFedCalendar } from '../server/nyfed-calendar.ts';
 import { parseBeaCalendar } from '../server/bea-calendar.ts';
 import { parseXoomarCalendar } from '../server/xoomar-calendar.ts';
 import {
@@ -82,7 +82,7 @@ it('authenticates with a header, checks backups and bounds cached recovery', asy
   const fetcher = vi.fn(async (input: string, options?: RequestInit) => {
     const url = new URL(input);
     if (url.origin === 'https://showmytrades.com') throw new Error('ShowMyTrades offline');
-    if (url.origin === 'https://www.bls.gov') throw new Error('BLS offline');
+    if (url.origin === 'https://www.newyorkfed.org') throw new Error('BLS offline');
     if (url.origin === 'https://xoomar.com') throw new Error('XOOMAR offline');
     if (url.origin === 'https://www.bea.gov') throw new Error('BEA offline');
     expect(url.origin).toBe('https://www.financecalendar.com');
@@ -112,42 +112,25 @@ it('authenticates with a header, checks backups and bounds cached recovery', asy
   expect(expired.events).toEqual([]);
 });
 
-const blsIcs = `BEGIN:VCALENDAR\r
-VERSION:2.0\r
-BEGIN:VEVENT\r
-UID:bls-cpi\r
-SUMMARY:Consumer Price Index\r
-DTSTART;TZID=America/New_York:20261105T083000\r
-URL:https://www.bls.gov/news.release/cpi.htm\r
-END:VEVENT\r
-BEGIN:VEVENT\r
-UID:bls-untimed\r
-SUMMARY:Employment Situation\r
-DTSTART;VALUE=DATE:20261106\r
-END:VEVENT\r
-BEGIN:VEVENT\r
-UID:bls-other\r
-SUMMARY:Regional wage report\r
-DTSTART;TZID=America/New_York:20261107T083000\r
-END:VEVENT\r
-END:VCALENDAR`;
+const nyfedHtml = `<p>all Eastern Time</p><div>November 2026</div>
+<table><tr><td><div>05<br/><span class="ts-accordion-content"><a href="https://www.bls.gov/news.release/cpi.htm">Consumer Price Index</a><br/>(08:30)<br/></span></div></td></tr></table>`;
 
-it('parses only timed, selected BLS releases and converts Eastern time across DST', () => {
-  const [result] = parseBlsCalendar(blsIcs, Date.parse('2026-11-04T00:00:00Z'));
+it('parses the free New York Fed schedule with attribution and DST conversion', () => {
+  const [result] = parseNyFedCalendar(nyfedHtml, Date.parse('2026-11-04T00:00:00Z'));
   expect(result).toMatchObject({
-    id: 'bls:bls-cpi',
     title: 'Consumer Price Index',
     time: '2026-11-05T13:30:00.000Z',
     forecast: '',
-    sourceName: 'U.S. Bureau of Labor Statistics',
+    sourceName: 'Federal Reserve Bank of New York',
   });
+  expect(result?.licenseUrl).toContain('termsofuse');
   expect(
-    parseBlsCalendar(
-      blsIcs.replace('20261105T083000', '20260705T083000'),
-      Date.parse('2026-07-04T00:00:00Z'),
-    )[0]?.time,
+    parseNyFedCalendar(nyfedHtml.replace('November', 'July'), Date.parse('2026-07-04T00:00:00Z'))[0]?.time,
   ).toBe('2026-07-05T12:30:00.000Z');
-  expect(() => parseBlsCalendar('BEGIN:VCALENDAR\nBEGIN:VEVENT')).toThrow('malformed');
+  expect(() => parseNyFedCalendar('access denied')).toThrow('malformed');
+  expect(() => parseNyFedCalendar(nyfedHtml, Date.parse('2027-01-01T00:00:00Z'))).toThrow('stale');
+  expect(() => parseNyFedCalendar(nyfedHtml.replace('(08:30)', '(25:30)'))).toThrow('time malformed');
+  expect(() => parseNyFedCalendar(nyfedHtml.replace('(08:30)', 'TBD'))).toThrow('no recognized');
 });
 
 it('uses the official partial schedule and marks the failed primary source', async () => {
@@ -156,18 +139,18 @@ it('uses the official partial schedule and marks the failed primary source', asy
   const fetcher = vi.fn(async (input: string) => {
     if (input.includes('showmytrades.com')) return new Response('unavailable', { status: 503 });
     if (input.includes('financecalendar.com')) return new Response('unauthorized', { status: 401 });
-    if (!input.includes('bls.gov')) return new Response('unavailable', { status: 503 });
-    return new Response(blsIcs, { status: 200, headers: { 'content-type': 'text/calendar' } });
+    if (!input.includes('newyorkfed.org')) return new Response('unavailable', { status: 503 });
+    return new Response(nyfedHtml, { status: 200, headers: { 'content-type': 'text/calendar' } });
   });
   vi.stubGlobal('fetch', fetcher);
   const response = await calendar();
   expect(response).toMatchObject({
     configured: true,
-    source: 'bls',
+    source: 'nyfed',
     staleSources: ['showmytrades', 'financecalendar', 'bea', 'xoomar'],
   });
   expect(response.events).toHaveLength(1);
-  expect(response.message).toContain('partial official BLS');
+  expect(response.message).toContain('partial official New York Fed');
   expect((await calendar()).events).toHaveLength(1);
   expect(fetcher).toHaveBeenCalledTimes(5);
 });
@@ -347,7 +330,7 @@ it('prefers the free consensus feed when paid providers are not configured', asy
     'fetch',
     vi.fn(async (input: string) => {
       if (input.includes('showmytrades.com')) return Response.json(showMyTradesPayload);
-      if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
+      if (input.includes('newyorkfed.org')) return new Response('forbidden', { status: 403 });
       if (input.includes('bea.gov')) return new Response('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR');
       return Response.json({ updatedAt: '2026-11-05T12:00:00Z', data: [] });
     }),
@@ -362,14 +345,28 @@ it('prefers the free consensus feed when paid providers are not configured', asy
 });
 
 it('refreshes pending actuals near release instead of waiting ten minutes, sharing concurrent polls', async () => {
-  vi.useFakeTimers(); vi.setSystemTime(showMyTradesNow);
+  vi.useFakeTimers();
+  vi.setSystemTime(showMyTradesNow);
   vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', '');
   const releaseTime = showMyTradesNow + 60_000;
   let actual = '';
   const fetcher = vi.fn(async (input: string) => {
-    if (input.includes('showmytrades.com')) return Response.json({ ...showMyTradesPayload,
-      server_time: Date.now() / 1000, server_time_iso: new Date(Date.now()).toISOString(), generated_at: new Date(Date.now()).toISOString(), count: 1,
-      events: [{ ...showMyTradesPayload.events[0], time: new Date(releaseTime).toISOString(), ts: releaseTime / 1000, actual }] });
+    if (input.includes('showmytrades.com'))
+      return Response.json({
+        ...showMyTradesPayload,
+        server_time: Date.now() / 1000,
+        server_time_iso: new Date(Date.now()).toISOString(),
+        generated_at: new Date(Date.now()).toISOString(),
+        count: 1,
+        events: [
+          {
+            ...showMyTradesPayload.events[0],
+            time: new Date(releaseTime).toISOString(),
+            ts: releaseTime / 1000,
+            actual,
+          },
+        ],
+      });
     if (input.includes('bea.gov')) return new Response('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR');
     return new Response('unavailable', { status: 503 });
   });
@@ -377,8 +374,12 @@ it('refreshes pending actuals near release instead of waiting ten minutes, shari
   const module = await import('../server/calendar.ts');
   await module.calendar();
   expect(fetcher).toHaveBeenCalledTimes(4);
-  vi.advanceTimersByTime(60_000); actual = '0.3%';
-  const results = await Promise.all([module.calendar({ releaseWatch: true }), module.calendar({ releaseWatch: true })]);
+  vi.advanceTimersByTime(60_000);
+  actual = '0.3%';
+  const results = await Promise.all([
+    module.calendar({ releaseWatch: true }),
+    module.calendar({ releaseWatch: true }),
+  ]);
   expect(results[0]!.events[0]!.actual).toBe('0.3%');
   expect(results[1]).toEqual(results[0]);
   expect(fetcher).toHaveBeenCalledTimes(8);
@@ -386,8 +387,30 @@ it('refreshes pending actuals near release instead of waiting ten minutes, shari
 
 it('keeps recently released paid-provider data across midnight for actual-value alerts', () => {
   const now = Date.parse('2026-11-06T00:05:00Z');
-  expect(parseCalendar({ total: 1, events: [{ ...event, release_at_utc: '2026-11-05T23:59:00Z', actual: '3.1%' }] }, now)[0]?.actual).toBe('3.1%');
-  expect(parseTradingEconomicsCalendar([{ CalendarId: 1, Date: '2026-11-05T23:59:00Z', Country: 'United States', Event: 'CPI', Importance: 3, DateSpan: 0, Actual: 0, Forecast: 0.1, Previous: 0.2 }], now)[0]?.actual).toBe('0');
+  expect(
+    parseCalendar(
+      { total: 1, events: [{ ...event, release_at_utc: '2026-11-05T23:59:00Z', actual: '3.1%' }] },
+      now,
+    )[0]?.actual,
+  ).toBe('3.1%');
+  expect(
+    parseTradingEconomicsCalendar(
+      [
+        {
+          CalendarId: 1,
+          Date: '2026-11-05T23:59:00Z',
+          Country: 'United States',
+          Event: 'CPI',
+          Importance: 3,
+          DateSpan: 0,
+          Actual: 0,
+          Forecast: 0.1,
+          Previous: 0.2,
+        },
+      ],
+      now,
+    )[0]?.actual,
+  ).toBe('0');
 });
 
 it('uses XOOMAR after both first sources reject and reports the source flags', async () => {
@@ -396,7 +419,7 @@ it('uses XOOMAR after both first sources reject and reports the source flags', a
   const fetcher = vi.fn(async (input: string) => {
     if (input.includes('showmytrades.com')) return new Response('unavailable', { status: 503 });
     if (input.includes('financecalendar.com')) return new Response('unauthorized', { status: 401 });
-    if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
+    if (input.includes('newyorkfed.org')) return new Response('forbidden', { status: 403 });
     if (input.includes('bea.gov')) return new Response('unavailable', { status: 503 });
     expect(input).toBe('https://xoomar.com/api/markets/calendar');
     return Response.json({
@@ -416,7 +439,7 @@ it('uses XOOMAR after both first sources reject and reports the source flags', a
   expect(response).toMatchObject({
     configured: true,
     source: 'xoomar',
-    staleSources: ['showmytrades', 'financecalendar', 'bls', 'bea'],
+    staleSources: ['showmytrades', 'financecalendar', 'nyfed', 'bea'],
   });
   expect(response.events).toHaveLength(1);
   expect(fetcher).toHaveBeenCalledTimes(5);
@@ -464,7 +487,7 @@ it('keeps an empty official backup available and skips an unconfigured keyed pro
   const fetcher = vi.fn(async (input: string, options?: RequestInit) => {
     expect(input).not.toContain('financecalendar.com');
     if (input.includes('showmytrades.com')) return new Response('unavailable', { status: 503 });
-    if (input.includes('bls.gov')) return new Response('forbidden', { status: 403 });
+    if (input.includes('newyorkfed.org')) return new Response('forbidden', { status: 403 });
     if (input.includes('bea.gov')) {
       expect(options?.headers).toMatchObject({
         accept: 'text/calendar',
@@ -476,18 +499,18 @@ it('keeps an empty official backup available and skips an unconfigured keyed pro
   });
   vi.stubGlobal('fetch', fetcher);
   const result = await calendar();
-  expect(result).toMatchObject({ source: 'xoomar', events: [], staleSources: ['showmytrades', 'bls'] });
+  expect(result).toMatchObject({ source: 'xoomar', events: [], staleSources: ['showmytrades', 'nyfed'] });
   expect(result.sources).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ id: 'financecalendar', status: 'not_configured' }),
       expect.objectContaining({ id: 'bea', status: 'live', eventCount: 0 }),
-      expect.objectContaining({ id: 'bls', status: 'unavailable', message: 'HTTP 403' }),
+      expect.objectContaining({ id: 'nyfed', status: 'unavailable', message: 'HTTP 403' }),
     ]),
   );
   expect(fetcher).toHaveBeenCalledTimes(4);
 });
 
-it('serves official BLS and BEA schedules if the broad feed fails and redacts credential errors', async () => {
+it('serves New York Fed and BEA schedules if the broad feed fails and redacts credential errors', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-05T00:00:00Z'));
   const secret = 'test-only-secret-not-for-response';
@@ -497,7 +520,7 @@ it('serves official BLS and BEA schedules if the broad feed fails and redacts cr
     vi.fn(async (input: string) => {
       if (input.includes('showmytrades.com')) return new Response('unavailable', { status: 503 });
       if (input.includes('financecalendar.com')) throw Error(`header value ${secret} rejected`);
-      if (input.includes('bls.gov')) return new Response(blsIcs);
+      if (input.includes('newyorkfed.org')) return new Response(nyfedHtml);
       if (input.includes('bea.gov')) return new Response(beaIcs);
       return new Response('unavailable', { status: 503 });
     }),
@@ -505,7 +528,11 @@ it('serves official BLS and BEA schedules if the broad feed fails and redacts cr
   const result = await calendar();
   expect(result.source).toBe('official');
   expect(result.events).toHaveLength(3);
-  expect(result.events.map((event) => event.id)).toEqual(['bls:bls-cpi', 'bea:bea-gdp', 'bea:bea-pce']);
+  expect(result.events.map((event) => event.id)).toEqual([
+    'nyfed:Consumer Price Index:1793885400000',
+    'bea:bea-gdp',
+    'bea:bea-pce',
+  ]);
   expect(JSON.stringify(result)).not.toContain(secret);
   expect(result.sources.find((source) => source.id === 'financecalendar')).toMatchObject({
     status: 'unavailable',
@@ -543,7 +570,7 @@ it('retains first actual observation across revisions without mislabelling it as
   expect(b.events[0]!.actual).toBe('215K');
   expect(b.events[0]!.firstActualObservedAt).toBe(first);
 });
-it('backs off a rejected BLS client while retaining the real failed check and working fallback', async () => {
+it('backs off a rejected New York Fed client while retaining the real failed check and working fallback', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(showMyTradesNow);
   vi.stubEnv('FLUXDESK_FINANCE_CALENDAR_API_KEY', '');
@@ -562,8 +589,26 @@ it('backs off a rejected BLS client while retaining the real failed check and wo
   const a = await mod.calendar();
   vi.advanceTimersByTime(11 * 60_000);
   const b = await mod.calendar();
-  expect(fetcher.mock.calls.filter(([u]) => u.includes('bls.gov'))).toHaveLength(1);
-  expect(b.sources.find((s) => s.id === 'bls')).toEqual(a.sources.find((s) => s.id === 'bls'));
-  expect(b.staleSources).toContain('bls');
+  expect(fetcher.mock.calls.filter(([u]) => u.includes('newyorkfed.org'))).toHaveLength(1);
+  expect(b.sources.find((s) => s.id === 'nyfed')).toEqual(a.sources.find((s) => s.id === 'nyfed'));
+  expect(b.staleSources).toContain('nyfed');
   expect(b.source).toBe('showmytrades');
+});
+
+it('loads the linked next month across year rollover and never fetches BLS', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-12-28T00:00:00Z'));
+  const december =
+    nyfedHtml.replace('November', 'December') + '<a href="/research/calendars/i-jan27.html">NEXT MONTH</a>';
+  const january = nyfedHtml.replace('November 2026', 'January 2027');
+  const fetcher = vi.fn(async (url: string) => new Response(url.includes('i-jan27') ? january : december));
+  vi.stubGlobal('fetch', fetcher);
+  const { fetchNyFedCalendar } = await import('../server/nyfed-calendar.ts');
+  const events = await fetchNyFedCalendar(Date.now());
+  expect(events).toHaveLength(1);
+  expect(events[0]?.time).toBe('2027-01-05T13:30:00.000Z');
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+    'https://www.newyorkfed.org/research/calendars/nationalecon_cal',
+    'https://www.newyorkfed.org/research/calendars/i-jan27.html',
+  ]);
 });
