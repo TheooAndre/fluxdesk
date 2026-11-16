@@ -1,6 +1,6 @@
 # FluxDesk development checklist
 
-Updated 14 November 2026. This is the current checklist. Earlier release receipts
+Updated 16 November 2026. This is the current checklist. Earlier release receipts
 are retained in [development history](development-history-2026-11-14.md).
 
 ## Current product
@@ -19,7 +19,7 @@ advance alerts; 32-family multi-condition advanced alerts; installed-PWA push.
 
 | #   | Work                 | Current state / completion gate                                                                                                                                                                                                             |
 | --- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | BLS schedule         | Exact calendar URL and application headers returned HTTP 403 from the released Northflank container on 14 November. Backoff and working fallback expose the stale source. Diagnose supported access or replace the source. |
+| 1   | BLS schedule         | Replaced the rejected BLS ICS client with the free, keyless New York Fed Economic Indicators Calendar for CPI, PPI, employment and JOLTS. Eastern/DST conversion, linked next-month handling, attribution and malformed/stale-page rejection tested. Release verification is recorded in the source replacement PR. Actual/consensus/previous values continue to come from existing value feeds. |
 | 2   | Push delivery        | Durable per-device outbox, bounded retry/expiry, acceptance/failure visibility and stable notification tags released. Physical iPhone installed-PWA resume and a test push still need owner device. |
 | 3   | Offsite restore      | Required state files are present on the existing /data volume. Real encrypted export to owner computer, checksum and isolated restore remain unverified. Northflank volume UI showed no native backups. |
 | 4   | Main protection      | Active main ruleset 27268519 verified by authenticated API readback: PR, up-to-date quality and Offline stat-arb mechanics checks, resolved conversations, no force-push/deletion, no bypass. |
@@ -54,7 +54,7 @@ Verify canonical alias, public reads, anonymous private rejection and account
 metadata without reading owner journal contents. Keep the previous deployment
 for rollback and follow the account-auth rollback rules. See production-preflight.md.
 
-Repository protection is verified. The encrypted owner-computer backup, checksum and isolated restore receipt, BLS supported-source resolution, and physical iPhone PWA/push checks remain open until actual evidence is recorded.
+Repository protection is verified. The encrypted owner-computer backup, checksum and isolated restore receipt, physical iPhone PWA/push checks remain open until actual evidence is recorded.
 
 ## Research remains separate
 
